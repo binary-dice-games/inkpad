@@ -10,6 +10,7 @@ export default defineConfig({
           include: ['packages/**/*.test.ts', 'tests/unit/**/*.test.ts'],
           environment: 'node',
           testTimeout: 15000,
+          hookTimeout: 30000,
         },
       },
       {
@@ -18,6 +19,9 @@ export default defineConfig({
           include: ['tests/e2e/**/*.test.ts'],
           environment: 'node',
           testTimeout: 60000,
+          // Starting a browser (and, in parallel with other suites, the machine) can take
+          // well over vitest's default 10 s on a CI runner.
+          hookTimeout: 120000,
         },
       },
     ],
