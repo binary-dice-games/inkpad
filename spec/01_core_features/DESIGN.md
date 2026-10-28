@@ -1,0 +1,215 @@
+# 01_core_features — product, architecture and collab core
+
+Foundation project. It defines what inkpad is, how the pieces fit, the repo
+and tooling, and the **collab core** (session + whiteboard) that every other
+project builds on. Related projects:
+
+| Project | Covers |
+|---|---|
+| `spec/02_presenter_extension/` | Chrome extension: overlay, toolbar, share controls |
+| `spec/03_tab_streaming/` | Tab capture and low-fps WebRTC video |
+| `spec/04_viewer_site/` | Static viewer page on GitHub Pages |
+| `spec/05_release_pipeline/` | CI, Pages deploy, Web Store packaging |
+
+## 1. Purpose and scope
+
+inkpad turns a browser tab into a shared whiteboard. A **presenter** with the
+Chrome extension enables it on the active tab. The extension:
+
+1. Adds a drawing overlay (pointer, pen, text, stickers/emoticons, eraser,
+   undo/redo, colours) on top of the tab.
+2. Streams the tab's pixels to **viewers** over WebRTC, at a low, configurable
+   frame rate.
+3. Produces a **collab link**. Viewers open it in any modern browser, with no
+   extension. They see the video plus the same whiteboard and can draw on it.
+
+Drawings are **never part of the video**. They travel as data and each peer
+renders them locally on top of the video (or on top of the live page, for the
+presenter).
+
+Non-goals (v1): audio, recording, persistence of drawings, accounts, a server
+of our own, more than ~10 viewers, non-Chromium presenters, remote control of
+the presenter's page, multi-tab sharing.
+
+## 2. Origin: copy of nymph, not a dependency
+
+The collab code is **copied** from `binary-dice-games/nymph`
+(`web/collab/collab-session.js`, `web/collab/collab-whiteboard.js`, and the
+ideas in nymph `spec/18_collaboration/DESIGN.md`). inkpad never references
+nymph at build or run time. Copied files keep a provenance header (source path,
+commit, date) and nymph's MIT notice in `NOTICE`. Divergence is allowed; the
+header is how to diff against upstream.
+
+Reused unchanged in concept: serverless signaling through public WebTorrent
+trackers with sealed (AES-GCM) offers, manual-code fallback, star topology
+(host = presenter), `reliable` + `fast` data channels, 16 KiB framing,
+last-writer-wins whiteboard with Lamport stamps and tombstones, roster,
+lock/remove/new-link, 500-entry/2000-item/5000-point limits.
+
+## 3. Architecture
+
+```
+ Presenter's Chrome                                   Viewer's browser (no extension)
+┌───────────────────────────────────────────┐        ┌──────────────────────────────┐
+│ Shared tab                                │        │ viewer page (GitHub Pages)   │
+│  content script: overlay (shadow DOM)     │        │  <video> + whiteboard overlay│
+│   whiteboard view + toolbar               │        │  collab-session (guest)      │
+│        ▲ chrome.runtime Port              │        └──────────────▲───────────────┘
+│ ┌──────┴─────────┐   ┌─────────────────┐  │   WebRTC: video track + reliable/fast
+│ │ service worker │◄─►│ offscreen doc   │◄─┼───── data channels (star, 1 link per viewer)
+│ │ (orchestrator) │   │ session (host), │  │
+│ │ tabCapture id  │   │ MediaStream,    │  │   signaling: sealed offers/answers via
+│ └────────────────┘   │ whiteboard model│  │   public WebTorrent trackers (wss) only
+│                      └─────────────────┘  │
+└───────────────────────────────────────────┘
+```
+
+Key decisions (the *why*):
+
+- **Session lives in the offscreen document, not the page.** Page CSP can block
+  WebSockets to trackers; the page navigates and reloads (killing links);
+  MV3 service workers sleep and cannot hold `RTCPeerConnection`. The offscreen
+  document survives navigation and owns the capture stream anyway.
+- **Whiteboard model lives in the offscreen document; the overlay is a view.**
+  After a navigation the content script is re-injected and receives a
+  snapshot, so drawings survive page loads.
+- **Overlay talks to the session through a `SessionProxy`** (a `Port` relay via
+  the service worker) that implements the same `channel()`/`on()` surface the
+  whiteboard expects from a `Session`. The copied whiteboard needs no changes
+  for this.
+- **Star topology, presenter is host.** Same reason as nymph: the presenter
+  holds the truth and one NAT path per viewer. Cost: uplink = viewers × video
+  bitrate, hence the low-fps default and ~10-viewer target (see
+  `spec/03_tab_streaming/DESIGN.md`).
+- **Viewers are first-class drawers.** Unlike nymph (guests view only), any peer
+  may add/modify/delete any item. The presenter can *lock* viewers to
+  pointer-only at any time (host-enforced, see 4.3).
+- **Whiteboard coordinates are frame-relative** (4.2), so the same drawing
+  lines up on the presenter's page and on every viewer's video.
+
+## 4. Collab core contract
+
+Lives in `packages/` (see 5). Changes versus nymph are listed explicitly.
+
+### 4.1 `collab-session` (copy)
+
+Same public API as nymph (`createSession`, `Session`, `channel`, `peers`,
+`lock`, `remove`, `newInvite`, `inviteFragment`, `manual`, events). Changes:
+
+| Change | Reason |
+|---|---|
+| Fragment key is `inkpad=<token>` (not `collab=`) | Avoid clashing with nymph links |
+| `media` option: host passes a `MediaStream` (or track source); guest passes `onTrack` | Video, see below |
+| Guest offers always include a `recvonly` video transceiver | Offers are guest-made; the host attaches its track to that transceiver before answering |
+| Tracker list and ICE servers come from options, defaults in `packages/defaults` | Configurable in extension options |
+| Protocol id `inkpad/1` | Handshake refuses mismatches |
+
+Media hooks (contract, details in `spec/03_tab_streaming/DESIGN.md`):
+
+- Host: `session.setMedia(stream | null)` attaches/replaces the sender track on
+  every link (current and future) via `RTCRtpTransceiver`/`replaceTrack`.
+  `session.mediaParams({fps,maxBitrate,scale})` sets sender parameters live.
+- Guest: `session.on('track', (stream) => ...)`.
+- A link is "open" once data channels are open; video may arrive later or
+  never (e.g., presenter paused). Failure to negotiate video does not close
+  the data link.
+
+### 4.2 `collab-whiteboard` (copy, adapted)
+
+Same tools, data model, merge rules and limits as nymph. Changes:
+
+- **Board units.** Item coordinates, stroke width and text/sticker size are in
+  units where the **frame width = 1000**. Frame height in units is
+  `1000 / aspect`. The *stage* message (4.3) carries `aspect`. Items are not
+  rescaled if the aspect later changes (page layout reflows anyway); content
+  outside the new frame is clipped, not deleted.
+- **Adapter** maps board units to the host element: the page viewport on the
+  presenter, the letterboxed `<video>` rectangle on viewers.
+- **Stickers.** Built-in SVG set is extended with emoticon faces (smile,
+  laugh, wink, sad, surprised, angry, cool, thinking) next to nymph's check,
+  cross, question, star, heart, thumbs-up, warning, arrow. Peers send names
+  only, never SVG (nymph decision: emoji glyphs differ per OS). The text tool
+  still accepts emoji characters.
+- **Permissions.** Nymph's `readOnly` is local. inkpad adds `wb` control
+  message `perm {drawing:boolean}` from the host; the host's `accept` callback
+  also drops `put`/`clear`/`ink` from guests while drawing is off, so a
+  modified viewer cannot bypass the lock.
+- **Pointer pass-through on the presenter.** In pointer mode the overlay does
+  not capture input, so the page stays usable; cursor tracking uses passive
+  window-level `pointermove`.
+- **Snapshot on join.** The host sends the full model snapshot to a new
+  viewer on the reliable channel (nymph already merges snapshots).
+- **Clear** affects everyone and is allowed to viewers only while drawing is on.
+
+### 4.3 Channels and messages
+
+| Channel | Transport | Direction | Purpose |
+|---|---|---|---|
+| `$` | reliable | both | nymph control (hello, welcome, roster, refuse, locked, end, removed) |
+| `wb` | reliable + fast | both | whiteboard ops, snapshots, cursors, live ink (nymph protocol) |
+| `stage` | reliable | host → guests | `{aspect, w, h, fps, state: live\|paused\|ended, drawing:boolean, title?}`; resent on join and on every change |
+
+`stage.title` is optional, off by default (page titles can be private).
+
+### 4.4 Security and privacy
+
+- The link is the permission (as in nymph). Token only in the URL fragment, so
+  GitHub Pages never sees it. Presenter can lock, remove a viewer, or issue a
+  new link.
+- Trackers see topic hash and IPs, not the token, video, or drawings.
+- **Everything visible in the tab is shared with everyone holding the link.**
+  The extension requires an explicit start action, shows a persistent
+  "sharing" badge and in-page indicator, and offers *Pause* (stop sending
+  video) at any time.
+- Guest messages are validated, size-limited, rate-limited (50 whiteboard
+  ops/s) and never touch the page DOM except through the whiteboard's
+  `textContent` and named-sticker rendering.
+- Video and data are DTLS/SRTP encrypted; DTLS fingerprint travels inside the
+  sealed SDP.
+- Star topology: only the presenter's browser learns viewer IPs (and each
+  viewer learns the presenter's). The share dialog states this.
+
+## 5. Repository, language, tooling
+
+Answers recorded from the design session: **JS/TS, CMake only wraps it.**
+
+```
+packages/
+  collab-session/      copied from nymph (JS + .d.ts), adapted per 4.1
+  collab-whiteboard/   copied from nymph (JS + .d.ts), adapted per 4.2
+  defaults/            tracker list, ICE servers, limits, fps presets (TS)
+extension/             MV3 extension (spec/02, spec/03) — TypeScript
+viewer/                static viewer site (spec/04) — TypeScript
+tests/                 unit (Vitest), browser e2e (Playwright), in-process fake tracker
+CMakeLists.txt         top-level entry: targets `extension`, `viewer`, `check`, `test`
+                       call npm scripts (build/test remain `cmake --build`/`ctest`)
+```
+
+- npm workspaces, TypeScript (strict), esbuild bundling, Vitest, Playwright
+  (Chromium with the unpacked extension), ESLint + Prettier.
+- The C++ skeleton (`include/`, `src/`, `app/`, `.clang-format` rules in
+  `CLAUDE.md`) is **retired** in the first plan step; CLAUDE.md's C++ style,
+  GoogleTest and `inkpad_add_test` sections are replaced by JS/TS equivalents
+  (`inkpad_add_test` becomes a ctest wrapper over Vitest/Playwright suites).
+  `extern/` submodules stay allowed but are not expected.
+- No runtime dependencies in the shipped extension and viewer beyond the two
+  copied packages (keeps the Web Store review and the Pages payload small).
+
+## 6. Testing strategy
+
+- Unit: framing, sealing, whiteboard merge/convergence, board-unit math,
+  permission enforcement.
+- Integration: host + N guests over `createMemoryNetwork` and a local fake
+  WebTorrent tracker (WebSocket, port 0). No public trackers in CI.
+- E2E: Playwright launches Chromium with the extension, opens a fixture page,
+  starts sharing, opens the viewer in a second context, asserts video frames
+  arrive and drawings sync both ways. Real NAT/TURN/public-tracker checks are
+  a manual checklist (`docs/manual-testing.md`).
+
+## 7. Open risks
+
+1. Overlay appears in captured video — see `spec/03_tab_streaming/DESIGN.md`
+   section 3; gated by plan step 1 of that project.
+2. Public trackers may disappear or rate-limit; mitigated by several trackers
+   plus manual codes (carried over from nymph).
+3. Viewers behind symmetric NAT need TURN; v1 ships STUN only, TURN optional.
