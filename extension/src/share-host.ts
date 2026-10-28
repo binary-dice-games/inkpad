@@ -333,6 +333,18 @@ export class ShareHost {
     this.changed();
   }
 
+  /**
+   * Joins a viewer who cannot reach a tracker: takes the code the viewer made
+   * and returns the answer code to send back.
+   * @throws {SessionError} for a damaged code or one of another session
+   */
+  async acceptCode(code: string): Promise<string> {
+    if (this.stopped || !this.session.manual) {
+      throw new Error('this session cannot take codes');
+    }
+    return this.session.manual.acceptOffer(code.trim());
+  }
+
   /** Ends the share: viewers are told, links close. Idempotent. */
   stop(): void {
     if (this.stopped) {

@@ -125,6 +125,22 @@ async function main(): Promise<void> {
   );
   $('pause').addEventListener('click', () => toOffscreen({ cmd: 'pause', on: !ui.paused }));
   $('newLink').addEventListener('click', () => toOffscreen({ cmd: 'newLink' }));
+  $('makeAnswer').addEventListener('click', async () => {
+    const out = $<HTMLTextAreaElement>('answerOut');
+    const result = (await chrome.runtime.sendMessage({
+      target: 'offscreen',
+      type: 'acceptCode',
+      code: $<HTMLTextAreaElement>('viewerCode').value,
+    } satisfies OffscreenMessage)) as { ok: boolean; answer?: string; message?: string };
+    out.hidden = !result.ok;
+    out.value = result.answer ?? '';
+    $('codeStatus').textContent = result.ok
+      ? 'Send this answer back to the viewer.'
+      : (result.message ?? 'That code did not work.');
+    if (result.ok) {
+      out.select();
+    }
+  });
   $('clear').addEventListener('click', () => toOffscreen({ cmd: 'clear' }));
   $('openConsole').addEventListener('click', () => {
     if (ui.consoleLink) {

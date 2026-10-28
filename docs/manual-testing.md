@@ -31,6 +31,8 @@ presenter on Chrome.
 | 16 | Share a page that plays video or animates | Frame rate stays near the setting; the presenter's CPU stays reasonable |
 | 17 | Close the console window, reopen it with **Open console** | Drawings are still there |
 | 18 | Switch to the console tab while the shared tab stays in the background | Viewers keep getting frames |
+| 20 | Viewer on a network that blocks the tracker, joining with a code | The code, the answer and Connect work; video and drawing follow |
+| 21 | Viewer with a screen reader and keyboard only | Join form, toolbar and people list are reachable and named |
 | 19 | Pause, resume, clear and end from the console | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

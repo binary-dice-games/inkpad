@@ -10,8 +10,8 @@ of the video, not part of it. The collab code is copied (not referenced) from
 
 **Status:** working end to end on Chromium: the collab core, the presenter
 extension with tab streaming and the console, and the viewer app. Not done: the
-GitHub Pages deployment and release pipeline, mobile and accessibility passes,
-the load test with many viewers. See [spec/INDEX.md](spec/INDEX.md).
+GitHub Pages deployment and release pipeline, tests on real phones and other
+browsers, the load test with many viewers, a clear message for a version mismatch. See [spec/INDEX.md](spec/INDEX.md).
 
 **How it works.** The extension captures the tab and hosts the session; it adds
 nothing to the page, because tab capture would record it. The presenter draws in

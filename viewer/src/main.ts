@@ -127,8 +127,27 @@ function refreshStage(): void {
 }
 
 function renderPeople(): void {
-  const n = session ? session.peers().length : 0;
+  const peers = session ? session.peers() : [];
+  const n = peers.length;
   $('people').textContent = `${n} ${n === 1 ? 'person' : 'people'}`;
+  $('peopleList').replaceChildren(
+    ...peers.map((p) => {
+      const li = document.createElement('li');
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = /^#[0-9a-fA-F]{6}$/.test(p.color) ? p.color : '#8b8d98';
+      const name = document.createElement('span');
+      name.textContent =
+        (p.name || (p.role === 'host' ? 'Presenter' : 'Guest')) +
+        (p.id === session?.me.id ? ' (you)' : '');
+      li.append(swatch, name);
+      return li;
+    }),
+  );
+  // How this person reaches the presenter, as the host measured it.
+  const mine = peers.find((p) => p.id === session?.me.id)?.path;
+  $('quality').textContent =
+    mine === 'direct' ? 'Direct connection' : mine === 'relay' ? 'Relayed connection' : '';
   renderPanel();
 }
 
@@ -215,7 +234,10 @@ async function join(name: string, color: string): Promise<void> {
       protocol: PROTOCOL,
       me: { name, color },
       iceServers: config.iceServers ?? [...DEFAULT_ICE_SERVERS],
-      rendezvous: [{ kind: 'torrent', urls: invite.trackers ?? [...DEFAULT_TRACKERS] }],
+      rendezvous: [
+        { kind: 'torrent', urls: invite.trackers ?? [...DEFAULT_TRACKERS] },
+        { kind: 'manual' },
+      ],
     });
   } catch (e) {
     const reason = e instanceof SessionError ? e.reason : undefined;
@@ -224,6 +246,7 @@ async function join(name: string, color: string): Promise<void> {
     return;
   }
   const s = session;
+  wireCodes(s);
   s.on('status', (e) => {
     if (!board) {
       $('waitText').textContent = progressMessage(e.stage);
@@ -276,6 +299,33 @@ async function join(name: string, color: string): Promise<void> {
   });
 }
 
+/** The "join with a code" fallback for networks that block the trackers. */
+function wireCodes(s: Session): void {
+  const say = (text: string): void => {
+    $('codeStatus').textContent = text;
+  };
+  $('makeCode').addEventListener('click', async () => {
+    try {
+      const code = await s.manual?.offerCode();
+      const box = $<HTMLTextAreaElement>('myCode');
+      box.value = code ?? '';
+      box.hidden = false;
+      box.select();
+      say('Send this code to the presenter, then paste their answer below.');
+    } catch (e) {
+      say(e instanceof Error ? e.message : 'Could not make a code.');
+    }
+  });
+  $('useAnswer').addEventListener('click', async () => {
+    try {
+      await s.manual?.acceptAnswer($<HTMLTextAreaElement>('answerCode').value);
+      say('Connecting\u2026');
+    } catch (e) {
+      say(e instanceof Error ? e.message : 'That answer did not work.');
+    }
+  });
+}
+
 /** Proves the presenter key to the host; retried a few times in case the first message beats the link. */
 function authenticate(key: string): void {
   let tries = 0;
@@ -311,6 +361,11 @@ async function main(): Promise<void> {
         .requestFullscreen()
         .catch(() => {});
     }
+  });
+  $('people').addEventListener('click', () => {
+    const list = $('peopleList');
+    list.hidden = !list.hidden;
+    $('people').setAttribute('aria-expanded', String(!list.hidden));
   });
   $('panelToggle').addEventListener('click', () => ($('panel').hidden = !$('panel').hidden));
   $<HTMLInputElement>('drawing').addEventListener('change', (e) =>

@@ -80,6 +80,16 @@ async function handle(message: OffscreenMessage): Promise<unknown> {
         await runCommand(share, message.command);
       }
       return share?.ui() ?? { ...IDLE_UI };
+    case 'acceptCode': {
+      if (!share) {
+        return { ok: false, message: 'Not sharing.' };
+      }
+      try {
+        return { ok: true, answer: await share.acceptCode(message.code) };
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+    }
     case 'resize': {
       if (!share || !capture) {
         return { ok: false, message: 'no share' };

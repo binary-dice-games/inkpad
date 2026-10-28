@@ -17,7 +17,7 @@
         --fg: #1c2024;
         --muted: #60646c;
         --border: #d9d9e0;
-        --accent: #0f9f86;
+        --accent: #0b7a67;
         --panel: #ffffff;
       }
       @media (prefers-color-scheme: dark) {
@@ -105,8 +105,8 @@
         font-weight: 600;
       }
       button.danger {
-        background: #e5484d;
-        border-color: #e5484d;
+        background: #c42b31;
+        border-color: #c42b31;
         color: #fff;
       }
       button:focus-visible,
@@ -218,6 +218,66 @@
         gap: 6px;
         flex-wrap: wrap;
       }
+      details {
+        margin-top: 12px;
+      }
+      summary {
+        cursor: pointer;
+      }
+      textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font:
+          12px/1.3 ui-monospace,
+          Consolas,
+          monospace;
+        background: transparent;
+        color: inherit;
+        word-break: break-all;
+      }
+      #people {
+        padding: 2px 8px;
+      }
+      #peopleList {
+        position: absolute;
+        right: 10px;
+        bottom: 48px;
+        min-width: 160px;
+        max-height: 40%;
+        overflow: auto;
+        margin: 0;
+        padding: 8px 12px;
+        list-style: none;
+        border-radius: 10px;
+        background: rgba(24, 25, 27, 0.92);
+        color: #fff;
+        font-size: 13px;
+        z-index: 20;
+        display: grid;
+        gap: 4px;
+      }
+      #peopleList li {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      #quality:empty {
+        display: none;
+      }
+      @media (max-width: 520px) {
+        #bar {
+          left: 8px;
+          right: 8px;
+          justify-content: space-between;
+        }
+        #panel {
+          left: 8px;
+          right: 8px;
+          width: auto;
+        }
+      }
       #toast {
         position: absolute;
         left: 50%;
@@ -260,18 +320,33 @@
       <div class="card">
         <h1 id="waitTitle">Connecting…</h1>
         <p id="waitText" class="muted" role="status"></p>
+        <details id="codes">
+          <summary>Cannot connect? Join with a code</summary>
+          <p class="muted">
+            For networks that block the tracker. The presenter opens the extension and pastes your
+            code under "Join codes".
+          </p>
+          <p><button id="makeCode" type="button">1. Make my code</button></p>
+          <textarea id="myCode" readonly rows="3" hidden aria-label="Your code"></textarea>
+          <label for="answerCode">2. The presenter's answer</label>
+          <textarea id="answerCode" rows="3" spellcheck="false"></textarea>
+          <p><button id="useAnswer" type="button">3. Connect</button></p>
+          <p id="codeStatus" class="muted" role="status"></p>
+        </details>
       </div>
     </main>
-    <div id="app" hidden>
+    <main id="app" hidden>
       <div id="stage">
-        <video id="video" muted autoplay playsinline></video>
+        <video id="video" muted autoplay playsinline aria-label="The shared tab"></video>
         <div id="notice" role="status"></div>
       </div>
       <div id="bar">
-        <span id="people"></span>
+        <span id="quality" role="status"></span>
+        <button id="people" type="button" aria-expanded="false" aria-controls="peopleList"></button>
         <button id="fullscreen" type="button">Full screen</button>
         <button id="panelToggle" type="button" hidden>Controls</button>
       </div>
+      <ul id="peopleList" hidden aria-label="People here"></ul>
       <aside id="panel" hidden aria-label="Presenter controls">
         <h2>Presenter console</h2>
         <p class="muted" id="consoleNote">
@@ -288,7 +363,7 @@
         <div class="row"><button id="end" class="danger" type="button">End session</button></div>
       </aside>
       <div id="toast" role="status" hidden></div>
-    </div>
+    </main>
     <script src="viewer.js"></script>
   </body>
 </html>

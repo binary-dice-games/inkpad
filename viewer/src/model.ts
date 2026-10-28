@@ -37,7 +37,7 @@ export function errorMessage(reason: string | undefined): string {
     case 'no-tracker':
       return 'No tracker could be reached: this network may block them. Try another network.';
     case 'no-answer':
-      return 'The presenter did not answer: the link may be old, the presenter may have left, or the session is locked.';
+      return 'The presenter did not answer: the link may be old, the presenter may have left, the session may be locked, or the presenter runs another version of inkpad.';
     case 'ice-failed':
       return 'Your network and the presenter’s could not connect directly. Try another network, such as a phone hotspot.';
     case 'no-webrtc':

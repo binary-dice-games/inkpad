@@ -73,6 +73,8 @@ export type OffscreenMessage =
   | { target: 'offscreen'; type: 'stop' }
   | { target: 'offscreen'; type: 'status' }
   | { target: 'offscreen'; type: 'command'; command: Command }
+  /** A viewer's join code: the answer is the code to send back. */
+  | { target: 'offscreen'; type: 'acceptCode'; code: string }
   /** The shared tab changed size: capture it again (with a fresh stream id) at the new shape. */
   | { target: 'offscreen'; type: 'resize'; width: number; height: number };
 
