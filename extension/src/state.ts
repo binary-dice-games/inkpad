@@ -47,8 +47,8 @@ export function transition(state: ShareState, event: ShareEvent): ShareState {
   }
 }
 
-/** Whether a tab with this URL can get the overlay (extensions cannot script browser pages or the Web Store). */
-export function canInject(url: string | undefined): boolean {
+/** Whether a tab with this URL can be captured (not a browser page, not the Web Store). */
+export function canCapture(url: string | undefined): boolean {
   if (!url) {
     return false;
   }
@@ -69,4 +69,34 @@ export function canInject(url: string | undefined): boolean {
     host !== 'chromewebstore.google.com' &&
     !(host === 'chrome.google.com' && parsed.pathname.startsWith('/webstore'))
   );
+}
+
+/** Why a tab cannot be shared. */
+export type TargetProblem = { reason: 'restricted' | 'console'; message: string };
+
+/**
+ * Checks a tab before sharing it: capturable, and not a viewer or console page
+ * (`viewerBase` and `consoleBase` are their addresses without the hash), which
+ * would show the share to itself.
+ *
+ * @returns the problem, or null when the tab can be shared
+ */
+export function checkTarget(
+  url: string | undefined,
+  pages: { viewerBase: string; consoleBase: string },
+): TargetProblem | null {
+  const unhash = (u: string): string => u.split('#')[0] ?? u;
+  if (url && [pages.viewerBase, pages.consoleBase].some((p) => unhash(url) === unhash(p))) {
+    return {
+      reason: 'console',
+      message: 'This tab shows the viewer or the console. Share the page you want to present.',
+    };
+  }
+  if (!canCapture(url)) {
+    return {
+      reason: 'restricted',
+      message: 'Chrome does not let extensions use this page. Open a regular web page.',
+    };
+  }
+  return null;
 }

@@ -29,25 +29,31 @@ Capture keeps working across navigations of the same tab. Resolution follows
 the tab's viewport size and changes when the presenter resizes the window; the
 `stage` message carries the new `aspect`.
 
-## 3. The overlay-in-video problem (key risk)
+## 3. The overlay-in-video problem (resolved by design)
 
-`tabCapture` records the rendered tab, **including our injected overlay**. If
-unhandled, viewers would see the presenter's drawings twice (once in the video,
-once from their own whiteboard layer, offset by video latency) plus the toolbar.
+`tabCapture` records the rendered tab, **including anything injected into it**.
+The spike (`PLAN.md` step 1) measured: the overlay is in 100% of frames; Element
+Capture is not available for `chrome.tabCapture` tracks (`restrictTo` and
+`cropTo` are absent, and a `RestrictionTarget` cannot reach the offscreen
+document over runtime messaging); hiding the overlay for each captured frame
+works but hides it ~34 ms per frame, a visible blink. Chrome documents Element
+Capture as self-capture only ("for now"), and Zoom/Teams avoid the problem with
+an OS capture-exclusion flag that browsers lack.
 
-Candidate solutions, in preference order, decided by a **spike (plan step 1)**:
+**Decision:** inkpad injects nothing into the shared tab. The presenter draws in
+the console (a separate window), so the video is always clean. See
+`spec/02_presenter_extension/DESIGN.md` section 1. Consequence for capture: the
+console must never be the shared tab (the extension refuses it).
 
-| Option | How | Pros / cons |
-|---|---|---|
-| A. Element Capture | Overlay lives outside `<body>` (as a child of `<html>`); the captured track is restricted to `document.body` with `RestrictionTarget`/`restrictTo()` | Exact: overlay never in pixels. Needs the capture track in the page context and a recent Chrome; `body` must cover the viewport (we force `min-height:100vh` via adopted style only if absent) and fixed/popup content outside body is lost |
-| B. Hide-on-capture | Overlay layer is drawn at near-zero opacity changes only when frames are grabbed (frame-by-frame via `ImageCapture`/`MediaStreamTrackProcessor` with the overlay hidden for that paint) | Works on any page; costs a flicker risk and more CPU |
-| C. Visual masking | Presenter-side overlay is rendered but video is composited to hide it (not possible without access to pixels) | Rejected |
-| D. Accept duplication | Presenter's drawing is part of the video, viewers hide *presenter-authored* items | Rejected: breaks interaction and alignment |
+Capture details learned in the spike, used below:
 
-Gate: if neither A nor B passes the spike (no overlay pixels in captured frames
-on a pixel-diff test, no visible flicker), **stop and revise this design** with
-the user before building anything on top (the fallback is a fallback to a
-region/element-based capture UX).
+- Without size constraints tab capture delivers a cropped 800x600 frame. The
+  constraints (`maxWidth`/`maxHeight`) must give the tab's own aspect: the tab
+  size fitted inside the limit, never upscaled, re-applied on resize.
+- A captured tab stays `visible` and keeps producing frames while another tab is
+  in front, so the presenter can work in the console.
+- Automation can capture without the activeTab click using
+  `--allowlisted-extension-id=<id>`.
 
 ## 4. Encoding and bandwidth
 

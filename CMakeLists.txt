@@ -30,6 +30,14 @@ add_custom_target(
   COMMENT "inkpad: build the Chrome extension"
   VERBATIM)
 
+# The viewer for GitHub Pages, in viewer/dist (the extension has its own copy).
+add_custom_target(
+  viewer
+  COMMAND "${INKPAD_NPM}" run build:viewer
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  COMMENT "inkpad: build the viewer app"
+  VERBATIM)
+
 if(INKPAD_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)

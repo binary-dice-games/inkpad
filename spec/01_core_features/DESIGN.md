@@ -16,16 +16,19 @@ project builds on. Related projects:
 inkpad turns a browser tab into a shared whiteboard. A **presenter** with the
 Chrome extension enables it on the active tab. The extension:
 
-1. Adds a drawing overlay (pointer, pen, text, stickers/emoticons, eraser,
-   undo/redo, colours) on top of the tab.
+1. Gives the presenter a **console**: a separate window that shows the video and
+   the whiteboard (pointer, pen, text, stickers/emoticons, eraser, undo/redo,
+   colours) and the presenter's controls. Nothing is injected into the shared tab.
 2. Streams the tab's pixels to **viewers** over WebRTC, at a low, configurable
    frame rate.
 3. Produces a **collab link**. Viewers open it in any modern browser, with no
    extension. They see the video plus the same whiteboard and can draw on it.
 
 Drawings are **never part of the video**. They travel as data and each peer
-renders them locally on top of the video (or on top of the live page, for the
-presenter).
+renders them locally on top of the video, the presenter's console included.
+The presenter does not draw on the live page: tab capture records whatever is
+rendered in the tab, an overlay included, and the browser has no way to exclude
+it (see `spec/03_tab_streaming/PLAN.md` step 1).
 
 Non-goals (v1): audio, recording, persistence of drawings, accounts, a server
 of our own, more than ~10 viewers, non-Chromium presenters, remote control of
@@ -49,17 +52,20 @@ lock/remove/new-link, 500-entry/2000-item/5000-point limits.
 ## 3. Architecture
 
 ```
- Presenter's Chrome                                   Viewer's browser (no extension)
+ Presenter's Chrome                                   Viewers' browsers (no extension)
 ┌───────────────────────────────────────────┐        ┌──────────────────────────────┐
-│ Shared tab                                │        │ viewer page (GitHub Pages)   │
-│  content script: overlay (shadow DOM)     │        │  <video> + whiteboard overlay│
-│   whiteboard view + toolbar               │        │  collab-session (guest)      │
-│        ▲ chrome.runtime Port              │        └──────────────▲───────────────┘
-│ ┌──────┴─────────┐   ┌─────────────────┐  │   WebRTC: video track + reliable/fast
-│ │ service worker │◄─►│ offscreen doc   │◄─┼───── data channels (star, 1 link per viewer)
-│ │ (orchestrator) │   │ session (host), │  │
-│ │ tabCapture id  │   │ MediaStream,    │  │   signaling: sealed offers/answers via
-│ └────────────────┘   │ whiteboard model│  │   public WebTorrent trackers (wss) only
+│ Shared tab (untouched: no overlay)        │        │ viewer page (GitHub Pages)   │
+│        │ chrome.tabCapture                │        │  <video> + whiteboard        │
+│ ┌──────▼─────────┐   ┌─────────────────┐  │        │  collab-session (guest)      │
+│ │ service worker │──►│ offscreen doc   │◄─┼────────┴──────────────▲───────────────┘
+│ │ (orchestrator) │   │ session (host), │  │   WebRTC: video track + reliable/fast
+│ └──────▲─────────┘   │ board keeper,   │  │   data channels (star, 1 link per peer)
+│        │ popup       │ MediaStream     │  │
+│ ┌──────┴─────────┐   └────────▲────────┘  │   signaling: sealed offers/answers via
+│ │ popup / options│            │ WebRTC    │   public WebTorrent trackers (wss) only
+│ └────────────────┘   ┌────────┴────────┐  │
+│  Console window ◄────┤ viewer.html     │  │   The console is a guest with the
+│  (extension page)    │ + presenter key │  │   presenter key, in its own window.
 │                      └─────────────────┘  │
 └───────────────────────────────────────────┘
 ```
@@ -70,9 +76,9 @@ Key decisions (the *why*):
   WebSockets to trackers; the page navigates and reloads (killing links);
   MV3 service workers sleep and cannot hold `RTCPeerConnection`. The offscreen
   document survives navigation and owns the capture stream anyway.
-- **Whiteboard model lives in the offscreen document; the overlay is a view.**
-  After a navigation the content script is re-injected and receives a
-  snapshot, so drawings survive page loads.
+- **The board keeper in the offscreen document holds the drawings** while no
+  console is open, so late joiners get a snapshot and drawings survive the
+  console being closed and reopened.
 - **Overlay talks to the session through a `SessionProxy`** (a `Port` relay via
   the service worker) that implements the same `channel()`/`on()` surface the
   whiteboard expects from a `Session`: `serveSessionProxy(session, port, hooks)`
@@ -83,6 +89,9 @@ Key decisions (the *why*):
   holds the truth and one NAT path per viewer. Cost: uplink = viewers × video
   bitrate, hence the low-fps default and ~10-viewer target (see
   `spec/03_tab_streaming/DESIGN.md`).
+- **The presenter is a peer with a key.** The console is the viewer app opened with a
+  second secret (the presenter key); the host trusts that peer's `ctl` commands.
+  See section 4.5.
 - **Viewers are first-class drawers.** Unlike nymph (guests view only), any peer
   may add/modify/delete any item. The presenter can *lock* viewers to
   pointer-only at any time (host-enforced, see 4.3).
@@ -138,9 +147,6 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   (cursors and empty join requests still pass), and rate-limits ops to 50/s per
   peer. Viewers learn the state from `stage.drawing` and set the whiteboard's
   `readOnly` from it, so no separate `perm` message exists.
-- **Pointer pass-through on the presenter.** In pointer mode the overlay does
-  not capture input, so the page stays usable; cursor tracking uses passive
-  window-level `pointermove`.
 - **Snapshot on join.** The host sends the full model snapshot to a new
   viewer on the reliable channel (nymph already merges snapshots). While the
   overlay is detached (page loading) the **board keeper**
@@ -157,15 +163,34 @@ Same tools, data model, merge rules and limits as nymph. Changes:
 |---|---|---|---|
 | `$` | reliable | both | nymph control (hello, welcome, roster, refuse, locked, end, removed) |
 | `wb` | reliable + fast | both | whiteboard ops, snapshots, cursors, live ink (nymph protocol) |
+| `ctl` | reliable | guest ↔ host only | presenter auth and commands (4.5); never relayed |
 | `stage` | reliable | host → guests | `{aspect, w, h, fps, state: live\|paused\|ended, drawing:boolean, title?}`; resent on join and on every change |
 
 `stage.title` is optional, off by default (page titles can be private).
 
+### 4.5 Presenter role
+
+The host makes a second 128-bit secret, the **presenter key**, besides the room
+token. The console link is `<viewer>#inkpad=<token>&presenter=<key>`; the viewer
+link has no key. After joining, the console sends `{t:'auth', key}` on `ctl`
+(the channel runs inside the DTLS-encrypted link to a host the sealed signaling
+already authenticated). The host compares it in constant time, remembers that
+peer id as a presenter, and answers `{t:'role', presenter:true|false}`. The host
+stamps every sender id, so a viewer cannot pose as the console.
+
+Presenter commands on `ctl` (accepted only from authenticated peers):
+`lock{on}`, `drawing{on}`, `pause{on}`, `remove{id}`, `clear`, `end`. The
+host's `accept` callback handles every `ctl` message itself and returns false, so
+it is never delivered to other listeners or relayed to other viewers. More than
+one console may be open (the key is the capability). `newLink` in the popup
+changes the room token only; connected consoles stay.
+
 ### 4.4 Security and privacy
 
-- The link is the permission (as in nymph). Token only in the URL fragment, so
-  GitHub Pages never sees it. Presenter can lock, remove a viewer, or issue a
-  new link.
+- The link is the permission (as in nymph). Token and presenter key only in the
+  URL fragment, so GitHub Pages never sees them. The presenter key is a bearer
+  secret: whoever has the console link is a presenter. The presenter can lock,
+  remove a viewer, or issue a new link.
 - Trackers see topic hash and IPs, not the token, video, or drawings.
 - **Everything visible in the tab is shared with everyone holding the link.**
   The extension requires an explicit start action, shows a persistent

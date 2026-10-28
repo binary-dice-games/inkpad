@@ -3,13 +3,19 @@
 //
 //   node scripts/build-extension.mjs [--e2e]
 //
-// --e2e adds host access to loopback pages, so tests can inject the overlay
-// without the activeTab gesture that a browser automation cannot give.
+// --e2e is the build the browser tests load: it has a fixed key (so its id is
+// known, see tests/support/extension.ts) and source maps. The shipped build has
+// neither. The viewer app is built in as viewer.html: it is the presenter console.
 import { build } from 'esbuild';
+import { buildViewer } from './build-viewer.mjs';
 import { deflateSync } from 'node:zlib';
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// The public half of a throwaway key pair, used only by the test build.
+const E2E_KEY =
+  'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwA1Z8Mw5YoDr+aJpReFj64YCY+ahlctWGKJNCu/4zjrN0EIU8SvBw631hGFqQ13eGZZHFvX2AWG0884ypfd6scuuap7uWWQeHmhSiw84cae5wrHAw5HMpTACkuVxPVJrTnmFZnaSVnVtA1N6cgg24O+VzWSqusXtkyljhjJt7NC4/yhZh7QCLlJp8i0z1hwm5DVWaUa/cMPg1CGBceU5f8TSI5KwflLX20956u7ZKYJJVWlTct018aMIwq522cbCtoyCcWRzyYvG/ktpccB8mr9DVSKBUTy1SdWREEMe8WV5AAUSVAVY6h5JH3xZXjoYAJhXgz2scZpE/3X56TMakQIDAQAB';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const e2e = process.argv.includes('--e2e');
@@ -20,9 +26,7 @@ rmSync(out, { recursive: true, force: true });
 mkdirSync(join(out, 'icons'), { recursive: true });
 
 await build({
-  entryPoints: ['background', 'offscreen', 'overlay', 'popup', 'options'].map((n) =>
-    join(src, `${n}.ts`),
-  ),
+  entryPoints: ['background', 'offscreen', 'popup', 'options'].map((n) => join(src, `${n}.ts`)),
   outdir: out,
   bundle: true,
   format: 'iife',
@@ -31,17 +35,20 @@ await build({
   sourcemap: e2e ? 'inline' : false,
   minify: !e2e,
   legalComments: 'none',
-  define: { __INKPAD_E2E__: String(e2e) },
   logLevel: 'warning',
 });
 
 for (const page of ['popup.html', 'options.html', 'offscreen.html']) {
   copyFileSync(join(src, page), join(out, page));
 }
+await buildViewer(out, { htmlName: 'viewer.html', debug: e2e });
 
 const manifest = JSON.parse(readFileSync(join(root, 'extension', 'manifest.json'), 'utf8'));
 manifest.version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 if (e2e) {
+  // A fixed public key gives the extension a fixed id (E2E_EXTENSION_ID).
+  manifest.key = E2E_KEY;
+  // A person's click grants activeTab, which shows the tab's address; automation cannot click.
   manifest.host_permissions = ['http://127.0.0.1/*', 'http://localhost/*'];
 }
 writeFileSync(join(out, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);

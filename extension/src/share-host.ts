@@ -2,18 +2,25 @@
 /**
  * @file The presenter's side of a share, free of chrome.* APIs so it runs in
  * the offscreen document and in tests: the host session, the board keeper,
- * the lock on viewers' drawing, the `stage` messages and the commands the
- * presenter can give.
+ * the presenter key and the commands of the console, the lock on viewers'
+ * drawing and the `stage` messages.
  */
 import { createSession } from '@inkpad/collab-session';
 import type { Peer, RendezvousSpec, Session } from '@inkpad/collab-session';
-import { serveSessionProxy } from '@inkpad/collab-session/session-proxy';
-import type { ProxyPort } from '@inkpad/collab-session/session-proxy';
 import { drawingGate } from '@inkpad/collab-whiteboard';
 import { createBoardKeeper } from '@inkpad/collab-whiteboard/board-keeper';
 import type { BoardKeeper } from '@inkpad/collab-whiteboard/board-keeper';
-import { PROTOCOL, STAGE_CHANNEL, inviteLink } from '@inkpad/defaults';
-import type { Stage } from '@inkpad/defaults';
+import {
+  CTL_CHANNEL,
+  PROTOCOL,
+  STAGE_CHANNEL,
+  cleanCtl,
+  inviteLink,
+  newPresenterKey,
+  safeEqual,
+  toMediaParams,
+} from '@inkpad/defaults';
+import type { PresenterCommand, Stage } from '@inkpad/defaults';
 import { IDLE_UI } from './messages';
 import type { Command, UiState } from './messages';
 import type { Settings } from './settings';
@@ -23,6 +30,10 @@ export interface ShareHostOptions {
   tabId: number;
   /** Replaces the trackers in `settings` (tests use the memory network). */
   rendezvous?: RendezvousSpec[];
+  /** Called when the console asks to end the session; the owner then calls `stop()`. */
+  onEnd?: () => void;
+  /** Where the console page lives (the extension's `viewer.html`); defaults to the viewer base. */
+  consoleBase?: string;
 }
 
 const DEFAULT_ASPECT_W = 1280;
@@ -36,23 +47,41 @@ export class ShareHost {
   readonly session: Session;
   readonly keeper: BoardKeeper;
   readonly tabId: number;
+  /** The secret of the console link (section 4.5 of spec/01_core_features/DESIGN.md). */
+  readonly presenterKey = newPresenterKey();
   private readonly settings: Settings;
+  private readonly onEnd: () => void;
+  private readonly consoleBase: string;
   private drawing: boolean;
   private paused = false;
-  private overlay = false;
   private problem: string | null = null;
   private viewport = { w: DEFAULT_ASPECT_W, h: DEFAULT_ASPECT_H };
+  private source: MediaStream | null = null;
+  /** Peer ids that proved they hold the presenter key. */
+  private readonly presenters = new Set<string>();
   private readonly listeners = new Set<(ui: UiState) => void>();
+  private readonly gate = drawingGate(() => this.drawing);
   private stopped = false;
 
-  private constructor(session: Session, settings: Settings, tabId: number) {
+  private constructor(session: Session, options: ShareHostOptions) {
     this.session = session;
-    this.settings = settings;
-    this.tabId = tabId;
-    this.drawing = settings.viewersMayDraw;
+    this.settings = options.settings;
+    this.tabId = options.tabId;
+    this.onEnd = options.onEnd ?? (() => {});
+    this.consoleBase = options.consoleBase ?? options.settings.viewerBase;
+    this.drawing = options.settings.viewersMayDraw;
     this.keeper = createBoardKeeper(session);
+    session.mediaParams(toMediaParams(options.settings.video));
     session.channel(STAGE_CHANNEL).on('join', (peer) => this.sendStage(peer.id));
-    session.on('peers', () => this.changed());
+    session.on('peers', (peers) => {
+      const here = new Set(peers.map((p) => p.id));
+      for (const id of this.presenters) {
+        if (!here.has(id)) {
+          this.presenters.delete(id);
+        }
+      }
+      this.changed();
+    });
     session.on('state', () => this.changed());
     session.on('status', (e) => {
       if (e.stage === 'no-tracker') {
@@ -83,19 +112,80 @@ export class ShareHost {
       ],
       accept: (channel, message, from) => host?.accept(channel, message, from) ?? false,
     });
-    host = new ShareHost(session, settings, options.tabId);
+    host = new ShareHost(session, options);
     return host;
   }
 
-  private gate = drawingGate(() => this.drawing);
-
   /**
-   * Which of a viewer's messages are delivered: only the whiteboard's, and
-   * those while viewers may draw (the gate). `stage` and everything else is
-   * the presenter's alone, so a viewer cannot speak for the presenter.
+   * Which of a guest's messages are delivered or relayed. `ctl` is handled
+   * here and never delivered. Only the whiteboard channel passes, and for a
+   * viewer only while viewers may draw (the gate); a presenter always may.
+   * `stage` and everything else is the host's alone, so nobody can speak for
+   * the presenter.
    */
   private accept(channel: string, message: unknown, from: string): boolean {
-    return channel === 'wb' && this.gate(channel, message, from);
+    if (channel === CTL_CHANNEL) {
+      this.control(message, from);
+      return false;
+    }
+    if (channel !== 'wb') {
+      return false;
+    }
+    return this.presenters.has(from) || this.gate(channel, message, from);
+  }
+
+  /** A `ctl` message from `from`: the key, or a command of an authenticated presenter. */
+  private control(raw: unknown, from: string): void {
+    const message = cleanCtl(raw);
+    if (!message || this.stopped) {
+      return;
+    }
+    if (message.t === 'auth') {
+      const ok = safeEqual(message.key, this.presenterKey);
+      if (ok) {
+        this.presenters.add(from);
+      }
+      this.reply({ t: 'role', presenter: ok }, from);
+      this.changed();
+    } else if (message.t === 'cmd' && this.presenters.has(from)) {
+      this.run(message.command, from);
+    }
+  }
+
+  private reply(message: unknown, to: string): void {
+    try {
+      this.session.channel(CTL_CHANNEL).send(message, { to });
+    } catch {
+      // the peer left or the session ended
+    }
+  }
+
+  /** Runs a command of the console. */
+  private run(command: PresenterCommand, from: string): void {
+    switch (command.cmd) {
+      case 'lock':
+        this.session.lock(command.on);
+        break;
+      case 'drawing':
+        this.drawing = command.on;
+        this.sendStage();
+        break;
+      case 'pause':
+        this.setPaused(command.on);
+        break;
+      case 'remove':
+        if (command.id !== from) {
+          this.session.remove(command.id);
+        }
+        break;
+      case 'clear':
+        this.clearBoard();
+        break;
+      case 'end':
+        this.onEnd();
+        break;
+    }
+    this.changed();
   }
 
   /** The stage as viewers see it. */
@@ -119,12 +209,27 @@ export class ShareHost {
     }
   }
 
-  /** The link to give viewers. */
-  link(): string {
-    return inviteLink(this.settings.viewerBase, this.session.inviteFragment());
+  private trackerList(): { trackers: readonly string[] } {
+    return { trackers: this.settings.trackers };
   }
 
-  /** The state the popup and overlay show. */
+  /** The link to give viewers. */
+  link(): string {
+    return inviteLink(this.settings.viewerBase, this.session.inviteFragment(), this.trackerList());
+  }
+
+  /**
+   * The console link, on the console base (the extension's own `viewer.html`).
+   * It carries the presenter key: keep it private.
+   */
+  consoleLink(): string {
+    return inviteLink(this.consoleBase, this.session.inviteFragment(), {
+      ...this.trackerList(),
+      presenterKey: this.presenterKey,
+    });
+  }
+
+  /** The state the popup shows. */
   ui(): UiState {
     if (this.stopped) {
       return { ...IDLE_UI };
@@ -133,14 +238,14 @@ export class ShareHost {
       phase: this.paused ? 'paused' : 'live',
       tabId: this.tabId,
       link: this.link(),
+      consoleLink: this.consoleLink(),
       viewers: this.session
         .peers()
-        .filter((p: Peer) => p.role === 'guest')
+        .filter((p: Peer) => p.role === 'guest' && !this.presenters.has(p.id))
         .map((p) => ({ id: p.id, name: p.name, color: p.color, path: p.path })),
       locked: this.session.locked,
       drawing: this.drawing,
       paused: this.paused,
-      overlay: this.overlay,
       problem: this.problem,
     };
   }
@@ -158,14 +263,40 @@ export class ShareHost {
     }
   }
 
-  /** Tells the host whether the overlay is attached to the tab. */
-  setOverlay(attached: boolean): void {
-    this.overlay = attached;
+  /** Shows (or clears, with null) a problem in the popup, such as a lost capture. */
+  setProblem(problem: string | null): void {
+    this.problem = problem;
     this.changed();
   }
 
+  /** The captured tab, sent to viewers while the share is not paused; null sends nothing. */
+  setSource(stream: MediaStream | null): void {
+    this.source = stream;
+    this.applyMedia();
+  }
+
+  private applyMedia(): void {
+    this.session.setMedia(this.paused ? null : this.source);
+  }
+
+  private setPaused(on: boolean): void {
+    this.paused = on;
+    this.applyMedia();
+    this.sendStage();
+  }
+
+  /** Clears the whiteboard for everyone (the host's own clear stamp). */
+  private clearBoard(): void {
+    const op = this.keeper.model.clear();
+    try {
+      this.session.channel('wb').send({ t: 'op', op });
+    } catch {
+      // an ended session
+    }
+  }
+
   /**
-   * Runs a presenter command.
+   * Runs a command of the popup.
    * @throws {Error} on a malformed command
    */
   async command(command: Command): Promise<void> {
@@ -173,22 +304,8 @@ export class ShareHost {
       return;
     }
     switch (command.cmd) {
-      case 'lock':
-        this.session.lock(command.on);
-        break;
-      case 'drawing':
-        this.drawing = command.on;
-        this.sendStage();
-        break;
-      case 'pause':
-        this.paused = command.on;
-        this.sendStage();
-        break;
       case 'newLink':
         await this.session.newInvite();
-        break;
-      case 'remove':
-        this.session.remove(command.id);
         break;
       case 'viewport':
         if (
@@ -203,18 +320,17 @@ export class ShareHost {
           this.sendStage();
         }
         break;
+      case 'lock':
+      case 'drawing':
+      case 'pause':
+      case 'remove':
+      case 'clear':
+        this.run(command, '');
+        return;
       default:
         throw new Error('unknown command');
     }
     this.changed();
-  }
-
-  /**
-   * Serves the overlay (or another view) on `port`, with the kept drawings.
-   * @returns the function that stops serving
-   */
-  serve(port: ProxyPort): () => void {
-    return serveSessionProxy(this.session, port, this.keeper.hooks);
   }
 
   /** Ends the share: viewers are told, links close. Idempotent. */

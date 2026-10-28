@@ -23,7 +23,6 @@ function fill(s: Settings): void {
   input('name').value = s.name;
   input('color').value = s.color;
   input('viewersMayDraw').checked = s.viewersMayDraw;
-  input('keepAcrossNavigation').checked = s.keepAcrossNavigation;
   input('fps').value = String(s.video.fps);
   input('maxWidth').value = String(s.video.maxWidth);
   input('maxHeight').value = String(s.video.maxHeight);
@@ -40,7 +39,6 @@ function read(): unknown {
     name: input('name').value,
     color: input('color').value,
     viewersMayDraw: input('viewersMayDraw').checked,
-    keepAcrossNavigation: input('keepAcrossNavigation').checked,
     video: {
       fps: input('fps').valueAsNumber,
       maxWidth: input('maxWidth').valueAsNumber,

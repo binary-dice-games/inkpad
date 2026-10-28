@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "inkpad capture spike",
+  "version": "1",
+  "permissions": ["tabCapture", "offscreen", "scripting", "activeTab"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "sw.js" }
+}

@@ -3,11 +3,6 @@
 import { describe, expect, it } from 'vitest';
 import { FRAME_UNITS, createWhiteboard, frameAdapter } from '@inkpad/collab-whiteboard';
 import { createBoardKeeper } from '@inkpad/collab-whiteboard/board-keeper';
-import {
-  connectSessionProxy,
-  memoryPortPair,
-  serveSessionProxy,
-} from '@inkpad/collab-session/session-proxy';
 import { TestRoom } from '../support/rooms';
 import { until } from '../support/wait';
 
@@ -36,19 +31,18 @@ describe('frame adapter', () => {
   });
 });
 
-describe('whiteboard over a session proxy', () => {
-  it('draws a sticker and keeps it in the keeper while the view is the presenter overlay', async () => {
+describe('whiteboard over a host session', () => {
+  it('draws a sticker, shows the emoticons and lets the keeper merge a load', async () => {
     const room = new TestRoom();
     try {
       const host = await room.start();
       const keeper = createBoardKeeper(host);
-      const [viewPort, servePort] = memoryPortPair();
-      serveSessionProxy(host, servePort, keeper.hooks);
-      const proxy = await connectSessionProxy(viewPort);
+      const guest = await room.join('Ana');
+      await until(() => guest.host(), 'guest reached host');
 
       const stage = box(800, 450);
       const wb = createWhiteboard(stage, {
-        session: proxy,
+        session: guest,
         adapter: frameAdapter(stage, () => 16 / 9),
       });
       const symbols = wb.element.shadowRoot?.querySelectorAll('symbol') ?? [];
@@ -56,7 +50,7 @@ describe('whiteboard over a session proxy', () => {
       expect(names).toContain('sticker-smile');
       expect(names).toContain('sticker-thinking');
 
-      // A load goes through the proxy and lands in the keeper.
+      // A load is sent to the host and lands in the keeper.
       const guestModel = keeper.model;
       expect(guestModel.live()).toHaveLength(0);
       wb.load({

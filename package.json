@@ -19,7 +19,8 @@
     "test": "vitest run --project unit",
     "test:e2e": "vitest run --project e2e",
     "build:extension": "node scripts/build-extension.mjs",
-    "build:extension:e2e": "node scripts/build-extension.mjs --e2e"
+    "build:extension:e2e": "node scripts/build-extension.mjs --e2e",
+    "build:viewer": "node scripts/build-viewer.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

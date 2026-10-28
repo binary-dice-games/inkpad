@@ -10,6 +10,9 @@ const ROOT = resolve(import.meta.dirname, '../..');
 /** The e2e build of the extension (`npm run build:extension:e2e`). */
 export const EXTENSION_DIR = join(ROOT, 'extension', 'dist-e2e');
 
+/** The id the e2e build gets from its fixed key (scripts/build-extension.mjs). */
+export const E2E_EXTENSION_ID = 'blbkchnaiknoghiidahgeefienkhpfcl';
+
 export interface LoadedExtension {
   context: BrowserContext;
   worker: Worker;
@@ -32,6 +35,8 @@ export async function loadExtension(): Promise<LoadedExtension> {
     args: [
       `--disable-extensions-except=${EXTENSION_DIR}`,
       `--load-extension=${EXTENSION_DIR}`,
+      // Lets this extension capture a tab without the click a person would give it.
+      `--allowlisted-extension-id=${E2E_EXTENSION_ID}`,
       '--disable-features=WebRtcHideLocalIpsWithMdns',
     ],
   });

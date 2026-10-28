@@ -1,63 +1,52 @@
 // MIT License © 2026 Carlos Lopez
 /**
- * @file The offscreen document: it owns the host session for the shared tab.
- * A service worker sleeps and cannot hold WebRTC links, and the page reloads,
- * so the session, the board keeper and (later) the capture stream live here.
- * The overlay in the page connects to it directly through a runtime port.
+ * @file The offscreen document: it owns the host session and the tab capture.
+ * A service worker sleeps and cannot hold WebRTC links or a capture stream, so
+ * the session, the board keeper and the video live here. The service worker
+ * and the popup reach it through runtime messages.
  */
 import { SessionError } from '@inkpad/collab-session';
-import { IDLE_UI, OVERLAY_PORT } from './messages';
-import type {
-  Command,
-  OffscreenMessage,
-  PortControlMessage,
-  PortUiMessage,
-  StartResult,
-  UiState,
-} from './messages';
+import { startCapture } from './capture';
+import type { Capture } from './capture';
+import { IDLE_UI } from './messages';
+import type { Command, OffscreenMessage, StartResult } from './messages';
 import { ShareHost } from './share-host';
 
 let share: ShareHost | null = null;
-let unsubscribe: (() => void) | null = null;
-const ports = new Set<chrome.runtime.Port>();
-
-function broadcast(ui: UiState): void {
-  const message: PortUiMessage = { k: 'ui', ui };
-  for (const port of ports) {
-    try {
-      port.postMessage(message);
-    } catch {
-      ports.delete(port);
-    }
-  }
-}
+let capture: Capture | null = null;
 
 function stopShare(): void {
-  unsubscribe?.();
-  unsubscribe = null;
   share?.stop();
   share = null;
-  broadcast({ ...IDLE_UI });
-  for (const port of ports) {
-    port.disconnect();
-  }
-  ports.clear();
+  capture?.stop();
+  capture = null;
 }
 
 async function start(message: Extract<OffscreenMessage, { type: 'start' }>): Promise<StartResult> {
   stopShare();
   try {
-    const host = await ShareHost.start({ settings: message.settings, tabId: message.tabId });
+    capture = await startCapture(message.streamId, message.tab, message.settings.video);
+    const host = await ShareHost.start({
+      settings: message.settings,
+      tabId: message.tabId,
+      consoleBase: message.consoleBase,
+      // The console asked to end the session: the service worker stops everything.
+      onEnd: () => {
+        chrome.runtime.sendMessage({ target: 'background', type: 'stop' }).catch(() => {});
+      },
+    });
     share = host;
-    unsubscribe = host.onChange(broadcast);
+    host.setSource(capture.stream);
+    await host.command({ cmd: 'viewport', w: message.tab.width, h: message.tab.height });
     return { ok: true, ui: host.ui() };
   } catch (e) {
-    const reason = e instanceof SessionError ? e.reason : 'error';
+    stopShare();
+    const reason = e instanceof SessionError ? e.reason : 'capture';
     return { ok: false, reason, message: e instanceof Error ? e.message : String(e) };
   }
 }
 
-/** Runs a presenter command; a pause also tells the service worker (the badge). */
+/** Runs a popup command; a pause also tells the service worker (the badge). */
 async function runCommand(host: ShareHost, command: Command): Promise<void> {
   await host.command(command);
   if (command.cmd === 'pause') {
@@ -65,6 +54,16 @@ async function runCommand(host: ShareHost, command: Command): Promise<void> {
       .sendMessage({ target: 'background', type: 'paused', on: command.on })
       .catch(() => {});
   }
+}
+
+/** Asks the service worker for a new capture id of the shared tab. */
+async function freshStreamId(): Promise<string> {
+  const answer = (await chrome.runtime.sendMessage({ target: 'background', type: 'captureId' })) as
+    { ok: true; id: string } | { ok: false; message?: string } | undefined;
+  if (!answer?.ok) {
+    throw new Error(answer?.message ?? 'no capture id');
+  }
+  return answer.id;
 }
 
 async function handle(message: OffscreenMessage): Promise<unknown> {
@@ -81,9 +80,20 @@ async function handle(message: OffscreenMessage): Promise<unknown> {
         await runCommand(share, message.command);
       }
       return share?.ui() ?? { ...IDLE_UI };
-    case 'overlay':
-      share?.setOverlay(message.attached);
-      return { ok: true };
+    case 'resize': {
+      if (!share || !capture) {
+        return { ok: false, message: 'no share' };
+      }
+      await share.command({ cmd: 'viewport', w: message.width, h: message.height });
+      try {
+        await capture.restart(freshStreamId, { width: message.width, height: message.height });
+        share.setProblem(null);
+        return { ok: true };
+      } catch (e) {
+        share.setProblem('capture-lost');
+        return { ok: false, message: e instanceof Error ? e.message : String(e) };
+      }
+    }
   }
 }
 
@@ -100,41 +110,4 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     }),
   );
   return true;
-});
-
-// The overlay of the shared tab (top frame only) connects here.
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name !== OVERLAY_PORT) {
-    return;
-  }
-  const sender = port.sender;
-  if (
-    !share ||
-    sender?.id !== chrome.runtime.id ||
-    sender.tab?.id !== share.tabId ||
-    sender.frameId !== 0
-  ) {
-    port.disconnect();
-    return;
-  }
-  const host = share;
-  ports.add(port);
-  host.setOverlay(true);
-  const stopServing = host.serve(port);
-  port.postMessage({ k: 'ui', ui: host.ui() } satisfies PortUiMessage);
-  port.onMessage.addListener((raw: unknown) => {
-    const m = raw as PortControlMessage | undefined;
-    if (m?.k === 'ctl') {
-      runCommand(host, m.command).catch(() => {});
-    } else if (m?.k === 'stopShare') {
-      chrome.runtime.sendMessage({ target: 'background', type: 'stop' }).catch(() => {});
-    }
-  });
-  port.onDisconnect.addListener(() => {
-    stopServing();
-    ports.delete(port);
-    if (share === host && ports.size === 0) {
-      host.setOverlay(false);
-    }
-  });
 });

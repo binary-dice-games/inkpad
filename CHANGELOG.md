@@ -9,9 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Chrome extension for the presenter: share the active tab with a link, draw on it with
-  an overlay (pen, text, stickers, emoticons), see and manage viewers (lock,
-  remove, new link, pause), keep drawings across page loads, settings page.
+- Chrome extension for the presenter: share the active tab (a few frames per
+  second, configurable) with a viewer link, and open the presenter console in a
+  window of its own to draw on the video and manage the session (kick, lock,
+  pause, clear, end). Nothing is added to the shared page. Settings page.
+- Viewer page: join a link, watch the shared tab and draw on it (pen, text,
+  stickers, emoticons); with the presenter key it is the presenter console.
 - Serverless collaboration core: sessions over WebRTC with a low-frame-rate
   video track and a shared whiteboard (ink, text, stickers and emoticons),
   adapted from nymph.

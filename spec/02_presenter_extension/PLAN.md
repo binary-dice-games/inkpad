@@ -1,70 +1,67 @@
 # 02_presenter_extension — implementation plan
 
-Design: [DESIGN.md](DESIGN.md). Depends on `01_core_features` steps 1–3.
-Follow in order; update the plan before diverging; record results.
+Design: [DESIGN.md](DESIGN.md). Depends on `01_core_features`. Follow in order;
+update the plan before diverging; record results.
 
 ## Step 1 — Extension skeleton and state machine
 
-**Goal:** MV3 shell that starts/stops a share with no video yet.
+**Goal:** MV3 shell that starts/stops a share.
 **Deliverables:** manifest, service worker state machine, offscreen document
-hosting a host `Session`, popup with start/stop and copy link, badge.
-**Tests:** state-machine unit tests; Playwright: start produces a link, a
-guest in the memory/fake-tracker network joins, stop ends the room.
-**Result:** Done. Manifest, service worker state machine (`state.ts`,
-`background.ts`), offscreen document hosting `ShareHost`, popup, badge,
-shortcut. Divergence: the overlay connects to the offscreen document directly,
-the service worker does not relay (DESIGN section 2 and 9).
+hosting a host `Session`, popup with start/stop and copy link, badge, shortcut.
+**Tests:** state-machine unit tests; the unpacked extension starts a share and
+a viewer joins.
+**Result:** Done.
 
-## Step 2 — Overlay and SessionProxy
+## Step 2 — On-page overlay (superseded)
 
-**Goal:** Whiteboard usable on the presenter's page.
-**Deliverables:** content script, shadow-DOM overlay, Port relay,
-`SessionProxy`, snapshot-on-attach, navigation re-attach, pointer pass-through,
-restricted-page handling.
-**Tests:** draw with each tool; reload and cross-origin navigate; page remains
-clickable in pointer mode; restricted page message.
-**Result:** Done. Overlay in a shadow root under `<html>`, connected through
-`connectSessionProxy`; drawings survive reloads through the board keeper;
-re-injection on `tabs.onUpdated`; pointer mode leaves the page clickable;
-restricted pages refused with a message. Verified in Chromium with the unpacked
-extension (`tests/e2e/extension.test.ts`): pen stroke, viewer sticker, same-origin
-reload, tab close. Not yet tested: the other tools, a cross-origin navigation
-(needs the all-sites permission), and the overlay's control bar and popup UI
-(only their commands are).
+**Goal:** Whiteboard on the presenter's page.
+**Result:** Built (content script, shadow-DOM overlay, session proxy, re-injection
+on navigation) and verified in Chromium, then **removed in step 5**: tab capture
+records the overlay, and every fix cost either a blink or a fragile architecture
+(`spec/03_tab_streaming/PLAN.md` step 1). The board keeper and the session proxy
+package stay in the repo; the keeper is used, the proxy is not.
 
-## Step 3 — Toolbar, people panel, controls
+## Step 3 — People panel and controls (superseded in place)
 
-**Goal:** Full presenter UX.
-**Deliverables:** ported toolbar, sticker chooser, people list, lock/remove/
-new link, pause, hide overlay, shortcuts, remembered position.
-**Tests:** lock drops viewer ops host-side; remove/new-link behaviour; hide
-overlay does not stop sync.
-**Result:** Done, except the whiteboard toolbar stays at the left edge (not
-draggable): people panel, lock, remove, new link, pause, hide drawings, stop,
-control bar position remembered, three shortcuts. Lock, remove and new link are
-tested on `ShareHost`, lock also in the browser; hide drawings and the shortcuts
-are untested.
+**Goal:** Presenter commands.
+**Result:** Lock, drawing on/off, pause, remove, new link and stop exist as
+`ShareHost` commands; the popup drives them. The overlay's control bar went with
+the overlay; the console (project 04) is the other place for them.
 
 ## Step 4 — Options and permissions
 
-**Goal:** Settings and the optional host permission flow.
-**Deliverables:** options page, `storage.sync` schema with validation,
-permission prompt, first-run consent panel.
-**Tests:** invalid settings rejected; live video-parameter changes reach the
-offscreen doc; permission-denied path keeps working (re-click to re-attach).
-**Result:** Done. Options page with validated `storage.sync` settings
-(trackers, STUN/TURN, video, name, colour, viewer page), the optional all-sites
-permission requested from the popup click, consent notice. The live
-video-parameter check and the permission-denied path wait for video
-(step 5); settings validation is unit tested.
+**Goal:** Settings.
+**Result:** Done: options page with validated `storage.sync` settings. The
+optional all-sites permission was only for the overlay and is gone in step 5.
 
-## Step 5 — Integrate video
+## Step 5 — Console instead of overlay
 
-Wire in `03_tab_streaming` (its steps 2–3), then run the combined e2e.
-**Result:** _pending_
+**Goal:** Presenter draws in a separate window; nothing is injected into the page.
+**Deliverables:** presenter key and `ctl` channel in `ShareHost` (auth, kick, end,
+clear, lock, drawing, pause); remove `overlay.ts`, re-injection, the
+`scripting` and optional host permissions; two links in the popup and an **Open
+console** button; refuse to share a tab that shows this session's viewer;
+`viewer.html` bundled into the extension.
+**Tests:** `ShareHost` presenter auth and commands (unit); popup/console e2e in
+Chromium: console draws, clears, kicks, ends.
+**Result:** Done. `ShareHost` has the presenter key, the `ctl` channel (handled
+inside the host's `accept` and never relayed), kick, end, clear, lock, drawing
+and pause; the overlay, re-injection, the `scripting` and optional host
+permissions are gone; the popup shows both links and **Open console**
+(`chrome.windows.create`); the viewer app is bundled as `viewer.html`; a tab that
+shows this session's viewer or console is refused. Unit tests (19 on
+`ShareHost`, three of its authorization checks mutation-tested) and the
+Chromium end-to-end test (`tests/e2e/extension.test.ts`).
+
+## Step 6 — Video
+
+Wire in `03_tab_streaming` steps 2 and 3, then run the combined e2e.
+**Result:** Done: the extension captures the tab and the combined e2e runs in
+Chromium (see `spec/03_tab_streaming/PLAN.md`).
 
 ## Completion Criteria
 
-- Presenter can start, draw, share a link, lock/remove viewers and stop,
-  surviving page navigation.
-- All tests pass in CI; manual checklist done on Chrome stable.
+- The presenter can start, open the console, draw, kick, clear and end; viewers
+  see the video and the board.
+- Nothing is injected into the shared page.
+- All tests pass; manual checklist done on Chrome stable.

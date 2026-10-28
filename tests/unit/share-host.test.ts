@@ -1,10 +1,9 @@
 // MIT License © 2026 Carlos Lopez
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryNetwork, createSession } from '@inkpad/collab-session';
 import type { Session } from '@inkpad/collab-session';
-import { connectSessionProxy, memoryPortPair } from '@inkpad/collab-session/session-proxy';
 import { WhiteboardModel } from '@inkpad/collab-whiteboard';
-import { PROTOCOL, cleanStage } from '@inkpad/defaults';
+import { PROTOCOL, cleanCtl, cleanStage, parseInvite } from '@inkpad/defaults';
 import type { Stage } from '@inkpad/defaults';
 import { ShareHost } from '../../extension/src/share-host';
 import { DEFAULT_SETTINGS } from '../../extension/src/settings';
@@ -23,10 +22,11 @@ describe('ShareHost', () => {
     guests.splice(0).forEach((g) => g.close());
   });
 
-  async function start(settings: Partial<Settings> = {}): Promise<ShareHost> {
+  async function start(settings: Partial<Settings> = {}, onEnd?: () => void): Promise<ShareHost> {
     const host = await ShareHost.start({
       settings: { ...DEFAULT_SETTINGS, name: 'Pat', ...settings },
       tabId: 42,
+      onEnd,
       rendezvous: [{ kind: 'memory', network }],
     });
     opened.push(host);
@@ -149,18 +149,155 @@ describe('ShareHost', () => {
     expect(host.ui().viewers).toHaveLength(1);
   });
 
-  it('serves the overlay with the kept drawings and takes its commands', async () => {
-    const host = await start();
-    const [viewPort, servePort] = memoryPortPair();
-    host.serve(servePort);
-    const proxy = await connectSessionProxy(viewPort);
-    expect(proxy.role).toBe('host');
-    const received: unknown[] = [];
-    proxy.channel('wb').on('message', (m) => received.push(m));
-    await until(() => received.length > 0, 'snapshot for the overlay');
-    const model = new WhiteboardModel(proxy.me.id);
-    proxy.channel('wb').send({ t: 'op', op: model.add(stroke) });
-    await until(() => host.keeper.model.live().length === 1, 'keeper has the overlay stroke');
+  describe('presenter role', () => {
+    async function console_(host: ShareHost, key = host.presenterKey) {
+      const { guest, stages } = await join(host, 'Console');
+      const roles: boolean[] = [];
+      guest.channel('ctl').on('message', (m) => {
+        const msg = cleanCtl(m);
+        if (msg?.t === 'role') roles.push(msg.presenter);
+      });
+      const hostId = guest.host()!.id;
+      const ctl = guest.channel('ctl');
+      return {
+        guest,
+        stages,
+        roles,
+        auth: () => ctl.send({ t: 'auth', key }, { to: hostId }),
+        command: (command: unknown) => ctl.send({ t: 'cmd', command }, { to: hostId }),
+      };
+    }
+
+    it('puts the key in the console link only', async () => {
+      const host = await start({ viewerBase: 'https://example.github.io/inkpad/' });
+      expect(host.link()).not.toContain('presenter=');
+      const link = host.consoleLink();
+      expect(parseInvite(new URL(link).hash)).toMatchObject({
+        token: host.session.token,
+        presenterKey: host.presenterKey,
+      });
+      expect(host.ui().consoleLink).toBe(link);
+    });
+
+    it('accepts the key and answers with the role', async () => {
+      const host = await start();
+      const c = await console_(host);
+      c.auth();
+      await until(() => c.roles.length > 0, 'role reply');
+      expect(c.roles).toEqual([true]);
+    });
+
+    it("refuses a wrong key and ignores that peer's commands", async () => {
+      const host = await start();
+      const c = await console_(host, 'A'.repeat(22));
+      c.auth();
+      await until(() => c.roles.length > 0, 'role reply');
+      expect(c.roles).toEqual([false]);
+      c.command({ cmd: 'lock', on: true });
+      c.command({ cmd: 'end' });
+      await settle(80);
+      expect(host.ui().locked).toBe(false);
+    });
+
+    it('ignores commands from a peer that never authenticated', async () => {
+      const ended = vi.fn();
+      const host = await start({}, ended);
+      const c = await console_(host);
+      c.command({ cmd: 'lock', on: true });
+      c.command({ cmd: 'end' });
+      await settle(80);
+      expect(host.ui().locked).toBe(false);
+      expect(ended).not.toHaveBeenCalled();
+    });
+
+    it('runs lock, drawing, pause, remove, clear and end for the presenter', async () => {
+      const ended = vi.fn();
+      const host = await start({}, ended);
+      const viewer = await join(host, 'Ana');
+      const c = await console_(host);
+      c.auth();
+      await until(() => c.roles.length > 0, 'role reply');
+
+      c.command({ cmd: 'lock', on: true });
+      await until(() => host.ui().locked, 'locked');
+      c.command({ cmd: 'drawing', on: false });
+      await until(() => !host.ui().drawing, 'drawing off');
+      await until(() => viewer.stages.at(-1)?.drawing === false, 'viewers told');
+      c.command({ cmd: 'pause', on: true });
+      await until(() => host.ui().paused, 'paused');
+      c.command({ cmd: 'pause', on: false });
+      await until(() => !host.ui().paused, 'resumed');
+
+      // The board: a stroke (drawing back on), then the presenter clears it for everyone.
+      c.command({ cmd: 'drawing', on: true });
+      await until(() => host.ui().drawing, 'drawing on');
+      const model = new WhiteboardModel(viewer.guest.me.id);
+      viewer.guest.channel('wb').send({ t: 'op', op: model.add(stroke) });
+      await until(() => host.keeper.model.live().length === 1, 'stroke');
+      const cleared: unknown[] = [];
+      viewer.guest.channel('wb').on('message', (m) => {
+        const msg = m as { t: string; op?: { t: string } };
+        if (msg.t === 'op' && msg.op?.t === 'clear') cleared.push(m);
+      });
+      c.command({ cmd: 'clear' });
+      await until(() => host.keeper.model.live().length === 0, 'cleared');
+      await until(() => cleared.length === 1, 'clear reached the viewer');
+
+      c.command({ cmd: 'remove', id: viewer.guest.me.id });
+      await until(() => host.ui().viewers.every((v) => v.name !== 'Ana'), 'viewer removed');
+
+      c.command({ cmd: 'end' });
+      await until(() => ended.mock.calls.length === 1, 'end requested');
+    });
+
+    it('lets the presenter draw while viewers are locked out', async () => {
+      const host = await start({ viewersMayDraw: false });
+      const c = await console_(host);
+      c.auth();
+      await until(() => c.roles.length > 0, 'role reply');
+      const model = new WhiteboardModel(c.guest.me.id);
+      c.guest.channel('wb').send({ t: 'op', op: model.add(stroke) });
+      await until(() => host.keeper.model.live().length === 1, 'presenter stroke accepted');
+    });
+
+    it('does not let the presenter remove themself', async () => {
+      const host = await start();
+      const c = await console_(host);
+      c.auth();
+      await until(() => c.roles.length > 0, 'role reply');
+      c.command({ cmd: 'remove', id: c.guest.me.id });
+      await settle(80);
+      // The console is not listed as a viewer, and is still connected.
+      expect(host.ui().viewers).toEqual([]);
+      expect(host.session.peers().map((p) => p.name)).toContain('Console');
+    });
+
+    it('never relays ctl messages to other viewers', async () => {
+      const host = await start();
+      const other = await join(host, 'Ben');
+      const seen: unknown[] = [];
+      other.guest.channel('ctl').on('message', (m) => seen.push(m));
+      const c = await console_(host);
+      c.auth();
+      await until(() => c.roles.length > 0, 'role reply');
+      c.guest.channel('ctl').send({ t: 'auth', key: host.presenterKey });
+      c.command({ cmd: 'lock', on: true });
+      await settle(100);
+      expect(seen).toEqual([]);
+    });
+
+    it('rejects malformed ctl messages', async () => {
+      const host = await start();
+      const c = await console_(host);
+      c.auth();
+      await until(() => c.roles.length > 0, 'role reply');
+      c.command({ cmd: 'remove', id: '../x' });
+      c.command({ cmd: 'lock', on: 'yes' });
+      c.command({ cmd: 'format-disk' });
+      c.guest.channel('ctl').send('hello', { to: c.guest.host()!.id });
+      await settle(80);
+      expect(host.ui().locked).toBe(false);
+    });
   });
 
   it('ends the share: viewers see `ended`, then the room closes', async () => {

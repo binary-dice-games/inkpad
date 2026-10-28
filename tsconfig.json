@@ -12,6 +12,12 @@
     "isolatedModules": true,
     "types": ["node", "chrome"]
   },
-  "include": ["packages/**/*.ts", "extension/**/*.ts", "tests/**/*.ts", "vitest.config.ts"],
+  "include": [
+    "packages/**/*.ts",
+    "extension/**/*.ts",
+    "tests/**/*.ts",
+    "vitest.config.ts",
+    "viewer/**/*.ts"
+  ],
   "exclude": ["node_modules", "build"]
 }

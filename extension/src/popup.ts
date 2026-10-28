@@ -6,8 +6,7 @@
  */
 import { IDLE_UI } from './messages';
 import type { BackgroundMessage, Command, OffscreenMessage, UiState, Untargeted } from './messages';
-import { canInject } from './state';
-import { loadSettings } from './settings';
+import { canCapture } from './state';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -33,7 +32,7 @@ function render(): void {
   show('idle', !live);
   show('live', live);
   if (!live) {
-    const ok = canInject(tab?.url);
+    const ok = canCapture(tab?.url);
     show('restricted', !ok);
     $('restricted').textContent = ok
       ? ''
@@ -69,9 +68,11 @@ function render(): void {
   ($('drawing') as HTMLInputElement).checked = ui.drawing;
   ($('lock') as HTMLInputElement).checked = ui.locked;
   $('pause').textContent = ui.paused ? 'Resume' : 'Pause';
-  show('problem', ui.problem === 'no-tracker');
-  $('problem').textContent = 'No tracker could be reached; this network may block them.';
-  show('reattach', !ui.overlay && ui.tabId === tab?.id);
+  show('problem', ui.problem !== null);
+  $('problem').textContent =
+    ui.problem === 'capture-lost'
+      ? 'The video of this tab stopped. Stop sharing and start again to restore it.'
+      : 'No tracker could be reached; this network may block them.';
 }
 
 async function refresh(): Promise<void> {
@@ -85,12 +86,7 @@ async function start(): Promise<void> {
   }
   const error = $('error');
   error.hidden = true;
-  const settings = await loadSettings();
-  if (settings.keepAcrossNavigation) {
-    // Must run in this click: the permission prompt needs the user gesture.
-    await chrome.permissions.request({ origins: ['<all_urls>'] }).catch(() => false);
-  }
-  const result = await toBackground<{ ok: boolean; message?: string; overlay?: boolean }>({
+  const result = await toBackground<{ ok: boolean; message?: string }>({
     type: 'start',
     tabId: tab.id,
   });
@@ -129,9 +125,17 @@ async function main(): Promise<void> {
   );
   $('pause').addEventListener('click', () => toOffscreen({ cmd: 'pause', on: !ui.paused }));
   $('newLink').addEventListener('click', () => toOffscreen({ cmd: 'newLink' }));
-  $('reattachButton').addEventListener('click', async () => {
-    await toBackground({ type: 'reattach' });
-    setTimeout(() => void refresh(), 300);
+  $('clear').addEventListener('click', () => toOffscreen({ cmd: 'clear' }));
+  $('openConsole').addEventListener('click', () => {
+    if (ui.consoleLink) {
+      // A window of its own: the presenter keeps the shared tab in another window.
+      void chrome.windows.create({ url: ui.consoleLink, type: 'popup', width: 1200, height: 760 });
+    }
+  });
+  $('copyConsole').addEventListener('click', async () => {
+    await navigator.clipboard.writeText(ui.consoleLink ?? '').catch(() => {});
+    $('copyConsole').textContent = 'Copied';
+    setTimeout(() => ($('copyConsole').textContent = 'Copy console link'), 1500);
   });
   $('settings').addEventListener('click', (e) => {
     e.preventDefault();
@@ -139,11 +143,6 @@ async function main(): Promise<void> {
   });
 
   await refresh();
-  // Opening the popup grants access to this tab: put a lost overlay back.
-  if ((ui.phase === 'live' || ui.phase === 'paused') && !ui.overlay && ui.tabId === tab?.id) {
-    await toBackground({ type: 'reattach' });
-    setTimeout(() => void refresh(), 300);
-  }
   setInterval(() => void refresh(), 1500);
 }
 

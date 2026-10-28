@@ -10,6 +10,8 @@ export default tseslint.config(
       'build/',
       'dist/',
       'extension/dist*/',
+      'viewer/dist/',
+      'spikes/',
       'packages/collab-session/collab-session.js',
       'packages/collab-whiteboard/collab-whiteboard.js',
     ],

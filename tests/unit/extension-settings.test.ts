@@ -9,7 +9,7 @@ import {
   formatIceLines,
   parseIceLines,
 } from '../../extension/src/settings';
-import { IDLE, canInject, transition } from '../../extension/src/state';
+import { IDLE, canCapture, checkTarget, transition } from '../../extension/src/state';
 import type { ShareState } from '../../extension/src/state';
 
 describe('settings', () => {
@@ -25,14 +25,12 @@ describe('settings', () => {
       color: 'red',
       viewersMayDraw: false,
       viewerBase: 'ftp://nope',
-      keepAcrossNavigation: 'yes',
       video: { fps: 99 },
     });
     expect(s.name).toBe('Ana');
     expect(s.color).toBe(DEFAULT_SETTINGS.color);
     expect(s.viewersMayDraw).toBe(false);
     expect(s.viewerBase).toBe(DEFAULT_SETTINGS.viewerBase);
-    expect(s.keepAcrossNavigation).toBe(false);
     expect(s.video.fps).toBe(15);
   });
 
@@ -46,6 +44,7 @@ describe('settings', () => {
       'https://example.github.io/inkpad/',
     );
     expect(cleanViewerBase('http://localhost:8080/')).toBe('http://localhost:8080/');
+    expect(cleanViewerBase('http://127.0.0.1:8080/x')).toBe('http://127.0.0.1:8080/x');
     expect(cleanViewerBase('http://example.com/')).toBeNull();
     expect(cleanViewerBase('javascript:alert(1)')).toBeNull();
     expect(cleanViewerBase(42)).toBeNull();
@@ -120,20 +119,46 @@ describe('share state machine', () => {
   });
 });
 
-describe('canInject', () => {
+describe('canCapture', () => {
   it('allows web pages and files', () => {
-    expect(canInject('https://example.com/a')).toBe(true);
-    expect(canInject('http://127.0.0.1:3000/')).toBe(true);
-    expect(canInject('file:///c:/a.html')).toBe(true);
+    expect(canCapture('https://example.com/a')).toBe(true);
+    expect(canCapture('http://127.0.0.1:3000/')).toBe(true);
+    expect(canCapture('file:///c:/a.html')).toBe(true);
   });
 
   it('refuses browser pages, the Web Store and nothing', () => {
-    expect(canInject('chrome://settings')).toBe(false);
-    expect(canInject('chrome-extension://abc/popup.html')).toBe(false);
-    expect(canInject('about:blank')).toBe(false);
-    expect(canInject('https://chromewebstore.google.com/detail/x')).toBe(false);
-    expect(canInject('https://chrome.google.com/webstore/detail/x')).toBe(false);
-    expect(canInject(undefined)).toBe(false);
-    expect(canInject('not a url')).toBe(false);
+    expect(canCapture('chrome://settings')).toBe(false);
+    expect(canCapture('chrome-extension://abc/popup.html')).toBe(false);
+    expect(canCapture('about:blank')).toBe(false);
+    expect(canCapture('https://chromewebstore.google.com/detail/x')).toBe(false);
+    expect(canCapture('https://chrome.google.com/webstore/detail/x')).toBe(false);
+    expect(canCapture(undefined)).toBe(false);
+    expect(canCapture('not a url')).toBe(false);
+  });
+});
+
+describe('checkTarget', () => {
+  const pages = {
+    viewerBase: 'https://example.github.io/inkpad/',
+    consoleBase: 'chrome-extension://abcdefgh/viewer.html',
+  };
+
+  it('lets a normal page through', () => {
+    expect(checkTarget('https://example.com/a', pages)).toBeNull();
+  });
+
+  it('refuses the viewer and the console, with or without the hash', () => {
+    expect(checkTarget('https://example.github.io/inkpad/#inkpad=abc', pages)?.reason).toBe(
+      'console',
+    );
+    expect(checkTarget('chrome-extension://abcdefgh/viewer.html#inkpad=x', pages)?.reason).toBe(
+      'console',
+    );
+    expect(checkTarget('https://example.github.io/inkpad/', pages)?.reason).toBe('console');
+  });
+
+  it('refuses pages the browser does not allow', () => {
+    expect(checkTarget('chrome://settings', pages)?.reason).toBe('restricted');
+    expect(checkTarget(undefined, pages)?.reason).toBe('restricted');
   });
 });

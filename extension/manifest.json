@@ -4,8 +4,7 @@
   "version": "0.0.0",
   "description": "Draw on the active tab and share it live with anyone who has the link. No server, no extension needed for viewers.",
   "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "tabCapture", "offscreen", "scripting", "storage"],
-  "optional_host_permissions": ["<all_urls>"],
+  "permissions": ["activeTab", "tabCapture", "offscreen", "storage"],
   "background": { "service_worker": "background.js" },
   "action": {
     "default_title": "inkpad: share this tab",
@@ -17,10 +16,6 @@
     "toggle-share": {
       "suggested_key": { "default": "Alt+Shift+I" },
       "description": "Start or stop sharing the current tab"
-    },
-    "toggle-overlay": {
-      "suggested_key": { "default": "Alt+Shift+H" },
-      "description": "Hide or show the drawings on this tab"
     },
     "toggle-pause": {
       "suggested_key": { "default": "Alt+Shift+P" },

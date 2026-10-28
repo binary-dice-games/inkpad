@@ -133,25 +133,33 @@
     </section>
     <section id="live" hidden>
       <p id="state"></p>
+      <p class="muted">Link for viewers</p>
       <div class="row">
         <input id="link" type="text" readonly aria-label="Link for viewers" />
         <button id="copy" type="button">Copy</button>
       </div>
-      <p id="problem" class="warn" hidden></p>
-      <p id="reattach" class="warn" hidden>
-        The drawing layer is missing from the page.
-        <button id="reattachButton" type="button">Show it again</button>
+      <div class="row">
+        <button id="openConsole" class="primary" type="button">Open console</button>
+        <button id="copyConsole" type="button" title="Private: whoever has it controls the session">
+          Copy console link
+        </button>
+      </div>
+      <p class="muted">
+        Draw and manage the session in the console, a separate window. Your page itself shows
+        nothing.
       </p>
+      <p id="problem" class="warn" hidden></p>
       <ul id="viewers" aria-label="Viewers"></ul>
       <label><input id="drawing" type="checkbox" /> Viewers can draw</label>
       <label><input id="lock" type="checkbox" /> Lock: no new viewers</label>
       <div class="row">
         <button id="pause" type="button">Pause</button>
+        <button id="clear" type="button">Clear drawings</button>
         <button id="newLink" type="button" title="Old links stop working; people here stay">
           New link
         </button>
-        <button id="stop" class="danger" type="button">Stop</button>
       </div>
+      <div class="row"><button id="stop" class="danger" type="button">Stop sharing</button></div>
     </section>
     <footer>
       <a id="settings" href="#">Settings</a>

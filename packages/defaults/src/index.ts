@@ -171,18 +171,154 @@ export function cleanStage(message: unknown): Stage | null {
 // ── Invite links ──────────────────────────────────────────────────────────────
 
 const FRAGMENT_KEY = 'inkpad';
+const PRESENTER_KEY = 'presenter';
+const TRACKER_KEY = 'tr';
 const TOKEN = /^[A-Za-z0-9_-]{22}$/;
+const MAX_TRACKERS = 10;
 
-/** `<base>#inkpad=<token>`; `fragment` is `Session.inviteFragment()`. */
-export function inviteLink(base: string, fragment: string): string {
+/** What an invite link carries. */
+export interface Invite {
+  /** The room token. */
+  token: string;
+  /** The presenter key; present only in the console link. */
+  presenterKey?: string;
+  /** Trackers to use when they differ from the defaults (a viewer cannot guess them). */
+  trackers?: string[];
+}
+
+/**
+ * `<base>#inkpad=<token>[&presenter=<key>][&tr=<tracker>...]`; `fragment` is
+ * `Session.inviteFragment()`. Trackers are added only when they are not the
+ * defaults.
+ */
+export function inviteLink(
+  base: string,
+  fragment: string,
+  extra: { presenterKey?: string; trackers?: readonly string[] } = {},
+): string {
   const url = new URL(base);
-  url.hash = fragment;
+  const params = new URLSearchParams(fragment);
+  if (extra.presenterKey) {
+    params.set(PRESENTER_KEY, extra.presenterKey);
+  }
+  const custom =
+    extra.trackers &&
+    extra.trackers.length > 0 &&
+    extra.trackers.join(' ') !== DEFAULT_TRACKERS.join(' ');
+  if (custom) {
+    for (const tracker of extra.trackers!.slice(0, MAX_TRACKERS)) {
+      params.append(TRACKER_KEY, tracker);
+    }
+  }
+  url.hash = params.toString();
   return url.toString();
+}
+
+/** The invite in a URL hash, or null if the room token is absent or malformed. */
+export function parseInvite(hash: string): Invite | null {
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const token = params.get(FRAGMENT_KEY);
+  if (token === null || !TOKEN.test(token)) {
+    return null;
+  }
+  const invite: Invite = { token };
+  const key = params.get(PRESENTER_KEY);
+  if (key !== null && isPresenterKey(key)) {
+    invite.presenterKey = key;
+  }
+  const trackers = params
+    .getAll(TRACKER_KEY)
+    .filter((t) => /^wss?:\/\/[^\s]+$/.test(t))
+    .slice(0, MAX_TRACKERS);
+  if (trackers.length > 0) {
+    invite.trackers = trackers;
+  }
+  return invite;
 }
 
 /** The room token in a URL hash (`#inkpad=<token>`), or null if absent or malformed. */
 export function parseInviteHash(hash: string): string | null {
-  const params = new URLSearchParams(hash.replace(/^#/, ''));
-  const token = params.get(FRAGMENT_KEY);
-  return token !== null && TOKEN.test(token) ? token : null;
+  return parseInvite(hash)?.token ?? null;
+}
+
+// ── Presenter role ────────────────────────────────────────────────────────────
+
+/** The channel for presenter authentication and commands (guest and host only; never relayed). */
+export const CTL_CHANNEL = 'ctl';
+
+/** A fresh presenter key: 128 random bits as 22 base64url characters. */
+export function newPresenterKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  let binary = '';
+  for (const b of bytes) {
+    binary += String.fromCharCode(b);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function isPresenterKey(value: unknown): value is string {
+  return typeof value === 'string' && TOKEN.test(value);
+}
+
+/** Compares two strings in time that depends only on their length. */
+export function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/** What the presenter console can ask the host to do. */
+export type PresenterCommand =
+  | { cmd: 'lock'; on: boolean }
+  | { cmd: 'drawing'; on: boolean }
+  | { cmd: 'pause'; on: boolean }
+  | { cmd: 'remove'; id: string }
+  | { cmd: 'clear' }
+  | { cmd: 'end' };
+
+/** Messages on the `ctl` channel. */
+export type CtlMessage =
+  | { t: 'auth'; key: string }
+  | { t: 'cmd'; command: PresenterCommand }
+  /** Host to console: whether the key was accepted. */
+  | { t: 'role'; presenter: boolean };
+
+const PEER_ID = /^[A-Za-z0-9_-]{4,40}$/;
+
+/** The `ctl` message if it is well formed, else null; unknown fields are dropped. */
+export function cleanCtl(message: unknown): CtlMessage | null {
+  if (typeof message !== 'object' || message === null) {
+    return null;
+  }
+  const m = message as Record<string, unknown>;
+  if (m.t === 'auth') {
+    return isPresenterKey(m.key) ? { t: 'auth', key: m.key } : null;
+  }
+  if (m.t === 'role') {
+    return typeof m.presenter === 'boolean' ? { t: 'role', presenter: m.presenter } : null;
+  }
+  if (m.t !== 'cmd' || typeof m.command !== 'object' || m.command === null) {
+    return null;
+  }
+  const c = m.command as Record<string, unknown>;
+  switch (c.cmd) {
+    case 'lock':
+    case 'drawing':
+    case 'pause':
+      return typeof c.on === 'boolean' ? { t: 'cmd', command: { cmd: c.cmd, on: c.on } } : null;
+    case 'remove':
+      return typeof c.id === 'string' && PEER_ID.test(c.id)
+        ? { t: 'cmd', command: { cmd: 'remove', id: c.id } }
+        : null;
+    case 'clear':
+    case 'end':
+      return { t: 'cmd', command: { cmd: c.cmd } };
+    default:
+      return null;
+  }
 }

@@ -1,24 +1,25 @@
 // MIT License © 2026 Carlos Lopez
 /**
- * @file The service worker: the orchestrator. It starts and stops shares,
- * keeps the overlay on the shared tab, shows the badge and handles the
- * shortcuts. It is stateless between wake-ups: the phase and tab are kept in
- * chrome.storage.session and the share itself lives in the offscreen document.
+ * @file The service worker: the orchestrator. It starts and stops shares, gets
+ * the tab capture id, tells the capture when the tab changes size, shows the
+ * badge and handles the shortcuts. It is stateless between wake-ups: the phase
+ * and tab are kept in chrome.storage.session and the share itself lives in the
+ * offscreen document. Nothing is injected into the shared page.
  */
 import { IDLE_UI } from './messages';
 import type {
   BackgroundMessage,
   OffscreenMessage,
-  OverlayMessage,
   StartResult,
   UiState,
   Untargeted,
 } from './messages';
 import { loadSettings } from './settings';
-import { IDLE, canInject, transition } from './state';
+import { IDLE, checkTarget, transition } from './state';
 import type { ShareEvent, ShareState } from './state';
 
 const OFFSCREEN_PATH = 'offscreen.html';
+const CONSOLE_PATH = 'viewer.html';
 const STATE_KEY = 'share';
 const CONSENT_KEY = 'consented';
 
@@ -36,10 +37,10 @@ async function apply(event: ShareEvent): Promise<ShareState> {
   return next;
 }
 
-async function showBadge(state: ShareState, problem = false): Promise<void> {
-  const text = problem ? '!' : state.phase === 'live' ? '●' : state.phase === 'paused' ? 'II' : '';
+async function showBadge(state: ShareState): Promise<void> {
+  const text = state.phase === 'live' ? '●' : state.phase === 'paused' ? 'II' : '';
   await chrome.action.setBadgeText({ text });
-  await chrome.action.setBadgeBackgroundColor({ color: problem ? '#d97706' : '#e5484d' });
+  await chrome.action.setBadgeBackgroundColor({ color: '#e5484d' });
 }
 
 // ── Offscreen document ───────────────────────────────────────────────────────
@@ -73,50 +74,50 @@ async function status(): Promise<UiState> {
   return (await toOffscreen<UiState | undefined>({ type: 'status' })) ?? { ...IDLE_UI };
 }
 
-// ── Overlay ──────────────────────────────────────────────────────────────────
-
-/** Puts the overlay in the tab; false when the page refuses (no access any more). */
-async function injectOverlay(tabId: number): Promise<boolean> {
-  try {
-    await chrome.scripting.executeScript({ target: { tabId }, files: ['overlay.js'] });
-    return true;
-  } catch {
-    return false;
-  }
+/** A tab capture id (the typings only have `getMediaStreamId` with a callback). */
+function captureId(tabId: number): Promise<string> {
+  return new Promise<string>((resolve, reject) =>
+    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (id) =>
+      chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve(id),
+    ),
+  );
 }
 
 // ── Start and stop ───────────────────────────────────────────────────────────
 
-type Started =
-  { ok: true; ui: UiState; overlay: boolean } | { ok: false; reason: string; message: string };
+type Started = { ok: true; ui: UiState } | { ok: false; reason: string; message: string };
 
 async function start(tabId: number): Promise<Started> {
   const tab = await chrome.tabs.get(tabId).catch(() => undefined);
-  if (!tab || !canInject(tab.url)) {
-    return {
-      ok: false,
-      reason: 'restricted',
-      message: 'Chrome does not let extensions use this page. Open a regular web page.',
-    };
+  const settings = await loadSettings();
+  const consoleBase = chrome.runtime.getURL(CONSOLE_PATH);
+  const problem = tab
+    ? checkTarget(tab.url, { viewerBase: settings.viewerBase, consoleBase })
+    : { reason: 'restricted' as const, message: 'That tab is gone.' };
+  if (problem) {
+    return { ok: false, ...problem };
   }
-  const before = await getState();
-  if (before.phase !== 'idle') {
+  if ((await getState()).phase !== 'idle') {
     await stop();
   }
   await apply({ type: 'start', tabId });
   try {
-    const settings = await loadSettings();
+    // Must come from the click or shortcut that gave us the tab (activeTab).
+    const streamId = await captureId(tabId);
     await ensureOffscreen();
-    const result = await toOffscreen<StartResult>({ type: 'start', tabId, settings });
+    const result = await toOffscreen<StartResult>({
+      type: 'start',
+      tabId,
+      settings,
+      streamId,
+      tab: { width: tab?.width ?? 1280, height: tab?.height ?? 720 },
+      consoleBase,
+    });
     if (!result.ok) {
       throw Object.assign(new Error(result.message), { reason: result.reason });
     }
     await apply({ type: 'started' });
-    const overlay = await injectOverlay(tabId);
-    if (!overlay) {
-      await showBadge(await getState(), true);
-    }
-    return { ok: true, ui: result.ui, overlay };
+    return { ok: true, ui: result.ui };
   } catch (e) {
     await stop();
     return {
@@ -136,19 +137,18 @@ async function stop(): Promise<void> {
   await apply({ type: 'stopped' });
 }
 
-/** The overlay went missing (navigation): put it back if the tab allows. */
-async function reattach(): Promise<boolean> {
+/** Tells the capture the shared tab has another shape (the window was resized). */
+async function tabResized(): Promise<void> {
   const state = await getState();
   if (state.tabId === null || (state.phase !== 'live' && state.phase !== 'paused')) {
-    return false;
+    return;
   }
   const tab = await chrome.tabs.get(state.tabId).catch(() => undefined);
-  if (!tab || !canInject(tab.url)) {
-    return false;
+  if (tab?.width && tab.height) {
+    await toOffscreen({ type: 'resize', width: tab.width, height: tab.height }).catch(
+      () => undefined,
+    );
   }
-  const ok = await injectOverlay(state.tabId);
-  await showBadge(state, !ok);
-  return ok;
 }
 
 // ── Events ───────────────────────────────────────────────────────────────────
@@ -168,8 +168,19 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
         return { ok: true };
       case 'status':
         return status();
-      case 'reattach':
-        return { ok: await reattach() };
+      case 'captureId': {
+        // activeTab lasts while the tab stays on its page; after a cross-origin
+        // navigation there is no new id and the capture cannot be restarted.
+        const state = await getState();
+        if (state.tabId === null) {
+          return { ok: false, message: 'no share' };
+        }
+        try {
+          return { ok: true, id: await captureId(state.tabId) };
+        } catch (e) {
+          return { ok: false, message: e instanceof Error ? e.message : String(e) };
+        }
+      }
       case 'paused':
         await apply({ type: m.on ? 'pause' : 'resume' });
         return { ok: true };
@@ -185,7 +196,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   return true;
 });
 
-// The shared tab was closed, or it loaded another page: keep the overlay on it.
+// The shared tab was closed: end the share.
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const state = await getState();
   if (state.tabId === tabId && state.phase !== 'idle') {
@@ -193,13 +204,11 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   }
 });
 
-chrome.tabs.onUpdated.addListener(async (tabId, change) => {
-  if (change.status !== 'complete') {
-    return;
-  }
-  const state = await getState();
-  if (state.tabId === tabId && (state.phase === 'live' || state.phase === 'paused')) {
-    await reattach();
+// The window of the shared tab changed size, or the tab loaded a page: re-fit the capture.
+chrome.windows.onBoundsChanged.addListener(() => void tabResized());
+chrome.tabs.onUpdated.addListener((_tabId, change) => {
+  if (change.status === 'complete') {
+    void tabResized();
   }
 });
 
@@ -223,9 +232,6 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
         await chrome.action.openPopup().catch(() => undefined);
       }
     }
-  } else if (command === 'toggle-overlay' && active && state.tabId !== null) {
-    const message: OverlayMessage = { type: 'toggle-overlay' };
-    await chrome.tabs.sendMessage(state.tabId, message).catch(() => undefined);
   } else if (command === 'toggle-pause' && active) {
     const ui = await status();
     await toOffscreen({ type: 'command', command: { cmd: 'pause', on: !ui.paused } });

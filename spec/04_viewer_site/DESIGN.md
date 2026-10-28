@@ -42,9 +42,28 @@ Out of scope: hosting any dynamic service; presenter functions.
 - Accessibility: keyboard-operable toolbar, visible focus, reduced-motion,
   dark scheme.
 
+## 2b. Presenter console
+
+The same app, opened with `#inkpad=<token>&presenter=<key>`, is the **presenter
+console** (`spec/01_core_features/DESIGN.md` section 4.5). The extension bundles
+the app as `viewer.html` and opens it in its own window; the same link also works
+on any browser, for example a tablet with a pen.
+
+- After joining it sends `{t:'auth', key}` on `ctl`; on `{t:'role', presenter:true}`
+  the presenter panel appears. Without it (wrong key) the app behaves as a plain
+  viewer and says so.
+- Panel: viewers (name, colour, kick), **Viewers can draw**, **Lock**, **Pause /
+  Resume**, **Clear drawings**, **End session** (asks to confirm). Commands go
+  on `ctl` to the host.
+- The whiteboard is never read-only for the console; its toolbar is the same.
+- The console shows the shared video (a few frames per second, a little behind)
+  and draws over it. A note in the panel says so: the presenter's page itself
+  shows no drawings.
+
 ## 3. Hosting and build
 
-- Source in `viewer/`, built by esbuild to a small static bundle (target < 150
+- Source in `viewer/`; the same sources build twice: a static bundle for Pages
+  (`viewer/dist`) and `viewer.html` inside the extension. Built by esbuild to a small static bundle (target < 150
   KB gzipped, enforced by a size budget check like nymph's `size_budget.json`).
 - Deployed by GitHub Actions to Pages (`spec/05_release_pipeline`); one build
   per tag plus `main` as the "latest" channel.

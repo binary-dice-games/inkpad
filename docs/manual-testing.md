@@ -24,6 +24,14 @@ presenter on Chrome.
 | 9 | Presenter locks viewers' drawing | Viewers' tools disable; a modified client's strokes are dropped |
 | 10 | Presenter generates a new link | Old link no longer joins; current viewers stay |
 | 11 | Tracker view: inspect the tracker's traffic | Only opaque sealed payloads; no token, no SDP |
+| 12 | Share a tab from the popup (a real click), then **Open console** | The console opens in its own window, joins, shows the tab's video; the shared page shows nothing extra |
+| 13 | Draw in the console with a mouse, and with a pen or touch (tablet console link) | Strokes appear on viewers' screens at once; the video follows a moment later |
+| 14 | Resize the shared window, or change its zoom | The viewers' video takes the new shape within a few seconds; drawings keep their place on screen |
+| 15 | Share a tab, then navigate it to another site | The share goes on; after a cross-origin navigation a later resize keeps the old video shape |
+| 16 | Share a page that plays video or animates | Frame rate stays near the setting; the presenter's CPU stays reasonable |
+| 17 | Close the console window, reopen it with **Open console** | Drawings are still there |
+| 18 | Switch to the console tab while the shared tab stays in the background | Viewers keep getting frames |
+| 19 | Pause, resume, clear and end from the console | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)
 

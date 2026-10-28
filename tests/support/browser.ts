@@ -28,8 +28,8 @@ function chromePath(): string | undefined {
 }
 
 /**
- * Serves the repository's `packages/` and `tests/e2e/pages/` over loopback so
- * test pages can import the ES modules as a real page would.
+ * Serves the repository's `packages/`, `tests/e2e/pages/` and the built viewer
+ * (`/viewer/`) over loopback so test pages load as real pages would.
  */
 export async function serveFiles(): Promise<{ origin: string; server: Server }> {
   const server = createServer((req, res) => {
@@ -39,7 +39,9 @@ export async function serveFiles(): Promise<{ origin: string; server: Server }> 
         ? join(ROOT, 'tests/e2e', path)
         : path.startsWith('/packages/')
           ? join(ROOT, path)
-          : '',
+          : path.startsWith('/viewer/')
+            ? join(ROOT, 'viewer/dist', path.slice('/viewer/'.length))
+            : '',
     );
     if (!file.startsWith(ROOT) || !existsSync(file) || file === ROOT) {
       res.writeHead(404).end();

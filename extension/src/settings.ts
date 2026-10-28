@@ -24,8 +24,6 @@ export interface Settings {
   name: string;
   /** The presenter's colour (`#rrggbb`). */
   color: string;
-  /** Ask for access to all sites so the overlay survives navigation. */
-  keepAcrossNavigation: boolean;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -36,7 +34,6 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   viewersMayDraw: true,
   name: 'Presenter',
   color: '#3e63dd',
-  keepAcrossNavigation: false,
 };
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -47,14 +44,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** An http(s) URL string, or null. */
+/** An https URL string (http only for a local address, for development), or null. */
 export function cleanViewerBase(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
   }
   try {
     const url = new URL(value.trim());
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && url.hostname === 'localhost')) {
+    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
       return null;
     }
     url.hash = '';
@@ -141,10 +139,6 @@ export function cleanSettings(input: unknown): Settings {
       typeof o.viewersMayDraw === 'boolean' ? o.viewersMayDraw : DEFAULT_SETTINGS.viewersMayDraw,
     name: name || DEFAULT_SETTINGS.name,
     color: typeof o.color === 'string' && COLOR.test(o.color) ? o.color : DEFAULT_SETTINGS.color,
-    keepAcrossNavigation:
-      typeof o.keepAcrossNavigation === 'boolean'
-        ? o.keepAcrossNavigation
-        : DEFAULT_SETTINGS.keepAcrossNavigation,
   };
 }
 

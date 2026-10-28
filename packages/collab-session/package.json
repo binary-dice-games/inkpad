@@ -9,10 +9,6 @@
     ".": {
       "types": "./collab-session.d.ts",
       "default": "./collab-session.js"
-    },
-    "./session-proxy": {
-      "types": "./session-proxy.d.ts",
-      "default": "./session-proxy.js"
     }
   }
 }

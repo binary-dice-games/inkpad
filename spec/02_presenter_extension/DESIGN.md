@@ -1,124 +1,116 @@
 # 02_presenter_extension — Chrome extension (presenter side)
 
-Builds on `spec/01_core_features/DESIGN.md` (architecture, collab core).
-Video details are in `spec/03_tab_streaming/DESIGN.md`.
+Builds on `spec/01_core_features/DESIGN.md` (architecture, collab core, presenter
+role) and `spec/03_tab_streaming/DESIGN.md` (capture). The viewer and the
+presenter console are in `spec/04_viewer_site/DESIGN.md`.
 
 ## 1. Purpose and scope
 
-The Manifest V3 extension a presenter installs. It enables inkpad on the active
-tab, shows the whiteboard overlay and toolbar, hosts the collab session, and
-produces the share link. Only the presenter needs it.
+The Manifest V3 extension a presenter installs. It **captures the active tab,
+hosts the session and gives the links**. It puts nothing into the shared page:
+the whiteboard is drawn in the **presenter console**, a separate window that is
+the viewer app with presenter powers. Only the presenter needs the extension.
 
-Out of scope: viewer UI (`04`), capture/encoding internals (`03`), store
+Why no overlay on the page: tab capture records everything rendered in the tab,
+so an overlay would be in the video (spike, `spec/03_tab_streaming/PLAN.md`
+step 1). Hiding it per frame made it blink; Element Capture is not available for
+`chrome.tabCapture`. Products such as Zoom avoid this with an OS flag that
+excludes their annotation window from capture; the browser has no equivalent, so
+inkpad draws somewhere else. The cost: the presenter draws on a copy of the page
+that is a fraction of a second behind, not on the page itself.
+
+Out of scope: viewer UI and console UI (`04`), capture internals (`03`), store
 publishing (`05`).
 
 ## 2. Components
 
 | Component | Runs in | Responsibility |
 |---|---|---|
-| Service worker | extension | Orchestrator and state machine; handles action click, commands, `tabs.onUpdated/onRemoved`; obtains the tab-capture stream id; creates/closes the offscreen doc. It is not a relay: the overlay's Port goes straight to the offscreen document, because `runtime.onConnect` reaches every extension page, and a sleeping worker would drop the Port |
-| Offscreen document | extension (reasons `USER_MEDIA`, `WEB_RTC`) | Collab session (host), `MediaStream`, whiteboard model + snapshot, tracker sockets |
-| Content script `overlay` | shared tab, top frame, isolated world | Shadow-DOM overlay: whiteboard view, toolbar, share panel, indicator |
-| Popup | extension | Start/stop, link copy, people list, quick settings |
-| Options page | extension | Settings (section 6) |
+| Service worker | extension | Orchestrator and state machine; shortcuts; tab events; the capture stream id; creates/closes the offscreen doc; opens the console window; tab-size changes |
+| Offscreen document | extension (reasons `USER_MEDIA`, `WEB_RTC`) | Host session (`ShareHost`), board keeper, tab capture stream, tracker sockets |
+| Popup | extension | Start/stop, the two links, viewers, commands, Open console |
+| Options page | extension | Settings (section 5) |
+| Console page | extension (`viewer.html`) | The viewer app with presenter powers; opens from the popup in its own window |
 
-The service worker is stateless between wake-ups: durable state is in
-`chrome.storage.session` (`{tabId, token, phase}`) and the offscreen doc.
+The service worker is stateless between wake-ups: the phase and tab are in
+`chrome.storage.session`; the share lives in the offscreen document.
 
 ### State machine
 
-`idle → starting → live ⇄ paused → ending → idle`. One shared tab at a time.
-Starting a new share in another tab asks to end the first.
+`idle -> starting -> live <-> paused -> ending -> idle`. One shared tab at a time.
+Starting another share ends the first.
 
 ## 3. Start / stop flow
 
-1. User clicks the toolbar action (or shortcut, default `Alt+Shift+I`). This
-   grants `activeTab` and the user gesture needed by `tabCapture`.
-2. Confirmation: the popup always shows the notice (the Start button is the confirmation); the shortcut starts a share only after one confirmed start (`consented` in `storage.local`), otherwise it opens the popup. The notice reads ("everything in this tab will be
-   visible to anyone with the link").
-3. Service worker: `chrome.tabCapture.getMediaStreamId({targetTabId})`,
-   creates the offscreen document, passes the id.
-4. Offscreen: acquires the stream, creates the host session, publishes the
-   invite fragment.
-5. Service worker injects the content script (`chrome.scripting.executeScript`)
-   and the overlay connects a Port to the offscreen document; overlay shows the share panel with the link
-   `<viewerBase>/#inkpad=<token>` and *Copy*.
-6. Stop (button, Esc-hold, closing the tab, or removing the extension)
-   sends `stage.state=ended` and `end`, closes links, removes the overlay and
-   closes the offscreen document.
+1. The user clicks the toolbar action (or the shortcut, default `Alt+Shift+I`).
+   This grants `activeTab` and the user gesture `tabCapture` needs.
+2. The popup shows the notice ("everything in this tab will be visible to anyone
+   with the link"); its Start button is the confirmation. The shortcut starts a
+   share only after one confirmed start, otherwise it opens the popup.
+3. Refused targets: browser pages and the Web Store (not capturable), and any
+   tab showing the viewer or console of **this** session (it would film
+   itself).
+4. Service worker: `chrome.tabCapture.getMediaStreamId({targetTabId})`, creates
+   the offscreen document, sends the stream id, the tab size and the settings.
+5. Offscreen: captures the stream, creates the host session and board keeper,
+   makes the viewer link and the console link.
+6. The popup shows both links. **Open console** opens the console in a popup
+   window (`chrome.windows.create`).
+7. Stop (popup, console "End", shortcut, closing the shared tab) sends
+   `stage.state=ended` and `end`, closes the links, stops the capture and closes
+   the offscreen document.
 
-## 4. Overlay
+The two links: the **viewer link** is for everyone; the **console link** carries
+the presenter key and is private. The console is an extension page
+(`chrome-extension://<id>/viewer.html#...`), so it opens without the hosted
+viewer being reachable.
 
-- Host element appended to `document.documentElement` (not `body`), with a
-  closed shadow root, `position: fixed; inset: 0; z-index: 2147483647`, and
-  `pointer-events: none` except on toolbar and while a drawing tool is active.
-  Appending to `documentElement` matters for capture (spec/03 section 3).
-- **Toolbar** (nymph look, ported): pointer, pen, text, sticker (with chooser),
-  eraser, colour swatch and palette, undo, redo, clear, plus inkpad extras:
-  *people* (count, lock viewers, remove, new link), *share* (link, copy),
-  *pause video*, *hide overlay*, *stop*. The control bar (everything but the drawing tools) is draggable, remembered per origin in `storage.local`,
-  collapsible; position remembered per origin in `chrome.storage.local`.
-- **Pointer mode** keeps the page fully interactive; `Esc` returns to it.
-- **Remote activity** is drawn live: viewer cursors with name labels, live
-  ink, items. A subtle "N viewers" pill is always visible.
-- **Hide overlay** hides drawings locally only. The model keeps syncing and
-  viewers still see everything; useful for interacting with the page.
-- Keyboard shortcuts from nymph (undo/redo, Esc) plus `chrome.commands` for
-  toggle overlay and toggle pause. The overlay swallows keys only while the
-  text tool is editing.
-- Dark scheme and keyboard focus styling follow nymph.
-- Re-injected on top-frame `tabs.onUpdated` (`status: loading`) for the
-  shared tab; iframes are not overlaid (v1). Receives a model snapshot and
-  `stage` state on attach.
-- `chrome://`, Web Store and other restricted pages cannot be injected; the
-  popup explains this instead of failing silently.
+## 4. Permissions
 
-## 5. Permissions
+`activeTab`, `tabCapture`, `offscreen`, `storage`. No host permissions, no
+`scripting`, no content script. Network access is to trackers (WebSocket) and
+ICE servers only. No remote code, no analytics.
 
-Required: `activeTab`, `tabCapture`, `offscreen`, `scripting`, `storage`.
-Optional host permission `<all_urls>`, requested when starting the first share
-via a "Keep overlay across navigation" prompt: without it `activeTab` is
-dropped on cross-origin navigation and the overlay disappears until the user
-clicks the action again (capture itself continues). No remote code, no
-analytics, network access only to trackers (WebSocket) and ICE servers.
-
-## 6. Settings (options page, `chrome.storage.sync`)
+## 5. Settings (options page, `chrome.storage.sync`)
 
 | Setting | Default |
 |---|---|
 | Viewer base URL | the project's GitHub Pages URL |
-| Trackers | list from `packages/defaults` (editable) |
+| Trackers | list from `packages/defaults` (editable; non-default lists travel in the viewer link) |
 | ICE servers (STUN/TURN) | public STUN, TURN empty |
 | Frame rate, max resolution, max bitrate | see `spec/03` section 4 |
 | Viewers may draw on start | on |
-| Display name / colour | random friendly name, random colour |
-| Toolbar language strings | English (strings table, i18n-ready) |
+| Display name / colour | `Presenter`, blue |
 
 Settings take effect live where possible (video parameters) or on the next
 share.
 
-## 7. Failure behaviour
+## 6. Failure behaviour
 
-- Capture fails/revoked: `phase` returns to `idle`, badge turns red, popup
-  shows the reason; overlay removed.
-- No tracker reachable after 10 s: panel shows "no-tracker" with the manual
-  code option (nymph carries this over).
-- Offscreen doc crash: service worker detects the closed Port, ends the share
-  cleanly; drawings are lost (not persisted by design).
-- Page navigation: the session is unaffected; overlay re-attaches within a
-  frame or two of `DOMContentLoaded`.
+- Capture fails or is revoked: back to `idle`, red badge, the popup shows why.
+- No tracker reachable after 10 s: the popup shows `no-tracker` (manual codes are
+  a later addition).
+- Offscreen document crash: the service worker notices and ends the share.
+  Drawings are lost (not persisted by design).
+- The shared tab navigates: capture and session are unaffected (nothing was
+  injected). A resize of the window re-fits the capture constraints.
 
-## 8. Testing
+## 7. Testing
 
-Vitest for the state machine and `SessionProxy`; Playwright with the unpacked
-extension for start/stop, navigation re-attach, pointer pass-through, toolbar
-actions and lock enforcement. See `spec/01_core_features/DESIGN.md` section 6.
+Vitest for the state machine, settings and `ShareHost`; Chromium with the
+unpacked extension for start/stop, links, video reaching a viewer and the
+console. See `spec/01_core_features/DESIGN.md` section 6.
 
-## 9. Implementation notes (project 02, steps 1 to 4)
+## 8. Implementation notes
 
-- `ShareHost` (`extension/src/share-host.ts`) is the whole presenter side without chrome.* calls, so it is unit tested; `offscreen.ts` only connects it to messages and ports.
-- The host's `accept` callback lets viewers speak only on the `wb` channel (through `drawingGate`), so a viewer cannot send `stage` messages to the other viewers through the host relay.
-- `stage.state` is `live`, `paused` or `ended`; the viewport size comes from the overlay (`viewport` command, 200 ms debounce) until the capture of `spec/03_tab_streaming` supplies it.
-- An extension cannot read the URL of a tab it has no access to. The tab the share starts from has it (popup or shortcut grants `activeTab`); after a cross-origin navigation it is hidden unless the optional all-sites access was granted, so `canInject` then says no and the popup offers "Show it again".
-- Deferred: the whiteboard's own toolbar stays at the left edge (making it draggable means changing the copied whiteboard); video integration waits for `spec/03_tab_streaming` steps 2 and 3.
-- The e2e build (`--e2e`) adds host access to loopback and leaves the overlay's shadow root open; the shipped build has neither.
+- `ShareHost` (`extension/src/share-host.ts`) is the whole presenter side without
+  chrome.* calls, so it is unit tested; `offscreen.ts` only connects it to
+  messages.
+- The host's `accept` callback is the gate: viewers speak only on the `wb`
+  channel (through `drawingGate`); `ctl` messages are handled inside it and
+  never delivered or relayed. See `spec/01_core_features/DESIGN.md` section 4.5.
+- An extension cannot read the URL of a tab it has no access to. The tab the
+  share starts from has it (popup or shortcut grants `activeTab`).
+- History: steps 1 to 4 first built an on-page overlay (content script, session
+  proxy, board keeper hooks). It was removed when the console replaced it; the
+  board keeper stays so late joiners get the drawings while no console is open.

@@ -15,10 +15,16 @@
 </style>
 <h1>Fixture page</h1>
 <button id="count" type="button">clicks: 0</button>
+<div id="tick" style="font: 20px monospace">0</div>
 <script>
   let n = 0;
   document.getElementById('count').addEventListener('click', (e) => {
     n += 1;
     e.target.textContent = `clicks: ${n}`;
   });
+  let t = 0;
+  setInterval(() => {
+    t += 1;
+    document.getElementById('tick').textContent = String(t);
+  }, 40);
 </script>

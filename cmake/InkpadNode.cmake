@@ -19,8 +19,10 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/node_modules/.package-lock.json")
   execute_process(
     COMMAND "${INKPAD_NPM}" ${_inkpad_npm_install} --no-audit --no-fund
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    RESULT_VARIABLE _inkpad_npm_result)
+    RESULT_VARIABLE _inkpad_npm_result
+    OUTPUT_VARIABLE _inkpad_npm_output
+    ERROR_VARIABLE _inkpad_npm_output)
   if(NOT _inkpad_npm_result EQUAL 0)
-    message(FATAL_ERROR "inkpad: npm ${_inkpad_npm_install} failed")
+    message(FATAL_ERROR "inkpad: npm ${_inkpad_npm_install} failed (${_inkpad_npm_result}):\n${_inkpad_npm_output}")
   endif()
 endif()
