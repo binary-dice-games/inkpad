@@ -38,6 +38,10 @@ export async function loadExtension(): Promise<LoadedExtension> {
       // Lets this extension capture a tab without the click a person would give it.
       `--allowlisted-extension-id=${E2E_EXTENSION_ID}`,
       '--disable-features=WebRtcHideLocalIpsWithMdns',
+      // Several windows run side by side and only one is in front: do not slow the others down.
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
     ],
   });
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));

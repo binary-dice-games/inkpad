@@ -64,6 +64,11 @@ export async function launchChrome(): Promise<Browser> {
       // Host candidates as plain IPs: no mDNS lookups between two pages of one browser.
       '--disable-features=WebRtcHideLocalIpsWithMdns',
       '--autoplay-policy=no-user-gesture-required',
+      // Several windows run side by side and only one is in front: do not slow the others
+      // down (timers, rendering), or the presenter page's video source stalls.
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
     ],
   });
 }
