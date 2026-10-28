@@ -8,16 +8,17 @@ WebTorrent trackers with sealed offers, and the board is a layer of data on top
 of the video, not part of it. The collab code is copied (not referenced) from
 [nymph](https://github.com/binary-dice-games/nymph) and adapted.
 
-**Status:** the collab core is implemented (`spec/01_core_features`): serverless
-sessions with video, the whiteboard, the session proxy and board keeper. The
-extension, tab streaming, viewer site and release pipeline are specified, not
-built yet. See [spec/INDEX.md](spec/INDEX.md).
+**Status:** the collab core (`spec/01_core_features`) and the presenter extension
+(`spec/02_presenter_extension`, without video yet) are implemented. Tab
+streaming, the viewer site and the release pipeline are specified, not built.
+See [spec/INDEX.md](spec/INDEX.md).
 
 ## Build and test
 
 ```
 cmake -S . -B build                       # installs npm dependencies on first run
 cmake --build build --target check        # lint, typecheck, format check
+cmake --build build --target extension    # unpacked extension in extension/dist
 ctest --test-dir build -C Debug --output-on-failure --parallel
 ```
 
@@ -30,6 +31,7 @@ Needs Node.js 20+; the browser tests need Chrome. Details in
 |------|----------|
 | `packages/collab-session/` | Serverless WebRTC rooms and video, session proxy |
 | `packages/collab-whiteboard/` | Whiteboard overlay, board keeper |
+| `extension/` | The Chrome extension (presenter side) |
 | `packages/defaults/` | Trackers, ICE servers, video presets, `stage` message, invite links |
 | `tests/` | Vitest unit tests, Chrome WebRTC tests, fake tracker |
 | `cmake/` | CMake modules (Node discovery, `inkpad_add_test`) |

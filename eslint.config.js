@@ -9,6 +9,7 @@ export default tseslint.config(
       'node_modules/',
       'build/',
       'dist/',
+      'extension/dist*/',
       'packages/collab-session/collab-session.js',
       'packages/collab-whiteboard/collab-whiteboard.js',
     ],
@@ -25,6 +26,12 @@ export default tseslint.config(
         queueMicrotask: 'readonly',
         structuredClone: 'readonly',
       },
+    },
+  },
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', Buffer: 'readonly', console: 'readonly' },
     },
   },
   {

@@ -1,6 +1,7 @@
 node_modules/
 build/
 dist/
+extension/dist*/
 package-lock.json
 packages/collab-session/collab-session.js
 packages/collab-whiteboard/collab-whiteboard.js

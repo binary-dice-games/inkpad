@@ -22,6 +22,14 @@ add_custom_target(
   COMMENT "inkpad: lint, typecheck, format check"
   VERBATIM)
 
+# The unpacked extension, in extension/dist (load it from chrome://extensions).
+add_custom_target(
+  extension
+  COMMAND "${INKPAD_NPM}" run build:extension
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  COMMENT "inkpad: build the Chrome extension"
+  VERBATIM)
+
 if(INKPAD_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)

@@ -1,0 +1,165 @@
+<!doctype html>
+<!-- MIT License © 2026 Carlos Lopez -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>inkpad settings</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --border: #d9d9e0;
+        --accent: #0f9f86;
+        --muted: #60646c;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --border: #363a3f;
+          --muted: #b0b4ba;
+        }
+      }
+      body {
+        margin: 0 auto;
+        max-width: 640px;
+        padding: 16px;
+        font:
+          14px/1.45 system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+      }
+      h1 {
+        font-size: 20px;
+      }
+      fieldset {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin: 12px 0;
+        padding: 8px 12px 12px;
+      }
+      legend {
+        font-weight: 600;
+        padding: 0 4px;
+      }
+      label {
+        display: block;
+        margin: 8px 0 2px;
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 12px;
+        margin: 2px 0;
+      }
+      input[type='text'],
+      input[type='number'],
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font: inherit;
+        background: transparent;
+        color: inherit;
+      }
+      textarea {
+        min-height: 80px;
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 12px;
+      }
+      input[type='color'] {
+        vertical-align: middle;
+      }
+      .check {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .check input {
+        margin: 0;
+      }
+      button {
+        padding: 6px 14px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 600;
+      }
+      button:focus-visible,
+      input:focus-visible,
+      textarea:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      #status {
+        margin-left: 10px;
+      }
+      #uplink.warn {
+        color: #b45309;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>inkpad settings</h1>
+    <form id="form">
+      <fieldset>
+        <legend>You</legend>
+        <label for="name">Name shown to viewers</label>
+        <input id="name" type="text" maxlength="40" />
+        <label for="color">Colour</label>
+        <input id="color" type="color" />
+        <label class="check"
+          ><input id="viewersMayDraw" type="checkbox" /> Viewers may draw when a share starts</label
+        >
+        <label class="check"
+          ><input id="keepAcrossNavigation" type="checkbox" /> Keep the overlay when the tab goes to
+          another site (asks for access to all sites)</label
+        >
+      </fieldset>
+      <fieldset>
+        <legend>Video</legend>
+        <label for="fps">Frames per second</label>
+        <input id="fps" type="number" min="0.5" max="15" step="0.5" />
+        <p class="hint">
+          Only the background is streamed, so a few frames are enough. Presets: 1, 3, 5, 10.
+        </p>
+        <label for="maxWidth">Largest width (px)</label>
+        <input id="maxWidth" type="number" min="640" max="1920" step="1" />
+        <label for="maxHeight">Largest height (px)</label>
+        <input id="maxHeight" type="number" min="360" max="1080" step="1" />
+        <label for="bitrateKbps">Largest bitrate per viewer (kbit/s)</label>
+        <input id="bitrateKbps" type="number" min="100" max="3000" step="50" />
+        <p class="hint" id="uplink"></p>
+      </fieldset>
+      <fieldset>
+        <legend>Connection</legend>
+        <label for="viewerBase">Viewer page (https)</label>
+        <input id="viewerBase" type="text" />
+        <label for="trackers">Trackers (one per line, wss://)</label>
+        <textarea id="trackers" spellcheck="false"></textarea>
+        <p class="hint">
+          Trackers only introduce peers. They see sealed data, never your link or drawings.
+        </p>
+        <label for="iceServers">STUN / TURN servers (one per line)</label>
+        <textarea id="iceServers" spellcheck="false"></textarea>
+        <p class="hint">
+          Format: <code>stun:host:port</code> or <code>turn:host:port username credential</code>.
+        </p>
+      </fieldset>
+      <p>
+        <button class="primary" type="submit">Save</button>
+        <button id="reset" type="button">Restore defaults</button>
+        <span id="status" role="status"></span>
+      </p>
+    </form>
+    <script src="options.js"></script>
+  </body>
+</html>

@@ -10,7 +10,10 @@ Follow in order; update the plan before diverging; record results.
 hosting a host `Session`, popup with start/stop and copy link, badge.
 **Tests:** state-machine unit tests; Playwright: start produces a link, a
 guest in the memory/fake-tracker network joins, stop ends the room.
-**Result:** _pending_
+**Result:** Done. Manifest, service worker state machine (`state.ts`,
+`background.ts`), offscreen document hosting `ShareHost`, popup, badge,
+shortcut. Divergence: the overlay connects to the offscreen document directly,
+the service worker does not relay (DESIGN section 2 and 9).
 
 ## Step 2 — Overlay and SessionProxy
 
@@ -20,7 +23,14 @@ guest in the memory/fake-tracker network joins, stop ends the room.
 restricted-page handling.
 **Tests:** draw with each tool; reload and cross-origin navigate; page remains
 clickable in pointer mode; restricted page message.
-**Result:** _pending_
+**Result:** Done. Overlay in a shadow root under `<html>`, connected through
+`connectSessionProxy`; drawings survive reloads through the board keeper;
+re-injection on `tabs.onUpdated`; pointer mode leaves the page clickable;
+restricted pages refused with a message. Verified in Chromium with the unpacked
+extension (`tests/e2e/extension.test.ts`): pen stroke, viewer sticker, same-origin
+reload, tab close. Not yet tested: the other tools, a cross-origin navigation
+(needs the all-sites permission), and the overlay's control bar and popup UI
+(only their commands are).
 
 ## Step 3 — Toolbar, people panel, controls
 
@@ -29,7 +39,11 @@ clickable in pointer mode; restricted page message.
 new link, pause, hide overlay, shortcuts, remembered position.
 **Tests:** lock drops viewer ops host-side; remove/new-link behaviour; hide
 overlay does not stop sync.
-**Result:** _pending_
+**Result:** Done, except the whiteboard toolbar stays at the left edge (not
+draggable): people panel, lock, remove, new link, pause, hide drawings, stop,
+control bar position remembered, three shortcuts. Lock, remove and new link are
+tested on `ShareHost`, lock also in the browser; hide drawings and the shortcuts
+are untested.
 
 ## Step 4 — Options and permissions
 
@@ -38,7 +52,11 @@ overlay does not stop sync.
 permission prompt, first-run consent panel.
 **Tests:** invalid settings rejected; live video-parameter changes reach the
 offscreen doc; permission-denied path keeps working (re-click to re-attach).
-**Result:** _pending_
+**Result:** Done. Options page with validated `storage.sync` settings
+(trackers, STUN/TURN, video, name, colour, viewer page), the optional all-sites
+permission requested from the popup click, consent notice. The live
+video-parameter check and the permission-denied path wait for video
+(step 5); settings validation is unit tested.
 
 ## Step 5 — Integrate video
 
