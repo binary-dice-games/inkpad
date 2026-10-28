@@ -72,6 +72,8 @@ describe('video and board over real WebRTC', () => {
       );
 
       // Measure the received frame rate over a few seconds: capped near the configured 3 fps.
+      // The viewer page must be in front: a page behind another gets no video frame callbacks.
+      await guest.page.bringToFront();
       const fps = await guest.page.evaluate(async () => {
         const v = document.getElementById('v') as HTMLVideoElement;
         let frames = 0;
