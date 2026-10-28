@@ -71,25 +71,37 @@ describe('video and board over real WebRTC', () => {
         { timeout: 30000 },
       );
 
-      // Measure the received frame rate over a few seconds: capped near the configured 3 fps.
-      // The viewer page must be in front: a page behind another gets no video frame callbacks.
-      await guest.page.bringToFront();
-      const fps = await guest.page.evaluate(async () => {
-        const v = document.getElementById('v') as HTMLVideoElement;
-        let frames = 0;
-        const count = () => {
-          frames += 1;
-          v.requestVideoFrameCallback(count);
-        };
-        v.requestVideoFrameCallback(count);
-        const t0 = performance.now();
-        await new Promise((r) => setTimeout(r, 4000));
-        return frames / ((performance.now() - t0) / 1000);
-      });
-      expect(fps).toBeGreaterThan(0.5);
+      // Measure the frames delivered over a few seconds, from the receiver's WebRTC statistics
+      // (frames decoded), not from how often the page paints: painting depends on the window
+      // being visible, delivery does not. Capped near the configured 3 fps.
+      const sample = () =>
+        guest.page.evaluate(async () => {
+          const app = (
+            window as unknown as {
+              app: { session: { links: Map<string, { link: { pc: RTCPeerConnection } }> } };
+            }
+          ).app;
+          const pc = [...app.session.links.values()][0]!.link.pc;
+          const report = await pc.getStats();
+          let decoded = 0;
+          let received = 0;
+          report.forEach((r) => {
+            if (r.type === 'inbound-rtp' && r.kind === 'video') {
+              decoded = r.framesDecoded ?? 0;
+              received = r.framesReceived ?? 0;
+            }
+          });
+          return { decoded, received, at: performance.now() };
+        });
+      const first = await sample();
+      await new Promise((r) => setTimeout(r, 4000));
+      const last = await sample();
+      const fps = (last.decoded - first.decoded) / ((last.at - first.at) / 1000);
+      const detail = JSON.stringify({ first, last, fps });
+      expect(fps, detail).toBeGreaterThan(0.5);
       // The source makes 15 frames a second and the cap is 3: far below 15 shows the cap works.
       // (The bound is loose because frames arrive in bursts when the machine is busy.)
-      expect(fps).toBeLessThan(9);
+      expect(fps, detail).toBeLessThan(9);
 
       // The presenter sees the viewer; the viewer sees the presenter.
       await host.page.waitForFunction(
