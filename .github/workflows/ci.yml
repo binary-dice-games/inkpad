@@ -1,0 +1,34 @@
+# MIT License © 2026 Carlos Lopez
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux, runner: ubuntu-24.04, build_type: Debug }
+          - { name: macos, runner: macos-15, build_type: Debug }
+          - { name: windows-msvc, runner: windows-latest, build_type: Debug }
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+      - run: cmake --build build --config ${{ matrix.build_type }} --parallel
+      - run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure --parallel

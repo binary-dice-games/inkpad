@@ -1,0 +1,9 @@
+# Check text out with LF on every platform: tests and embedded docs/skill text
+# compare file contents byte for byte.
+* text=auto eol=lf
+*.png binary
+*.ttf binary
+*.ico binary
+*.zip binary
+
+*.cmd text eol=crlf
