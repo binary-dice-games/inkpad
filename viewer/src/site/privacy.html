@@ -1,0 +1,106 @@
+<!doctype html>
+<!-- MIT License © 2026 Carlos Lopez -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'"
+    />
+    <title>inkpad privacy policy</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        max-width: 42rem;
+        margin: 0 auto;
+        padding: 16px;
+        font: 16px/1.55 system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      h1 {
+        font-size: 1.6rem;
+      }
+      h2 {
+        font-size: 1.2rem;
+        margin-top: 1.6rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>inkpad privacy policy</h1>
+      <p>
+        inkpad lets a person share a browser tab live and draw on it together with others. It has
+        no server of its own, no accounts and no analytics. This page says what leaves your device
+        and where it goes.
+      </p>
+
+      <h2>What inkpad does not do</h2>
+      <ul>
+        <li>It does not collect, store or sell personal data.</li>
+        <li>It has no analytics, advertising or tracking code, and sets no cookies.</li>
+        <li>
+          It does not record the video or the drawings. Nothing is saved after a session ends.
+        </li>
+      </ul>
+
+      <h2>What is shared, and with whom</h2>
+      <ul>
+        <li>
+          <strong>The shared tab.</strong> The presenter chooses one tab. Its picture, a few frames
+          a second, is sent directly (peer to peer, encrypted) to the people who have the link.
+          Everything visible in that tab is visible to them.
+        </li>
+        <li>
+          <strong>Drawings, names and colours.</strong> Sent directly between the people in the
+          session. A name is whatever the person types; it is kept in the browser only to prefill
+          the next visit.
+        </li>
+        <li>
+          <strong>Network addresses.</strong> Peer-to-peer connections show each side's network
+          (IP) address to the other. In a session, only the presenter and each viewer see each
+          other's address; viewers do not see each other's.
+        </li>
+        <li>
+          <strong>Public trackers.</strong> To introduce people to each other, inkpad contacts
+          public WebTorrent trackers. A tracker sees your network address and a hash that names the
+          session. It does not see the link, the video or the drawings: what passes through it is
+          encrypted with a key that only people with the link have.
+        </li>
+        <li>
+          <strong>STUN servers.</strong> To find a connection path, the browser asks public STUN
+          servers (by default Google's and Cloudflare's), which see your network address. If the
+          presenter configures a TURN server, traffic that cannot go directly passes through it,
+          encrypted.
+        </li>
+        <li>
+          <strong>The web page.</strong> The viewer page is served by GitHub Pages, which, like any
+          web host, may log requests. The session link is in the part of the address after the
+          <code>#</code>, which browsers never send to the host.
+        </li>
+      </ul>
+
+      <h2>The browser extension</h2>
+      <p>
+        The extension needs permission to capture the tab you choose when you start sharing
+        (<code>tabCapture</code>, <code>activeTab</code>), a hidden page to hold the connections
+        (<code>offscreen</code>), and storage for your settings (<code>storage</code>). It does not
+        read or change the pages you visit, and does not run on any page except to capture the one
+        you share. Settings are stored in your browser's synced storage.
+      </p>
+
+      <h2>Your choices</h2>
+      <p>
+        Stop sharing at any time from the extension, or close the tab. Anyone who has the link can
+        watch while the session runs, so share it only with people you trust; the presenter can
+        lock the session, remove people, or make a new link.
+      </p>
+
+      <h2>Contact</h2>
+      <p>Questions: open an issue at the project's repository.</p>
+    </main>
+  </body>
+</html>

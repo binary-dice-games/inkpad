@@ -4,7 +4,9 @@
 # Sets INKPAD_NODE and INKPAD_NPM.
 
 find_program(INKPAD_NODE node)
-find_program(INKPAD_NPM npm)
+# On Windows npm is a .cmd file; the extensionless `npm` next to it is a shell script that
+# CreateProcess cannot run, so ask for npm.cmd first.
+find_program(INKPAD_NPM NAMES npm.cmd npm)
 if(NOT INKPAD_NODE OR NOT INKPAD_NPM)
   message(FATAL_ERROR "inkpad needs Node.js 20+ and npm on PATH (see docs/building.md)")
 endif()
