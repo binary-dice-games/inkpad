@@ -20,15 +20,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux, runner: ubuntu-24.04, build_type: Debug }
-          - { name: macos, runner: macos-15, build_type: Debug }
-          - { name: windows-msvc, runner: windows-latest, build_type: Debug }
+          - { name: linux, runner: ubuntu-24.04, config: Debug }
+          - { name: macos, runner: macos-15, config: Debug }
+          - { name: windows, runner: windows-latest, config: Debug }
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          submodules: recursive
-      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-      - run: cmake --build build --config ${{ matrix.build_type }} --parallel
-      - run: ctest --test-dir build -C ${{ matrix.build_type }} --output-on-failure --parallel
+          node-version: 22
+          cache: npm
+      - run: cmake -S . -B build
+      - run: cmake --build build --config ${{ matrix.config }} --target check
+      # Browser tests use the Chrome preinstalled on the runner.
+      - run: ctest --test-dir build -C ${{ matrix.config }} --output-on-failure --parallel

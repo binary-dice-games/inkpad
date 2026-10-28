@@ -1,0 +1,15 @@
+inkpad
+MIT License © 2026 Carlos Lopez
+
+This project includes code copied from nymph
+(https://github.com/binary-dice-games/nymph), MIT License © 2026 Binary Dice
+Games, taken at commit 13de939afdd5b52f35b1bbd8ef90cd677c3ae844:
+
+  packages/collab-session/collab-session.js     from web/collab/collab-session.js
+  packages/collab-whiteboard/collab-whiteboard.js
+                                                from web/collab/collab-whiteboard.js
+
+The copies were adapted for inkpad; the changes are listed in each file's
+header and in spec/01_core_features/DESIGN.md sections 4.1 and 4.2. Each file
+keeps its license line and provenance note. inkpad does not depend on nymph at
+build or run time.

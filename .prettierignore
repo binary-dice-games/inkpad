@@ -1,0 +1,11 @@
+node_modules/
+build/
+dist/
+package-lock.json
+packages/collab-session/collab-session.js
+packages/collab-whiteboard/collab-whiteboard.js
+spec/
+docs/
+*.md
+.claude/
+.github/

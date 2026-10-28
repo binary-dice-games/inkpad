@@ -13,7 +13,13 @@ CI matrix updated; C++ dirs removed; `CLAUDE.md`, `README.md`,
 `docs/building.md` updated (user approves the CLAUDE.md edit).
 **Tests:** a trivial Vitest suite run via `ctest`; CI green on Linux, macOS,
 Windows.
-**Result:** _pending_
+**Result:** Done. npm workspace (`packages/*`), strict TypeScript, ESLint,
+Prettier, Vitest 3. C++ skeleton, `.clang-format` and the googletest submodule
+removed. CMake (`LANGUAGES NONE`) installs npm dependencies on configure, has
+a `check` target and registers tests through `inkpad_add_test` (ctest). The
+`extension` and `viewer` targets are deferred to projects 02 and 04, which have
+sources to build. CI runs on Linux, macOS and Windows. `CLAUDE.md`, README and
+`docs/building.md` updated. Verified locally on Windows only; the Linux and macOS CI jobs have not run yet.
 
 ## Step 2 — Copy and adapt `collab-session`
 
@@ -24,7 +30,12 @@ guest `track` event, `recvonly` video transceiver; `packages/defaults`.
 **Tests:** framing/seal/replay tests; host+guests over memory network and the
 fake tracker; video track reaches guest in Chromium (Playwright); data link
 survives video failure.
-**Result:** _pending_
+**Result:** Done. Copied at nymph commit 13de939. Changes: `inkpad=`
+fragment, `inkpad/1`, presenter wording, `MediaController` (`setMedia`,
+`mediaParams` incl. codec preference, guest `track` event, guest `recvonly`
+video transceiver added to every offer, host attaches its track before
+answering). `packages/defaults` added. Verified in Chrome: real video frames
+reach a viewer at a capped rate and the data link works with no video.
 
 ## Step 3 — Copy and adapt `collab-whiteboard`
 
@@ -34,7 +45,12 @@ permissions, snapshot on join.
 sticker set, `perm` message, `accept` filter.
 **Tests:** convergence under reordering/duplication; locked viewer ops are
 dropped by the host; board-unit round-trips at several aspects; limits.
-**Result:** _pending_
+**Result:** Done. Board units (`FRAME_UNITS`, `letterbox`, `frameAdapter`),
+eight emoticon stickers, `drawingGate` (host-side lock and rate limit; viewers
+follow `stage.drawing`, so no `perm` message), `SessionProxy`
+(`serveSessionProxy`/`connectSessionProxy`) and the board keeper (snapshot
+for a re-attached overlay). Divergence from the plan: the keeper is new,
+the `perm` message was dropped (see DESIGN section 4.2).
 
 ## Step 4 — Fake tracker and e2e harness
 
@@ -42,7 +58,12 @@ dropped by the host; board-unit round-trips at several aspects; limits.
 **Deliverables:** `tests/support/fake-tracker`, Playwright fixtures that load
 the unpacked extension and open viewer contexts, `docs/manual-testing.md`.
 **Tests:** harness self-test (two guests join, exchange `wb` ops).
-**Result:** _pending_
+**Result:** Done. `FakeTracker` (local WebTorrent tracker), a static file
+server and Chrome launcher, `tests/e2e/webrtc.test.ts` (video, board in both
+directions, viewer-to-viewer relay, tracker sees only sealed data) and
+`docs/manual-testing.md`. Divergence: playwright-core drives an installed Chrome
+instead of `@playwright/test` with a downloaded Chromium; the unpacked-extension
+fixtures arrive with project 02.
 
 ## Completion Criteria
 

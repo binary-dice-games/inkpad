@@ -1,0 +1,35 @@
+{
+  "name": "inkpad",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension that turns a tab into a shared, serverless whiteboard.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check .",
+    "check": "npm run lint && npm run typecheck && npm run format:check",
+    "test": "vitest run --project unit",
+    "test:e2e": "vitest run --project e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "eslint": "^9.17.0",
+    "jsdom": "^25.0.1",
+    "playwright-core": "^1.64.1",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^3.2.7",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,89 @@
+<!doctype html>
+<!-- MIT License © 2026 Carlos Lopez -->
+<meta charset="utf-8" />
+<title>inkpad e2e room</title>
+<style>
+  body {
+    margin: 0;
+    background: #111;
+  }
+  #stage {
+    position: relative;
+    width: 800px;
+    height: 450px;
+  }
+  video,
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  canvas {
+    display: none;
+  }
+</style>
+<div id="stage"><video id="v" muted autoplay playsinline></video></div>
+<canvas id="src" width="640" height="360"></canvas>
+<script type="module">
+  import { createSession } from '/packages/collab-session/collab-session.js';
+  import { createWhiteboard, frameAdapter } from '/packages/collab-whiteboard/collab-whiteboard.js';
+
+  const q = new URLSearchParams(location.search);
+  const role = q.get('role');
+  const app = (window.app = { role, errors: [], tracks: 0, ticks: 0, state: null });
+
+  const session = await createSession({
+    role,
+    token: q.get('token') ?? undefined,
+    me: { name: q.get('name') ?? role, color: role === 'host' ? '#3e63dd' : '#e5484d' },
+    rendezvous: [
+      {
+        kind: 'torrent',
+        urls: [q.get('tracker')],
+        announceMs: { host: 1000, guest: 1000 },
+        gatherMs: 500,
+      },
+    ],
+    iceServers: [],
+    accept: role === 'host' ? (_c, m) => (q.get('lock') ? m.t === 'cur' : true) : undefined,
+  });
+  app.session = session;
+  session.on('error', (e) => app.errors.push(e.reason ?? e.message));
+  session.on('state', (s) => (app.state = s.state));
+  session.on('track', (stream) => {
+    app.tracks += 1;
+    document.getElementById('v').srcObject = stream;
+  });
+
+  const stage = document.getElementById('stage');
+  app.wb = createWhiteboard(stage, {
+    session,
+    adapter: frameAdapter(stage, () => 16 / 9),
+  });
+
+  if (role === 'host') {
+    app.token = session.token;
+    if (q.get('video') === '1') {
+      const canvas = document.getElementById('src');
+      const g = canvas.getContext('2d');
+      setInterval(() => {
+        app.ticks += 1;
+        g.fillStyle = app.ticks % 2 ? '#206040' : '#604020';
+        g.fillRect(0, 0, 640, 360);
+        g.fillStyle = '#fff';
+        g.font = '72px sans-serif';
+        g.fillText(String(app.ticks), 40, 200);
+      }, 50);
+      const stream = canvas.captureStream(15);
+      session.mediaParams({
+        fps: Number(q.get('fps') ?? 3),
+        maxBitrate: 400000,
+        contentHint: 'detail',
+      });
+      session.setMedia(stream);
+    }
+  }
+  app.ready = true;
+</script>

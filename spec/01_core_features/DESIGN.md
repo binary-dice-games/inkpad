@@ -75,8 +75,10 @@ Key decisions (the *why*):
   snapshot, so drawings survive page loads.
 - **Overlay talks to the session through a `SessionProxy`** (a `Port` relay via
   the service worker) that implements the same `channel()`/`on()` surface the
-  whiteboard expects from a `Session`. The copied whiteboard needs no changes
-  for this.
+  whiteboard expects from a `Session`: `serveSessionProxy(session, port, hooks)`
+  in the offscreen document, `connectSessionProxy(port)` in the overlay
+  (`packages/collab-session/session-proxy.js`). The copied whiteboard needs no
+  changes for this.
 - **Star topology, presenter is host.** Same reason as nymph: the presenter
   holds the truth and one NAT path per viewer. Cost: uplink = viewers × video
   bitrate, hence the low-fps default and ~10-viewer target (see
@@ -130,15 +132,23 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   cross, question, star, heart, thumbs-up, warning, arrow. Peers send names
   only, never SVG (nymph decision: emoji glyphs differ per OS). The text tool
   still accepts emoji characters.
-- **Permissions.** Nymph's `readOnly` is local. inkpad adds `wb` control
-  message `perm {drawing:boolean}` from the host; the host's `accept` callback
-  also drops `put`/`clear`/`ink` from guests while drawing is off, so a
-  modified viewer cannot bypass the lock.
+- **Permissions.** Nymph's `readOnly` is local. inkpad enforces the lock on
+  the host: `drawingGate(() => drawing)` is the session's `accept` callback and
+  drops viewers' ops, live ink and non-empty snapshots while drawing is off
+  (cursors and empty join requests still pass), and rate-limits ops to 50/s per
+  peer. Viewers learn the state from `stage.drawing` and set the whiteboard's
+  `readOnly` from it, so no separate `perm` message exists.
 - **Pointer pass-through on the presenter.** In pointer mode the overlay does
   not capture input, so the page stays usable; cursor tracking uses passive
   window-level `pointermove`.
 - **Snapshot on join.** The host sends the full model snapshot to a new
-  viewer on the reliable channel (nymph already merges snapshots).
+  viewer on the reliable channel (nymph already merges snapshots). While the
+  overlay is detached (page loading) the **board keeper**
+  (`packages/collab-whiteboard/board-keeper.js`) does this: it is a headless
+  `WhiteboardModel` next to the host session that merges viewers' changes and
+  hands a snapshot to the overlay when it attaches.
+- **Frame adapter.** `frameAdapter(element, aspect)` and `letterbox()` map
+  board units to the letterboxed frame inside an element.
 - **Clear** affects everyone and is allowed to viewers only while drawing is on.
 
 ### 4.3 Channels and messages
@@ -180,18 +190,21 @@ packages/
   defaults/            tracker list, ICE servers, limits, fps presets (TS)
 extension/             MV3 extension (spec/02, spec/03) — TypeScript
 viewer/                static viewer site (spec/04) — TypeScript
-tests/                 unit (Vitest), browser e2e (Playwright), in-process fake tracker
-CMakeLists.txt         top-level entry: targets `extension`, `viewer`, `check`, `test`
-                       call npm scripts (build/test remain `cmake --build`/`ctest`)
+tests/                 unit (Vitest), browser e2e (Vitest + playwright-core driving
+                       Chrome), local fake tracker
+CMakeLists.txt         top-level entry: target `check` calls npm; ctest runs Vitest
+                       (`inkpad_add_test`); `extension`/`viewer` targets come with
+                       projects 02 and 04
 ```
 
-- npm workspaces, TypeScript (strict), esbuild bundling, Vitest, Playwright
-  (Chromium with the unpacked extension), ESLint + Prettier.
+- npm workspaces, TypeScript (strict), Vitest, playwright-core driving an
+  installed Chrome (also with the unpacked extension, from project 02), ESLint
+  + Prettier. esbuild bundling arrives with the extension and viewer.
 - The C++ skeleton (`include/`, `src/`, `app/`, `.clang-format` rules in
   `CLAUDE.md`) is **retired** in the first plan step; CLAUDE.md's C++ style,
   GoogleTest and `inkpad_add_test` sections are replaced by JS/TS equivalents
-  (`inkpad_add_test` becomes a ctest wrapper over Vitest/Playwright suites).
-  `extern/` submodules stay allowed but are not expected.
+  (`inkpad_add_test` is a ctest wrapper over Vitest files). `extern/` and the
+  googletest submodule are removed.
 - No runtime dependencies in the shipped extension and viewer beyond the two
   copied packages (keeps the Web Store review and the Pages payload small).
 

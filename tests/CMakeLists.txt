@@ -1,17 +1,8 @@
-inkpad_ensure_submodules(extern/googletest)
+inkpad_add_test(session tests/unit/session.test.ts)
+inkpad_add_test(session_proxy tests/unit/session-proxy.test.ts)
+inkpad_add_test(whiteboard_model tests/unit/whiteboard-model.test.ts)
+inkpad_add_test(whiteboard_dom tests/unit/whiteboard-dom.test.ts)
+inkpad_add_test(defaults tests/unit/defaults.test.ts)
 
-set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-add_subdirectory("${PROJECT_SOURCE_DIR}/extern/googletest" "${PROJECT_BINARY_DIR}/googletest")
-
-include(GoogleTest)
-
-# Helper macro: creates a test executable linked with inkpad and GoogleTest.
-macro(inkpad_add_test TESTNAME)
-  add_executable(${TESTNAME} ${ARGN})
-  target_link_libraries(${TESTNAME} PRIVATE inkpad::inkpad gtest gmock gtest_main)
-  target_include_directories(${TESTNAME} PRIVATE "${PROJECT_BINARY_DIR}/generated")
-  gtest_discover_tests(${TESTNAME})
-endmacro()
-
-inkpad_add_test(test_version test_version.cpp)
+# Browser tests need Chrome (INKPAD_CHROME, see docs/building.md).
+inkpad_add_test(webrtc tests/e2e/webrtc.test.ts PROJECT e2e)

@@ -26,7 +26,7 @@ After completing any task that changes code, add an entry under
 
 ## Code documentation
 
-Keep brief Doxygen comments on public APIs, classes and module contracts:
+Keep brief doc comments (JSDoc/TSDoc) on public APIs, classes and module contracts:
 intent, parameters, return values, failure modes.
 
 ## spec/ — project specifications
@@ -78,7 +78,7 @@ the in-code documentation.
 ## Tests
 
 Always write automated tests for new or modified behavior. Add a test with
-`inkpad_add_test(<name> <sources>)` in `tests/CMakeLists.txt`.
+`inkpad_add_test(<name> <test file>)` in `tests/CMakeLists.txt`.
 
 # inkpad Coding Style Guide
 
@@ -88,42 +88,58 @@ Always write automated tests for new or modified behavior. Add a test with
 - Preserve existing public API names and behavior unless asked.
 - Prefer readable, explicit code. Use ASCII by default.
 
-## C++ Style
+## TypeScript / JavaScript Style
 
-- Follow `.clang-format` exactly: 2-space indent, no tabs, attached braces,
-  `Type* ptr`, sorted includes.
-- Start files with `// MIT License © 2026 Carlos Lopez`.
-- Add `@file` / `@brief` Doxygen comments to public headers.
-- Project includes before standard library includes; prefer explicit includes.
-- Namespace `inkpad`, with a closing namespace comment.
-- `snake_case` types, functions and variables; trailing underscore on member
-  fields (`running_`); descriptive local names.
-- Public methods: contract comments (`@param`, `@return`, failure behavior).
-  Throw `std::runtime_error`-derived errors; use `std::optional` over sentinels.
-- Never poll a plain `bool` written by another thread; use atomics or
-  condition variables. Keep lock scope tight.
+- Code is TypeScript (strict) except the files copied from nymph and the small
+  shared packages that ship as plain JS with `.d.ts` files. Prettier
+  (`.prettierrc.json`) and ESLint (`eslint.config.js`) are authoritative:
+  2-space indent, single quotes, trailing commas, sorted imports by hand.
+- Start files with `// MIT License © 2026 Carlos Lopez` (copied files keep
+  their upstream header plus a provenance note).
+- Add `@file` doc comments to modules and JSDoc/TSDoc to public APIs: intent,
+  parameters, return value, failure modes (`@throws`).
+- `camelCase` functions and variables, `PascalCase` types and classes,
+  `UPPER_SNAKE` constants. Prefer `undefined`/`null` results and discriminated
+  unions over sentinel values; throw `Error` subclasses with a stable `reason`.
+- No polling of shared state without a bounded timeout; use events or
+  promises. Keep async critical sections short.
+- Files under `packages/collab-session/collab-session.js` and
+  `packages/collab-whiteboard/collab-whiteboard.js` are copies of nymph code
+  (see `NOTICE`): change them only for inkpad needs, record the change in the
+  header, keep them excluded from Prettier/ESLint.
 
 ## Platform Support
 
-Targets **Linux, macOS and Windows (MSVC)**; CI builds and tests each
-(`.github/workflows/ci.yml`). Prefer a small `#if defined(_WIN32)` guard in a
-shared file over splitting files. Do not assume code that compiles on
-GCC/Clang compiles on MSVC.
+Targets **Linux, macOS and Windows**; CI builds and tests each
+(`.github/workflows/ci.yml`). Node 20+ and npm are required; the browser tests
+need Chrome (set `INKPAD_CHROME` to its path if it is not in a standard
+location). Use `node:path`, never hard-coded separators.
 
-## Testing Style (GoogleTest)
+## Build Entry
 
-- `TEST` / `TEST_F` with descriptive names; `ASSERT_*` for preconditions,
-  `EXPECT_*` after.
-- ctest runs every test case as its own process, in parallel: no fixed TCP
-  ports (bind port 0), no shared fixed temp directory names (include
-  `current_test_info()->name()`), no fixed sleeps (wait on the condition with
-  a bounded timeout).
+CMake is the entry point: configuring runs `npm ci`/`npm install` when
+`node_modules` is missing; `cmake --build build --target check` runs lint,
+typecheck and the format check; `ctest` runs the tests. Direct `npm run ...`
+scripts are fine while developing.
+
+## Testing Style (Vitest)
+
+- `describe` / `it` with descriptive names; unit tests in `tests/unit/`,
+  browser tests in `tests/e2e/`, helpers in `tests/support/`.
+- Register every test file with `inkpad_add_test(<name> <file> [PROJECT e2e])`
+  in `tests/CMakeLists.txt`. ctest runs each in its own process, in parallel:
+  no fixed TCP ports (listen on port 0), no shared fixed temp directory names,
+  no fixed sleeps (wait on the condition with `until(...)` and a bounded
+  timeout). Never use public trackers or the internet in tests: use
+  `FakeTracker`.
 
 ## Dependencies
 
-Third-party code lives in `extern/` as git submodules (`.gitmodules`). Do not
-edit files under `extern/`. Initialize lazily with
-`inkpad_ensure_submodules(extern/<name>)`.
+npm packages are pinned by `package-lock.json`; add runtime dependencies only
+with good reason (the shipped extension and viewer have none beyond the
+packages in `packages/`). Do not edit files under `node_modules/`. Code copied
+from other projects goes in `packages/` with a provenance header and a
+`NOTICE` entry.
 
 ## Behavioral Rules
 

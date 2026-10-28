@@ -9,4 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Project skeleton: `inkpad` library and executable (prints its version).
+- Serverless collaboration core: sessions over WebRTC with a low-frame-rate
+  video track and a shared whiteboard (ink, text, stickers and emoticons),
+  adapted from nymph.
+
+### Removed
+
+- The C++ `inkpad` library and executable; the project is now TypeScript.
