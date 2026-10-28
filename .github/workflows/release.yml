@@ -1,0 +1,52 @@
+# MIT License © 2026 Carlos Lopez
+# On a tag vX.Y.Z: checks everything again, packages the extension for the Chrome Web
+# Store and attaches the zip and its checksum to a GitHub release, with the CHANGELOG
+# section of that version as the text. Uploading to the Web Store stays manual
+# (docs/publishing.md): store credentials are not kept in CI.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      # The extension links to the viewer of this repository's Pages site, unless a repository
+      # variable names another address (a custom domain).
+      INKPAD_VIEWER_BASE: ${{ vars.INKPAD_VIEWER_BASE || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: The tag must be the package version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "v${version}" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} but package.json says ${version}"; exit 1; }
+
+      - name: Release notes from CHANGELOG.md
+        run: node scripts/release-notes.mjs "${GITHUB_REF_NAME#v}" > release-notes.md
+
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run check
+      - run: npm test
+      - run: npm run test:e2e
+
+      - name: Package and audit the extension
+        run: node scripts/package-extension.mjs release
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" release/*.zip release/*.sha256 \
+            --title "inkpad ${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md

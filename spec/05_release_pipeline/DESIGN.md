@@ -17,27 +17,40 @@ optional-nightly. No tests may depend on public trackers or the internet.
 
 ## 3. Pages deployment
 
-- Workflow `pages.yml`: on push to `main` build `viewer/` and publish to the
-  `github-pages` environment (latest channel); on tags `vX.Y.Z` also publish
-  under `/vX/` (major) so older extensions keep a matching viewer.
-- Static only: `index.html`, hashed JS/CSS, `404.html` that redirects keeping
-  the fragment, no Jekyll (`.nojekyll`).
-- The repo's Pages URL is the default `viewerBase` baked into
-  `packages/defaults` at build time (injected from a repo variable so forks
-  work).
+- Workflow `pages.yml`: on push to `main`, `scripts/build-site.mjs` assembles the
+  site and it is deployed to the `github-pages` environment, then
+  `scripts/smoke-site.mjs` checks the deployed address (with retries).
+  Tags do not deploy: every build already contains the viewer at the root
+  and under `/v<N>/`, N being the protocol major.
+- Pages replaces the whole site on each deploy, so older majors are kept in
+  `site-archive/v<N>/` in the repo and copied in. When the protocol major
+  changes, the last build of the old viewer goes there first.
+- Static only: `index.html`, `viewer.js`, `404.html` with a small script that
+  sends a lost invite (`#inkpad=...`) to the site root keeping the fragment
+  (the base path is filled in at build time, `/<repo>/` on a project site),
+  `privacy.html`, and `.nojekyll`.
+- The extension's default `viewerBase` is fixed at build time from
+  `INKPAD_VIEWER_BASE` (the release workflow sets it to the repository's Pages
+  address, or to the repository variable of the same name for a custom
+  domain), so forks point at their own site.
+- Pages for a private repository needs a paid plan.
 
 ## 4. Extension packaging
 
-- `npm run package` produces `inkpad-extension-<version>.zip` from
-  `extension/dist`: manifest version synced with `package.json`, no source
-  maps unless requested, no remote code, checked by a script that asserts
-  manifest permissions equal the documented set (`spec/02` section 5).
+- `npm run package` builds the extension, runs `scripts/audit-extension.mjs`,
+  and writes a reproducible `inkpad-extension-<version>.zip` (sorted names, fixed
+  timestamps) with its `.sha256` into `release/`. The audit asserts that the
+  manifest permissions equal the documented set (`spec/02` section 4: `activeTab`,
+  `tabCapture`, `offscreen`, `storage`), that there are no host permissions,
+  content scripts or keys, that the version is the package's, and that the code
+  has no `eval`, remote script or source maps.
 - Release workflow on tag: build, test, attach the zip and SHA-256 to the
   GitHub release, update `CHANGELOG.md` section. Web Store upload stays a manual
   step in v1 (store credentials are not put in CI); `docs/publishing.md`
   records the listing text, privacy disclosures and screenshots checklist.
-- Privacy policy page (`docs/privacy.md`, also served on Pages): no data
-  collected by inkpad; describes trackers, STUN/TURN and IP exposure.
+- Privacy policy: a static page (`viewer/src/site/privacy.html`, served at
+  `privacy.html`; `docs/privacy.md` points to it): no data collected by inkpad;
+  describes trackers, STUN/TURN and IP exposure.
 
 ## 5. Versioning
 

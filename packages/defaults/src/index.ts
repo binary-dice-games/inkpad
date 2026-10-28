@@ -8,8 +8,15 @@
 /** Wire protocol id; changes only on incompatible changes. */
 export const PROTOCOL = 'inkpad/1';
 
+// Set by the extension build from INKPAD_VIEWER_BASE (scripts/build-extension.mjs), so a
+// fork's extension points at the fork's own Pages site. Not defined in tests.
+declare const __INKPAD_VIEWER_BASE__: string | undefined;
+
 /** Where the viewer is served by default (GitHub Pages of this repository). */
-export const DEFAULT_VIEWER_BASE = 'https://binary-dice-games.github.io/inkpad/';
+export const DEFAULT_VIEWER_BASE: string =
+  typeof __INKPAD_VIEWER_BASE__ === 'string'
+    ? __INKPAD_VIEWER_BASE__
+    : 'https://binary-dice-games.github.io/inkpad/';
 
 /** Public WebTorrent trackers used to introduce peers (they see only sealed bytes). */
 export const DEFAULT_TRACKERS: readonly string[] = [

@@ -22,6 +22,8 @@ cmake -S . -B build
 cmake --build build --target check        # lint, typecheck, format check
 cmake --build build --target extension    # the unpacked extension in extension/dist
 cmake --build build --target viewer       # the viewer for GitHub Pages in viewer/dist
+cmake --build build --target site         # the whole Pages site in site/
+cmake --build build --target package      # the audited store zip and checksum in release/
 ctest --test-dir build -C Debug --output-on-failure --parallel
 ```
 
@@ -32,7 +34,10 @@ Without CMake, from the repository root:
 ```
 npm run check          # eslint, tsc, prettier --check
 npm run build:extension  # extension/dist; load it from chrome://extensions (developer mode)
-npm run build:viewer     # viewer/dist (the GitHub Pages bundle)
+npm run build:viewer     # viewer/dist (the viewer alone)
+npm run build:site       # site/ (viewer, /v1/ copy, 404, privacy policy)
+npm run audit:extension  # checks extension/dist against the documented permissions
+npm run package          # release/inkpad-extension-<version>.zip and .sha256
 npm test               # unit tests (Vitest, project "unit")
 npm run test:e2e       # browser tests (project "e2e"), needs Chrome
 ```
@@ -56,7 +61,7 @@ npm run test:e2e       # browser tests (project "e2e"), needs Chrome
 | `packages/defaults/` | Trackers, ICE servers, video presets, `stage` and `ctl` messages, invite links |
 | `extension/` | The Chrome extension: `manifest.json`, `src/` (service worker, offscreen document with capture and session host, popup, options) |
 | `viewer/` | The viewer app (`src/main.ts`), also the presenter console; built for Pages and into the extension |
-| `scripts/` | `build-extension.mjs`, `build-viewer.mjs` (esbuild bundles, icons) |
+| `scripts/` | Build and release scripts: `build-extension`, `build-viewer`, `build-site`, `audit-extension`, `package-extension`, `release-notes`, `smoke-site` |
 | `tests/unit/` | Vitest unit and integration tests (memory network) |
 | `tests/e2e/` | Chrome tests: real WebRTC through a local fake tracker |
 | `tests/support/` | Fake tracker, browser launcher, room helpers |
@@ -68,4 +73,5 @@ npm run test:e2e       # browser tests (project "e2e"), needs Chrome
 
 Browser tests start `FakeTracker` (a local WebTorrent tracker) and serve the
 packages from a loopback HTTP server. Real NATs, public trackers and TURN are
-a manual check: see [manual-testing.md](manual-testing.md).
+a manual check: see [manual-testing.md](manual-testing.md). How to run and write tests
+is in [testing.md](testing.md).

@@ -9,9 +9,10 @@ of the video, not part of it. The collab code is copied (not referenced) from
 [nymph](https://github.com/binary-dice-games/nymph) and adapted.
 
 **Status:** working end to end on Chromium: the collab core, the presenter
-extension with tab streaming and the console, and the viewer app. Not done: the
-GitHub Pages deployment and release pipeline, tests on real phones and other
-browsers, the load test with many viewers, a clear message for a version mismatch. See [spec/INDEX.md](spec/INDEX.md).
+extension with tab streaming and the console, the viewer app, and the scripts and
+workflows for the Pages site and releases (the workflows have not run yet). Not
+done: tests on real phones and other browsers, the load test with many viewers, a
+clear message for a version mismatch. See [spec/INDEX.md](spec/INDEX.md).
 
 **How it works.** The extension captures the tab and hosts the session; it adds
 nothing to the page, because tab capture would record it. The presenter draws in
@@ -49,7 +50,10 @@ Needs Node.js 20+; the browser tests need Chrome. Details in
 | File | Contents |
 |------|----------|
 | [docs/building.md](docs/building.md) | Prerequisites, build, check and test |
+| [docs/testing.md](docs/testing.md) | How to run the tests, how the browser tests work, how to try the extension by hand |
 | [docs/manual-testing.md](docs/manual-testing.md) | Release checklist for real networks |
+| [docs/publishing.md](docs/publishing.md) | Making a release, the Pages site, the Web Store listing and permissions |
+| [docs/privacy.md](docs/privacy.md) | Where the privacy policy lives, in short |
 | [spec/INDEX.md](spec/INDEX.md) | Index of the project specifications |
 | [NOTICE](NOTICE) | Code copied from nymph |
 | [CHANGELOG.md](CHANGELOG.md) | User-facing changes |

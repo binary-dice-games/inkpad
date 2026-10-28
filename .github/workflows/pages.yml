@@ -1,0 +1,67 @@
+# MIT License © 2026 Carlos Lopez
+# Publishes the viewer to GitHub Pages from main: at the site root (the latest viewer) and
+# under /v<N>/ (the viewer for protocol major N, which extensions of that major link to).
+# Older majors kept in site-archive/ are published too. See spec/05_release_pipeline.
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; a running deploy is allowed to finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - id: pages
+        uses: actions/configure-pages@v5
+      # base_path is "/inkpad" for a project site and "" for a user site.
+      - run: node scripts/build-site.mjs site --base "${{ steps.pages.outputs.base_path }}/"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  smoke:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The deploy can take a moment to reach every edge: try for a few minutes.
+      - run: |
+          for attempt in 1 2 3 4 5 6; do
+            node scripts/smoke-site.mjs "${{ needs.deploy.outputs.page_url }}" && exit 0
+            echo "attempt $attempt failed; waiting"
+            sleep 20
+          done
+          exit 1

@@ -38,6 +38,22 @@ add_custom_target(
   COMMENT "inkpad: build the viewer app"
   VERBATIM)
 
+# The Pages site (viewer, versioned copy, 404, privacy policy) in site/.
+add_custom_target(
+  site
+  COMMAND "${INKPAD_NPM}" run build:site
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  COMMENT "inkpad: assemble the GitHub Pages site"
+  VERBATIM)
+
+# The audited Chrome Web Store zip and its checksum in release/.
+add_custom_target(
+  package
+  COMMAND "${INKPAD_NPM}" run package
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  COMMENT "inkpad: package the extension"
+  VERBATIM)
+
 if(INKPAD_BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)

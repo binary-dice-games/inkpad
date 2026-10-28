@@ -36,6 +36,7 @@ jobs:
       - run: npx playwright-core install --with-deps chromium
       - run: cmake --build build --config ${{ matrix.config }} --target extension
       - run: cmake --build build --config ${{ matrix.config }} --target viewer
+      - run: node scripts/audit-extension.mjs
       - run: cmake --build build --config ${{ matrix.config }} --target check
       # Browser tests use the Chrome preinstalled on the runner.
       - run: ctest --test-dir build -C ${{ matrix.config }} --output-on-failure --parallel

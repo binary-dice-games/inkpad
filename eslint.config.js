@@ -11,6 +11,9 @@ export default tseslint.config(
       'dist/',
       'extension/dist*/',
       'viewer/dist/',
+      'site/',
+      'site-archive/',
+      'release/',
       'spikes/',
       'packages/collab-session/collab-session.js',
       'packages/collab-whiteboard/collab-whiteboard.js',
@@ -31,9 +34,19 @@ export default tseslint.config(
     },
   },
   {
+    files: ['viewer/src/site/*.js'],
+    languageOptions: { globals: { document: 'readonly', location: 'readonly' } },
+  },
+  {
     files: ['scripts/**/*.mjs'],
     languageOptions: {
-      globals: { process: 'readonly', Buffer: 'readonly', console: 'readonly' },
+      globals: {
+        process: 'readonly',
+        Buffer: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+      },
     },
   },
   {

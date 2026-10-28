@@ -17,6 +17,13 @@ import { fileURLToPath } from 'node:url';
 const E2E_KEY =
   'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwA1Z8Mw5YoDr+aJpReFj64YCY+ahlctWGKJNCu/4zjrN0EIU8SvBw631hGFqQ13eGZZHFvX2AWG0884ypfd6scuuap7uWWQeHmhSiw84cae5wrHAw5HMpTACkuVxPVJrTnmFZnaSVnVtA1N6cgg24O+VzWSqusXtkyljhjJt7NC4/yhZh7QCLlJp8i0z1hwm5DVWaUa/cMPg1CGBceU5f8TSI5KwflLX20956u7ZKYJJVWlTct018aMIwq522cbCtoyCcWRzyYvG/ktpccB8mr9DVSKBUTy1SdWREEMe8WV5AAUSVAVY6h5JH3xZXjoYAJhXgz2scZpE/3X56TMakQIDAQAB';
 
+// Where the viewer lives (GitHub Pages of the repository the extension is built from).
+// The release workflow sets it from the repository; without it the built-in default stays.
+const viewerBase = process.env.INKPAD_VIEWER_BASE || undefined; // empty counts as unset
+if (viewerBase !== undefined && !/^https:\/\/[^\s"'\\]+\/$/.test(viewerBase)) {
+  throw new Error(`INKPAD_VIEWER_BASE must be an https address ending with /: ${viewerBase}`);
+}
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const e2e = process.argv.includes('--e2e');
 const out = join(root, 'extension', e2e ? 'dist-e2e' : 'dist');
@@ -35,6 +42,7 @@ await build({
   sourcemap: e2e ? 'inline' : false,
   minify: !e2e,
   legalComments: 'none',
+  define: viewerBase ? { __INKPAD_VIEWER_BASE__: JSON.stringify(viewerBase) } : {},
   logLevel: 'warning',
 });
 

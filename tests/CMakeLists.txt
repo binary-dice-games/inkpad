@@ -6,8 +6,10 @@ inkpad_add_test(defaults tests/unit/defaults.test.ts)
 inkpad_add_test(extension_settings tests/unit/extension-settings.test.ts)
 inkpad_add_test(share_host tests/unit/share-host.test.ts)
 inkpad_add_test(viewer_model tests/unit/viewer-model.test.ts)
+inkpad_add_test(release tests/unit/release.test.ts)
 
 # Browser tests: webrtc needs Chrome (INKPAD_CHROME); extension needs Playwright's
 # Chromium (`npx playwright-core install chromium`), see docs/building.md.
 inkpad_add_test(webrtc tests/e2e/webrtc.test.ts PROJECT e2e)
 inkpad_add_test(extension tests/e2e/extension.test.ts PROJECT e2e)
+inkpad_add_test(site tests/e2e/site.test.ts PROJECT e2e)

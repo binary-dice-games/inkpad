@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   video track and a shared whiteboard (ink, text, stickers and emoticons),
   adapted from nymph.
 
+- Privacy policy page on the viewer site.
+
 ### Removed
 
 - The C++ `inkpad` library and executable; the project is now TypeScript.
