@@ -182,12 +182,12 @@ Be careful with these; nothing tests them automatically:
 - Real networks: public trackers over time, NATs, TURN, corporate proxies.
 - Browsers other than Chromium, real phones, screen readers.
 - Many viewers (the design aims at about 10) and long sessions.
-- The GitHub workflows (CI, Pages, release): they have not run yet.
+- The Pages and release workflows: they have not run yet (CI has, on all three systems).
 - A viewer on another protocol version: it only sees "the presenter did not answer".
 
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs the same steps on Linux, macOS and Windows: configure,
 `check`, the extension and viewer builds, the extension audit and the whole ctest suite.
-It needs the repository's Actions to be allowed to run; see the status in
+Its history and the problems it found are in
 [../spec/05_release_pipeline/PLAN.md](../spec/05_release_pipeline/PLAN.md).

@@ -9,14 +9,20 @@ after `04_viewer_site` step 1.
 **Deliverables:** updated `ci.yml` (matrix, lint, typecheck, test, build, size
 budget), Linux e2e job.
 **Tests:** CI green; a deliberately failing test turns it red (verified once).
-**Result:** Written, not verified. `ci.yml` runs on Linux, macOS and Windows:
+**Result:** Done and verified once the repository was made public (the billing
+block applied to the private repository). `ci.yml` runs on Linux, macOS and Windows:
 configure (npm ci), lint/typecheck/format, the Chromium install, the extension and
 viewer builds, the extension audit and the whole ctest suite, including the browser
 tests on every OS (the design said Linux only; they are cheap enough to try
-everywhere). It passed on Linux and macOS for the first JS commit; since then GitHub
-has not started any job because of an account billing block, and the Windows job
-failed at `npm ci` with no log (the CMake step now prints npm's output). No commit
-with the extension, capture or viewer has been through CI.
+everywhere). First runs found real problems, all fixed: `.gitignore`'s `site/`
+also hid `viewer/src/site/` (the 404, privacy and redirect sources were never
+committed); on Windows CMake picked the extensionless `npm` shell script instead
+of `npm.cmd`; and the browser tests were flaky on macOS and Windows (a frame-rate
+check that counted page paints, which stop for a window behind another, and
+browser start-up exceeding vitest's 10 s hook timeout). The frame rate is now read
+from the receiver's WebRTC statistics, background throttling is off in the test
+browsers and hooks have a longer timeout. Three consecutive full runs on commit
+`242001b` passed on all three systems.
 
 ## Step 2 — Pages deployment
 

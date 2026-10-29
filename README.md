@@ -10,7 +10,7 @@ of the video, not part of it. The collab code is copied (not referenced) from
 
 **Status:** working end to end on Chromium: the collab core, the presenter
 extension with tab streaming and the console, the viewer app, and the scripts and
-workflows for the Pages site and releases (the workflows have not run yet). Not
+workflows for the Pages site and releases (CI passes on Linux, macOS and Windows; the Pages and release workflows have not run yet). Not
 done: tests on real phones and other browsers, the load test with many viewers, a
 clear message for a version mismatch. See [spec/INDEX.md](spec/INDEX.md).
 
