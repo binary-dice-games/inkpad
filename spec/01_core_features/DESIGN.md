@@ -181,7 +181,7 @@ Same tools, data model, merge rules and limits as nymph. Changes:
 - **Turn queue.** The host keeps the queue (`queue` message with peer ids, accepted only
   from the host and refused by the gate when a guest sends it); guests send `turn`
   (`join`/`leave`) to the host. The host drops people who leave and can remove anyone. The
-  first id has the turn: its cursor gets a ring and a larger shape. Turn requests and
+  first id has the turn: its cursor gets a larger shape and a pulsing border on the name tag or avatar. Turn requests and
   avatars pass the drawing gate even when viewers cannot draw.
 
 ### 4.3 Channels and messages

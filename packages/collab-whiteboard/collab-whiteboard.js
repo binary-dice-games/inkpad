@@ -533,16 +533,14 @@ svg.board:not(.pen):not(.eraser) .item.own { cursor: move; }
 .cursor .shape { position: absolute; }
 .cursor svg { display: block; filter: drop-shadow(0 0 1px #fff) drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
 .cursor svg.pointer path { stroke: #fff; stroke-width: 1.4; stroke-linejoin: round; }
-.cursor .ring { display: none; position: absolute; left: -20px; top: -20px; width: 40px; height: 40px; box-sizing: border-box; border-radius: 50%;
-  border: 3px solid var(--c); box-shadow: 0 0 0 2px #fff, 0 0 14px 4px var(--c); animation: pulse 1.2s ease-in-out infinite; }
-.cursor.active .ring { display: block; }
 .cursor.active .shape { transform: scale(1.7); transform-origin: var(--hx) var(--hy); }
-@keyframes pulse { 50% { transform: scale(1.25); opacity: .6; } }
-@media (prefers-reduced-motion: reduce) { .cursor .ring { animation: none; } }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--c); } 50% { box-shadow: 0 0 0 3px #fff, 0 0 0 7px var(--c), 0 0 14px 6px var(--c); } }
+.cursor.active img, .cursor.active span { animation: pulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .cursor.active img, .cursor.active span { animation: none; } }
 .cursor img { position: absolute; left: 14px; top: 14px; width: 26px; height: 26px; box-sizing: border-box; border-radius: 50%; border: 2px solid #8b8d98; object-fit: cover; background: #fff; }
 .cursor img[hidden], .cursor span[hidden] { display: none; }
-.cursor.active img { left: 22px; top: 24px; width: 44px; height: 44px; border-width: 3px; box-shadow: 0 0 0 2px #fff; }
-.cursor.active span { left: 26px; top: 30px; font-size: 14px; font-weight: 600; box-shadow: 0 0 0 2px #fff; }
+.cursor.active img { left: 22px; top: 24px; width: 44px; height: 44px; border-width: 3px; }
+.cursor.active span { left: 26px; top: 30px; font-size: 14px; font-weight: 600; }
 .cursor span { position: absolute; left: 14px; top: 16px; padding: 1px 6px; border-radius: 6px; color: #fff; font-size: 11px; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 .toolbar { position: absolute; left: 8px; top: 8px; display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: 10px;
   background: var(--wb-bg); color: var(--wb-fg); border: 1px solid var(--wb-border); box-shadow: 0 2px 10px rgba(0,0,0,.15); pointer-events: auto; }
@@ -1365,7 +1363,7 @@ export class Whiteboard {
     if (!c) {
       const node = htmlEl('div', { class: 'cursor' });
       const shape = htmlEl('div', { class: 'shape' });
-      node.append(htmlEl('div', { class: 'ring' }), shape, htmlEl('span'), htmlEl('img', { alt: '', hidden: true }));
+      node.append(shape, htmlEl('span'), htmlEl('img', { alt: '', hidden: true }));
       this.cursorLayer.append(node);
       c = { node, shape, tool: '' };
       this.cursors.set(from, c);

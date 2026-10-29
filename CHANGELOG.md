@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zoom with the mouse wheel at the pointer (and move with the middle button, or by dragging when zoomed in); the drawings stay where they are on the video.
 - Drop an image file on the board to add it as a drawing item.
 - Other people's cursors take the shape of their active tool; an optional avatar (set in the join form or the presenter settings) replaces the name on the cursor.
-- Turn queue in the lower left corner: ask for a turn, end it or leave the queue; the queue shows name and avatar on each person's colour, and the cursor of whoever has the turn is larger and ringed. The presenter can remove anyone.
+- Turn queue in the lower left corner: ask for a turn, end it or leave the queue; the queue shows name and avatar on each person's colour, and the cursor of whoever has the turn is larger and its name tag or avatar has a pulsing border. The presenter can remove anyone.
 - Setting for how long the viewer link stays valid on the trackers (one hour by default, 0 for no limit); a **New link** button in the controls renews it.
 
 - Presenter page on the viewer site (`present.html`): start a session and choose what to share with the browser's picker (a tab, a window,
