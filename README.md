@@ -1,9 +1,9 @@
 # inkpad
 
-inkpad is a Chrome extension that turns the active tab into a shared
-whiteboard. The presenter shares a tab and draws in a console window; viewers
-open a link (no extension needed), watch a low-frame-rate WebRTC video of the
-tab, and draw on the same board. There is no server: peers find each other through public
+inkpad turns a shared tab, window or screen into a shared whiteboard. The
+presenter opens the presenter page (or uses the Chrome extension), picks what to
+share and draws in a window of their own; viewers open a link (nothing to
+install), watch a low-frame-rate WebRTC video of it, and draw on the same board. There is no server: peers find each other through public
 WebTorrent trackers with sealed offers, and the board is a layer of data on top
 of the video, not part of it. The collab code is copied (not referenced) from
 [nymph](https://github.com/binary-dice-games/nymph) and adapted.
@@ -14,9 +14,12 @@ workflows for the Pages site and releases (CI passes on Linux, macOS and Windows
 done: tests on real phones and other browsers, the load test with many viewers, a
 clear message for a version mismatch. See [spec/INDEX.md](spec/INDEX.md).
 
-**How it works.** The extension captures the tab and hosts the session; it adds
-nothing to the page, because tab capture would record it. The presenter draws in
-the console, so they draw on a copy of the page that is a moment behind.
+**How it works.** Two ways to present, one session protocol. The **presenter
+page** (`present.html` on the Pages site) uses the browser's own picker (tab,
+window or whole screen, so native apps too); the page is host and console in one.
+The **extension** captures the active tab and opens the console in a window.
+Neither adds anything to the shared surface, because capture would record it: the
+presenter draws on a copy that is a moment behind. See `spec/06_static_presenter`.
 
 ## Build and test
 
@@ -38,7 +41,7 @@ Needs Node.js 20+; the browser tests need Chrome. Details in
 | `packages/collab-session/` | Serverless WebRTC rooms and video |
 | `packages/collab-whiteboard/` | Whiteboard, board keeper |
 | `extension/` | The Chrome extension (capture, session host, popup, options) |
-| `viewer/` | The viewer app, also the presenter console |
+| `viewer/` | The viewer app (also the extension's console) and the presenter page |
 | `packages/defaults/` | Trackers, ICE servers, video presets, `stage` and `ctl` messages, invite links |
 | `tests/` | Vitest unit tests, Chrome WebRTC tests, fake tracker |
 | `cmake/` | CMake modules (Node discovery, `inkpad_add_test`) |

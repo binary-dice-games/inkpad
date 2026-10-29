@@ -1,0 +1,111 @@
+<!doctype html>
+<!-- MIT License © 2026 Carlos Lopez -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src blob: mediastream:; connect-src ws: wss:; base-uri 'none'; form-action 'none'"
+    />
+    <title>inkpad presenter</title>
+    <!--{{style}}-->
+    <style>
+      #panel input[type='text'] {
+        padding: 4px 6px;
+      }
+      #warning {
+        margin: 0;
+        color: #c42b31;
+      }
+      #warning:empty {
+        display: none;
+      }
+      #panel textarea {
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="start" class="screen" hidden>
+      <form class="card" id="startForm">
+        <h1>Present with inkpad</h1>
+        <p>
+          Share a browser tab, a window or a whole screen, even a desktop application. Viewers open
+          a link, watch it live and draw on it with you. Nothing to install.
+        </p>
+        <p class="muted">
+          Everything in what you choose will be visible to anyone with the link. You choose in the
+          next step, and your browser always shows when you are sharing.
+        </p>
+        <label for="name">Your name</label>
+        <input
+          id="name"
+          type="text"
+          maxlength="40"
+          autocomplete="nickname"
+          placeholder="Presenter"
+        />
+        <label for="color">Your colour <input id="color" type="color" /></label>
+        <label><input id="startDrawing" type="checkbox" checked /> Viewers can draw</label>
+        <p id="startProblem" class="muted" role="alert" hidden></p>
+        <p><button id="startShare" class="primary" type="submit">Start sharing</button></p>
+        <p class="muted">
+          You draw on a copy of what you share, in this window, so keep this window next to it:
+          anything drawn on the shared screen itself would not reach viewers.
+        </p>
+      </form>
+    </main>
+
+    <main id="over" class="screen" hidden>
+      <div class="card">
+        <h1>Session over</h1>
+        <p id="overText" class="muted"></p>
+        <p><button id="again" class="primary" type="button">Start again</button></p>
+      </div>
+    </main>
+
+    <main id="app" hidden>
+      <div id="stage">
+        <video id="video" muted autoplay playsinline aria-label="What you are sharing"></video>
+        <div id="notice" role="status"></div>
+      </div>
+      <div id="bar">
+        <button id="people" type="button" aria-controls="panel"></button>
+        <button id="fullscreen" type="button">Full screen</button>
+        <button id="panelToggle" type="button">Controls</button>
+      </div>
+      <aside id="panel" aria-label="Presenter controls">
+        <h2>Presenter</h2>
+        <p id="warning" role="status"></p>
+        <label for="link">Viewer link</label>
+        <div class="row">
+          <input id="link" type="text" readonly />
+          <button id="copyLink" type="button">Copy</button>
+        </div>
+        <ul id="viewers" aria-label="Viewers"></ul>
+        <label><input id="drawing" type="checkbox" /> Viewers can draw</label>
+        <label><input id="lock" type="checkbox" /> Lock: no new viewers</label>
+        <div class="row">
+          <button id="pause" type="button">Pause</button>
+          <button id="reshare" type="button">Share again</button>
+          <button id="clear" type="button">Clear drawings</button>
+        </div>
+        <details>
+          <summary>Join codes</summary>
+          <p class="muted">
+            For a viewer whose network blocks the trackers: paste their code, send back the answer.
+          </p>
+          <textarea id="viewerCode" rows="3" spellcheck="false" aria-label="Viewer code"></textarea>
+          <p><button id="useCode" type="button">Make answer</button></p>
+          <textarea id="answerCode" readonly rows="3" hidden aria-label="Answer code"></textarea>
+          <p id="codeStatus" class="muted" role="status"></p>
+        </details>
+        <div class="row"><button id="end" class="danger" type="button">End session</button></div>
+      </aside>
+      <div id="toast" role="status" hidden></div>
+    </main>
+    <script src="present.js"></script>
+  </body>
+</html>

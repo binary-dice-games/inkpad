@@ -34,6 +34,10 @@ presenter on Chrome.
 | 20 | Viewer on a network that blocks the tracker, joining with a code | The code, the answer and Connect work; video and drawing follow |
 | 21 | Viewer with a screen reader and keyboard only | Join form, toolbar and people list are reachable and named |
 | 22 | Share a page full of small text (a code editor, a document) on a 1440p or 4K screen, and a HiDPI laptop | The viewer reads the text at full size within a second or two of the page going still; moving content may be soft meanwhile |
+| 23 | Open `present.html`, **Start sharing**, pick a tab / a window / a whole screen / a native app | The picker offers all four and not the presenter page's own tab; a viewer joins and sees the choice; sharing a whole screen shows the "whole screen" warning |
+| 24 | Presenter page: share a still window (nothing moving), then join a viewer after a minute | The late viewer gets a first frame within a few seconds |
+| 25 | Presenter page: put the page in the background (shared window in front) for 5 minutes while the shared window animates | Viewers keep getting frames at about the set rate; their drawings still reach the page |
+| 26 | Presenter page: click the browser's "Stop sharing", then **Share again** | Viewers see "paused", then the new source on the same link |
 | 19 | Pause, resume, clear and end from the console | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

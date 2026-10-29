@@ -52,12 +52,15 @@ export async function buildSite(out, { base = '/', archive = join(root, 'site-ar
   const basePath = normalizeBase(base);
   const versionDir = `v${protocolMajor()}`;
   rmSync(out, { recursive: true, force: true });
-  await buildViewer(out, { htmlName: 'index.html' });
+  await buildViewer(out, { htmlName: 'index.html', present: true });
 
   // The same viewer under its protocol major.
   mkdirSync(join(out, versionDir), { recursive: true });
   copyFileSync(join(out, 'index.html'), join(out, versionDir, 'index.html'));
   copyFileSync(join(out, 'viewer.js'), join(out, versionDir, 'viewer.js'));
+  // Its presenter page goes with it: both sides of a link then speak the same protocol.
+  copyFileSync(join(out, 'present.html'), join(out, versionDir, 'present.html'));
+  copyFileSync(join(out, 'present.js'), join(out, versionDir, 'present.js'));
 
   // Older majors that are kept in the repo (never overwriting the current one).
   if (existsSync(archive)) {

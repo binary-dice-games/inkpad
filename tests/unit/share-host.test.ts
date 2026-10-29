@@ -105,12 +105,12 @@ describe('ShareHost', () => {
     const model = new WhiteboardModel(guest.me.id);
     guest.channel('wb').send({ t: 'op', op: model.add(stroke) });
     await settle();
-    expect(host.keeper.model.live()).toHaveLength(0);
+    expect(host.keeper!.model.live()).toHaveLength(0);
 
     await host.command({ cmd: 'drawing', on: true });
     await until(() => stages.at(-1)?.drawing === true, 'drawing on');
     guest.channel('wb').send({ t: 'op', op: model.add(stroke) });
-    await until(() => host.keeper.model.live().length === 1, 'stroke accepted');
+    await until(() => host.keeper!.model.live().length === 1, 'stroke accepted');
   });
 
   it('does not let a viewer speak on the stage channel or any other host channel', async () => {
@@ -233,14 +233,14 @@ describe('ShareHost', () => {
       await until(() => host.ui().drawing, 'drawing on');
       const model = new WhiteboardModel(viewer.guest.me.id);
       viewer.guest.channel('wb').send({ t: 'op', op: model.add(stroke) });
-      await until(() => host.keeper.model.live().length === 1, 'stroke');
+      await until(() => host.keeper!.model.live().length === 1, 'stroke');
       const cleared: unknown[] = [];
       viewer.guest.channel('wb').on('message', (m) => {
         const msg = m as { t: string; op?: { t: string } };
         if (msg.t === 'op' && msg.op?.t === 'clear') cleared.push(m);
       });
       c.command({ cmd: 'clear' });
-      await until(() => host.keeper.model.live().length === 0, 'cleared');
+      await until(() => host.keeper!.model.live().length === 0, 'cleared');
       await until(() => cleared.length === 1, 'clear reached the viewer');
 
       c.command({ cmd: 'remove', id: viewer.guest.me.id });
@@ -257,7 +257,7 @@ describe('ShareHost', () => {
       await until(() => c.roles.length > 0, 'role reply');
       const model = new WhiteboardModel(c.guest.me.id);
       c.guest.channel('wb').send({ t: 'op', op: model.add(stroke) });
-      await until(() => host.keeper.model.live().length === 1, 'presenter stroke accepted');
+      await until(() => host.keeper!.model.live().length === 1, 'presenter stroke accepted');
     });
 
     it('does not let the presenter remove themself', async () => {
@@ -311,5 +311,39 @@ describe('ShareHost', () => {
     expect(stages.at(-1)?.state).toBe('ended');
     expect(host.ui().phase).toBe('idle');
     host.stop(); // idempotent
+  });
+
+  describe('as a page host (no tab, own whiteboard)', () => {
+    async function startPage(clearBoard: () => void): Promise<ShareHost> {
+      const host = await ShareHost.start({
+        settings: { ...DEFAULT_SETTINGS },
+        keeper: false,
+        clearBoard,
+        rendezvous: [{ kind: 'memory', network }],
+      });
+      opened.push(host);
+      return host;
+    }
+
+    it('has no tab and keeps no board', async () => {
+      const host = await startPage(() => {});
+      expect(host.keeper).toBeNull();
+      expect(host.ui()).toMatchObject({ phase: 'live', tabId: null });
+    });
+
+    it('clears through the owner and does not answer syncs itself', async () => {
+      let cleared = 0;
+      const host = await startPage(() => (cleared += 1));
+      const { guest } = await join(host, 'Ana');
+      const replies: unknown[] = [];
+      guest.channel('wb').on('message', (m) => replies.push(m));
+      guest
+        .channel('wb')
+        .send({ t: 'sync', snapshot: new WhiteboardModel('x').snapshot(), want: true });
+      await settle(80);
+      expect(replies).toEqual([]);
+      await host.command({ cmd: 'clear' });
+      expect(cleared).toBe(1);
+    });
   });
 });

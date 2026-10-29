@@ -27,13 +27,21 @@ import type { Settings } from './settings';
 
 export interface ShareHostOptions {
   settings: Settings;
-  tabId: number;
+  /** The shared tab; absent when the source is not a tab (the presenter page). */
+  tabId?: number;
   /** Replaces the trackers in `settings` (tests use the memory network). */
   rendezvous?: RendezvousSpec[];
   /** Called when the console asks to end the session; the owner then calls `stop()`. */
   onEnd?: () => void;
   /** Where the console page lives (the extension's `viewer.html`); defaults to the viewer base. */
   consoleBase?: string;
+  /**
+   * Whether to keep the board here (default true). A page that mounts its own whiteboard on
+   * `session` passes false: two boards on one host session would answer every sync twice.
+   */
+  keeper?: boolean;
+  /** Clears the board when `keeper` is false; the owner's whiteboard does it. */
+  clearBoard?: () => void;
 }
 
 const DEFAULT_ASPECT_W = 1280;
@@ -45,13 +53,15 @@ const DEFAULT_ASPECT_H = 720;
  */
 export class ShareHost {
   readonly session: Session;
-  readonly keeper: BoardKeeper;
-  readonly tabId: number;
+  /** The board kept for late joiners; null when the owner mounts its own whiteboard. */
+  readonly keeper: BoardKeeper | null;
+  readonly tabId: number | null;
   /** The secret of the console link (section 4.5 of spec/01_core_features/DESIGN.md). */
   readonly presenterKey = newPresenterKey();
   private readonly settings: Settings;
   private readonly onEnd: () => void;
   private readonly consoleBase: string;
+  private readonly clearOwnBoard: (() => void) | undefined;
   private drawing: boolean;
   private paused = false;
   private problem: string | null = null;
@@ -66,11 +76,12 @@ export class ShareHost {
   private constructor(session: Session, options: ShareHostOptions) {
     this.session = session;
     this.settings = options.settings;
-    this.tabId = options.tabId;
+    this.tabId = options.tabId ?? null;
+    this.clearOwnBoard = options.clearBoard;
     this.onEnd = options.onEnd ?? (() => {});
     this.consoleBase = options.consoleBase ?? options.settings.viewerBase;
     this.drawing = options.settings.viewersMayDraw;
-    this.keeper = createBoardKeeper(session);
+    this.keeper = options.keeper === false ? null : createBoardKeeper(session);
     session.mediaParams(toMediaParams(options.settings.video));
     session.channel(STAGE_CHANNEL).on('join', (peer) => this.sendStage(peer.id));
     session.on('peers', (peers) => {
@@ -288,6 +299,10 @@ export class ShareHost {
 
   /** Clears the whiteboard for everyone (the host's own clear stamp). */
   private clearBoard(): void {
+    if (!this.keeper) {
+      this.clearOwnBoard?.();
+      return;
+    }
     const op = this.keeper.model.clear();
     try {
       this.session.channel('wb').send({ t: 'op', op });

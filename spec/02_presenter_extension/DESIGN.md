@@ -114,3 +114,5 @@ console. See `spec/01_core_features/DESIGN.md` section 6.
 - History: steps 1 to 4 first built an on-page overlay (content script, session
   proxy, board keeper hooks). It was removed when the console replaced it; the
   board keeper stays so late joiners get the drawings while no console is open.
+- `ShareHost` is also used by the static presenter page (`spec/06_static_presenter`), without a
+  tab and without the board keeper (`tabId` optional, `keeper: false`).
