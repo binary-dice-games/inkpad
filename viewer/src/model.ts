@@ -91,7 +91,7 @@ export function boardAspect(video: { width: number; height: number }, stage: Sta
   return stage && stage.aspect > 0 ? stage.aspect : DEFAULT_ASPECT;
 }
 
-/** Whether the person may draw: presenters always, viewers while the presenter allows it. */
-export function mayDraw(presenter: boolean, stage: Stage | null): boolean {
-  return presenter || stage?.drawing === true;
+/** Whether the viewer may draw: while the presenter allows it. */
+export function mayDraw(stage: Stage | null): boolean {
+  return stage?.drawing === true;
 }

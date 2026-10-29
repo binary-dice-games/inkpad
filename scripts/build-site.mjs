@@ -4,8 +4,8 @@
 //   node scripts/build-site.mjs [outDir] [--base /inkpad/]
 //
 // The site holds the viewer app at the root and again under /v<N>/ (N is the major
-// of the wire protocol, so an extension speaking protocol N can always find a
-// matching viewer), a 404 page that keeps an invite in the address, the privacy
+// of the wire protocol, so a link made with protocol N always finds a
+// matching viewer and presenter page), a 404 page that keeps an invite in the address, the privacy
 // policy, and any older viewers kept in site-archive/ (one folder per protocol
 // major, for example site-archive/v1/), copied as they are. GitHub Pages replaces
 // the whole site on each deploy, which is why older majors are kept in the repo.
@@ -52,7 +52,7 @@ export async function buildSite(out, { base = '/', archive = join(root, 'site-ar
   const basePath = normalizeBase(base);
   const versionDir = `v${protocolMajor()}`;
   rmSync(out, { recursive: true, force: true });
-  await buildViewer(out, { htmlName: 'index.html', present: true });
+  await buildViewer(out);
 
   // The same viewer under its protocol major.
   mkdirSync(join(out, versionDir), { recursive: true });

@@ -1,6 +1,6 @@
 # MIT License © 2026 Carlos Lopez
 # Publishes the viewer to GitHub Pages from main: at the site root (the latest viewer) and
-# under /v<N>/ (the viewer for protocol major N, which extensions of that major link to).
+# under /v<N>/ (the viewer and presenter page for protocol major N).
 # Older majors kept in site-archive/ are published too. See spec/05_release_pipeline.
 name: pages
 

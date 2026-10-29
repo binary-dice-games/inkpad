@@ -1,8 +1,7 @@
 // MIT License © 2026 Carlos Lopez
 /**
- * @file Extension settings (stored in chrome.storage.sync): the schema, its
- * defaults and the validation applied to anything read from storage or typed
- * on the options page.
+ * @file Presenter settings: the schema, its defaults and the validation applied
+ * to anything read from storage or typed in the settings dialog.
  */
 import {
   DEFAULT_ICE_SERVERS,
@@ -18,7 +17,7 @@ export interface Settings {
   trackers: string[];
   iceServers: RTCIceServer[];
   video: VideoSettings;
-  /** Whether viewers may draw when a share starts. */
+  /** Whether viewers may draw when a session starts. */
   viewersMayDraw: boolean;
   /** The presenter's name shown to viewers. */
   name: string;
@@ -140,25 +139,6 @@ export function cleanSettings(input: unknown): Settings {
     name: name || DEFAULT_SETTINGS.name,
     color: typeof o.color === 'string' && COLOR.test(o.color) ? o.color : DEFAULT_SETTINGS.color,
   };
-}
-
-const KEY = 'settings';
-
-/** Reads the settings from chrome.storage.sync (defaults when none, or when storage fails). */
-export async function loadSettings(): Promise<Settings> {
-  try {
-    const stored = await chrome.storage.sync.get(KEY);
-    return cleanSettings(stored[KEY]);
-  } catch {
-    return cleanSettings(undefined);
-  }
-}
-
-/** Validates and stores the settings; returns what was stored. */
-export async function saveSettings(input: unknown): Promise<Settings> {
-  const settings = cleanSettings(input);
-  await chrome.storage.sync.set({ [KEY]: settings });
-  return settings;
 }
 
 // ── Text form of the lists (options page) ────────────────────────────────────

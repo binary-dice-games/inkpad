@@ -1,5 +1,7 @@
 # 01_core_features — product, architecture and collab core
 
+> **Update: the Chrome extension, the presenter console, the presenter key, the `ctl` channel and the board keeper described here were removed; the presenter page replaced them (`spec/06_static_presenter/DESIGN.md` section 8). The rest (session, star topology, whiteboard, security of the link) still holds.**
+
 Foundation project. It defines what inkpad is, how the pieces fit, the repo
 and tooling, and the **collab core** (session + whiteboard) that every other
 project builds on. Related projects:

@@ -9,7 +9,6 @@ export default tseslint.config(
       'node_modules/',
       'build/',
       'dist/',
-      'extension/dist*/',
       'viewer/dist/',
       'site/',
       'site-archive/',

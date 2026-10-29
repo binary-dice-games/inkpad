@@ -19,14 +19,15 @@ be a separate window anyway (`spec/02` section 1: a drawing on the shared page
 would be captured). Everything else it does is already browser-neutral code.
 
 Out of scope: audio (as in `spec/03`), phones as presenters (no
-`getDisplayMedia`), an always-on-top console (section 6), removing the extension.
-The extension stays as an optional front-end for tab capture.
+`getDisplayMedia`), an always-on-top console (section 6).
+
+The Chrome extension this page replaces was removed (section 8).
 
 ## 2. Components
 
 | Piece | Where | Responsibility |
 |---|---|---|
-| `ShareHost` | `extension/src/share-host.ts` (shared) | Host session, `ctl`/`stage` messages, lock, kick, pause. Usable without a tab and without a board keeper |
+| `ShareHost` | `viewer/src/share-host.ts` | Host session, `stage` messages, lock, kick, pause; ignores everything but `wb` from guests |
 | Display capture | `viewer/src/display-capture.ts` | Opens the picker, reports the surface kind, size and when the user stops sharing; pure helpers for the size limit and the warnings |
 | Presenter page | `viewer/src/present.ts`, `present.html` | Start screen, host session, preview video with the whiteboard over it, panel, link |
 
@@ -41,7 +42,7 @@ no delay. Consequences:
 - No console link and no presenter key handshake; the panel calls `ShareHost`
   directly. The panel has the same controls as the console's.
 - No board keeper: the whiteboard on the host session keeps the board. `ShareHost`
-  takes `keeper: false` and a `clearBoard` callback (`Whiteboard.clear`).
+  takes a `clearBoard` callback (`Whiteboard.clear`).
 - The viewer link uses the page's own origin and path (`present.html` replaced by
   the site root), so a self-hosted site works without settings.
 
@@ -101,9 +102,13 @@ link then carries them (the same `tr` rule as `spec/01_core_features/DESIGN.md`)
 
 ### Settings and folding
 
-A **Settings** dialog (start screen and live panel) holds the extension's
+The dialog is a compact window with three tabs (**General**, **Video**, **Connection**;
+arrow keys move between them) and a fixed button row (Restore defaults, Cancel, Save),
+so it fits without scrolling on a laptop and on a phone-sized window.
+
+A **Settings** dialog (start screen and live panel) holds the
 settings (name, colour, viewers may draw, frame rate, size and bitrate limits,
-trackers, ICE servers) plus the pointer mode, validated by the extension's
+trackers, ICE servers) plus the pointer mode, validated by
 `cleanSettings` and kept in `localStorage` (`viewer/src/present-settings.ts`).
 Video limits reach a running share at once (`mediaParams`); the rest applies from
 the next session (connection, name) or share (pointer).
@@ -131,8 +136,6 @@ stops redrawing a hidden toolbar).
   whiteboard code. For a screen share the PiP window would also be captured.
 - **Audio**: `getDisplayMedia` can carry tab or system audio; the session would
   send it as a second track. Later.
-- **Removing the extension**: it still provides the shortcut and tab capture with
-  no picker. Nothing in this project depends on it.
 
 ## 7. Testing
 
@@ -142,3 +145,30 @@ by a canvas stream, since the real picker cannot be driven): the built
 `present.html` starts a session, a viewer joins through `index.html`, video
 arrives, drawings go both ways, pause and end reach the viewer. The real picker is
 on the manual checklist.
+
+## 8. Removal of the extension
+
+The extension (`spec/02_presenter_extension`) was removed once the page worked:
+the page does the same, also shares windows and native applications, and needs no
+store listing, no permissions and no second code path. What went with it:
+
+- the extension itself (service worker, offscreen document, popup, options, the
+  tab-capture canvas relay, the share state machine and its `chrome.*` settings
+  storage), its build, audit and packaging scripts, the release workflow and the
+  Web Store text;
+- the **presenter console** as a separate guest, so the **presenter key**, the
+  `ctl` channel (`auth`, `role`, commands), `?presenter=` in links and the
+  `viewer.html` console mode. The host page calls `ShareHost` directly, and the host
+  now ignores everything a guest sends outside `wb`;
+- the **board keeper**: the page's own whiteboard on the host session keeps the
+  board for late joiners.
+
+What stayed: `ShareHost` (now `viewer/src/share-host.ts`, without tab, key or
+keeper), the validation of settings (`viewer/src/settings.ts`, minus the
+`chrome.storage` part), and the session and whiteboard packages. The viewer's
+browser tests, which used the extension as a host, now use the presenter page
+(`tests/support/presenter-site.ts`).
+
+The viewer also gets a **Tools** button that folds the whiteboard toolbar away
+(remembered in `localStorage`), like the presenter page; both share
+`viewer/src/fold.ts`.

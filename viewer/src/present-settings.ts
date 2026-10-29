@@ -1,11 +1,11 @@
 // MIT License © 2026 Carlos Lopez
 /**
  * @file Settings of the presenter page (spec/06_static_presenter): the
- * extension's settings plus the mouse pointer choice, kept in `localStorage`.
- * Everything read back goes through the same validation as the extension's.
+ * session settings plus the mouse pointer choice and the folding of the tools
+ * and the panel, kept in `localStorage`. Everything read back is validated.
  */
-import { cleanSettings } from '../../extension/src/settings';
-import type { Settings } from '../../extension/src/settings';
+import { cleanSettings } from './settings';
+import type { Settings } from './settings';
 import type { CursorMode } from './display-capture';
 
 export interface PresenterPrefs {

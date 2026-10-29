@@ -10,7 +10,6 @@ __pycache__/
 node_modules/
 dist/
 *.tsbuildinfo
-dist-e2e/
 /viewer/dist/
 /site/
 /release/

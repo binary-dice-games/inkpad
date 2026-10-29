@@ -1,5 +1,7 @@
 # 04_viewer_site — static viewer on GitHub Pages
 
+> **Update: the presenter console and the extension's `viewer.html` were removed; the presenter page is `present.html` on the same site (`spec/06_static_presenter/DESIGN.md`). The viewer has a Tools button that folds the toolbar away.**
+
 Builds on `spec/01_core_features/DESIGN.md` (guest session, whiteboard) and
 `spec/03_tab_streaming/DESIGN.md` section 5 (video presentation).
 

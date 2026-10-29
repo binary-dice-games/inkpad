@@ -1,5 +1,7 @@
 # 05_release_pipeline — CI, Pages deploy, Web Store packaging
 
+> **Update: extension packaging, the audit and the release workflow were removed. Only CI and the Pages deploy remain (`spec/06_static_presenter/DESIGN.md` section 8).**
+
 Builds on `spec/01_core_features/DESIGN.md` section 5 (tooling).
 
 ## 1. Scope

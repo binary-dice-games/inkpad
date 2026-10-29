@@ -1,11 +1,10 @@
 # inkpad — Privacy
 
-The privacy policy is a web page, because the Chrome Web Store needs an address for it:
-it is published with the viewer at `privacy.html` and its source is
+The privacy policy is a web page: it is published with the viewer at `privacy.html` and its source is
 [viewer/src/site/privacy.html](../viewer/src/site/privacy.html).
 
 In short: no accounts, no analytics, no data sent to the developer, nothing recorded or
-stored after a session. The shared tab's picture and the drawings go directly between
+stored after a session. The shared picture and the drawings go directly between
 the people in the session. Network addresses are seen by the other side of a connection,
 by the public WebTorrent trackers used to introduce people (which cannot read the link,
 the video or the drawings) and by the STUN servers.

@@ -1,5 +1,7 @@
 # 03_tab_streaming — tab capture and low-fps WebRTC video
 
+> **Update: tab capture (`chrome.tabCapture`, the offscreen document and the canvas relay) was removed with the extension. Capture is now `getDisplayMedia` (`spec/06_static_presenter/DESIGN.md` section 3). The video parameters, codecs and the overlay-in-video findings still hold.**
+
 Builds on `spec/01_core_features/DESIGN.md` (session, star topology, media
 hooks in 4.1) and `spec/02_presenter_extension/DESIGN.md` (offscreen document).
 

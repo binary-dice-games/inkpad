@@ -22,36 +22,20 @@ add_custom_target(
   COMMENT "inkpad: lint, typecheck, format check"
   VERBATIM)
 
-# The unpacked extension, in extension/dist (load it from chrome://extensions).
-add_custom_target(
-  extension
-  COMMAND "${INKPAD_NPM}" run build:extension
-  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-  COMMENT "inkpad: build the Chrome extension"
-  VERBATIM)
-
-# The viewer for GitHub Pages, in viewer/dist (the extension has its own copy).
+# The viewer and presenter pages for GitHub Pages, in viewer/dist.
 add_custom_target(
   viewer
   COMMAND "${INKPAD_NPM}" run build:viewer
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-  COMMENT "inkpad: build the viewer app"
+  COMMENT "inkpad: build the viewer and presenter pages"
   VERBATIM)
 
-# The Pages site (viewer, versioned copy, 404, privacy policy) in site/.
+# The Pages site (viewer, presenter page, versioned copy, 404, privacy policy) in site/.
 add_custom_target(
   site
   COMMAND "${INKPAD_NPM}" run build:site
   WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
   COMMENT "inkpad: assemble the GitHub Pages site"
-  VERBATIM)
-
-# The audited Chrome Web Store zip and its checksum in release/.
-add_custom_target(
-  package
-  COMMAND "${INKPAD_NPM}" run package
-  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-  COMMENT "inkpad: package the extension"
   VERBATIM)
 
 if(INKPAD_BUILD_TESTS)

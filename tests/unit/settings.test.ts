@@ -1,0 +1,85 @@
+// MIT License © 2026 Carlos Lopez
+import { describe, expect, it } from 'vitest';
+import {
+  DEFAULT_SETTINGS,
+  cleanIceServers,
+  cleanSettings,
+  cleanTrackers,
+  cleanViewerBase,
+  formatIceLines,
+  parseIceLines,
+} from '../../viewer/src/settings';
+
+describe('settings', () => {
+  it('gives the defaults for nothing or garbage', () => {
+    expect(cleanSettings(undefined)).toEqual(DEFAULT_SETTINGS);
+    expect(cleanSettings('x')).toEqual(DEFAULT_SETTINGS);
+    expect(cleanSettings([1, 2])).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('keeps valid values and replaces invalid ones field by field', () => {
+    const s = cleanSettings({
+      name: '  Ana \u0007 ',
+      color: 'red',
+      viewersMayDraw: false,
+      viewerBase: 'ftp://nope',
+      video: { fps: 99 },
+    });
+    expect(s.name).toBe('Ana');
+    expect(s.color).toBe(DEFAULT_SETTINGS.color);
+    expect(s.viewersMayDraw).toBe(false);
+    expect(s.viewerBase).toBe(DEFAULT_SETTINGS.viewerBase);
+    expect(s.video.fps).toBe(15);
+  });
+
+  it('truncates long names and defaults empty ones', () => {
+    expect(cleanSettings({ name: 'x'.repeat(100) }).name).toHaveLength(40);
+    expect(cleanSettings({ name: '   ' }).name).toBe(DEFAULT_SETTINGS.name);
+  });
+
+  it('accepts https viewer pages and localhost http, and drops the hash and query', () => {
+    expect(cleanViewerBase('https://example.github.io/inkpad/?a=1#x')).toBe(
+      'https://example.github.io/inkpad/',
+    );
+    expect(cleanViewerBase('http://localhost:8080/')).toBe('http://localhost:8080/');
+    expect(cleanViewerBase('http://127.0.0.1:8080/x')).toBe('http://127.0.0.1:8080/x');
+    expect(cleanViewerBase('http://example.com/')).toBeNull();
+    expect(cleanViewerBase('javascript:alert(1)')).toBeNull();
+    expect(cleanViewerBase(42)).toBeNull();
+  });
+
+  it('keeps only ws(s) trackers, once each, and allows an empty list', () => {
+    expect(
+      cleanTrackers(
+        'wss://a.example\nhttps://b.example\n\nwss://a.example\nnot a url\nws://c.example',
+      ),
+    ).toEqual(['wss://a.example', 'ws://c.example']);
+    expect(cleanSettings({ trackers: [] }).trackers).toEqual([]);
+    expect(cleanSettings({ trackers: 5 }).trackers).toEqual(DEFAULT_SETTINGS.trackers);
+    expect(cleanTrackers(Array.from({ length: 30 }, (_, i) => `wss://t${i}.example`))).toHaveLength(
+      10,
+    );
+  });
+
+  it('validates ICE servers', () => {
+    expect(
+      cleanIceServers([
+        { urls: 'stun:stun.example:3478' },
+        { urls: ['turn:t.example', 'http://bad'], username: 'u', credential: 'c' },
+        { urls: 'http://bad' },
+        'junk',
+      ]),
+    ).toEqual([
+      { urls: 'stun:stun.example:3478' },
+      { urls: 'turn:t.example', username: 'u', credential: 'c' },
+    ]);
+  });
+
+  it('round-trips the text form of ICE servers', () => {
+    const text = 'stun:stun.example:3478\nturn:t.example:3478 user secret';
+    const servers = parseIceLines(text);
+    expect(servers).toHaveLength(2);
+    expect(formatIceLines(servers)).toBe(text);
+    expect(parseIceLines('\n  \nnonsense')).toEqual([]);
+  });
+});

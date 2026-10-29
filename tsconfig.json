@@ -10,14 +10,8 @@
     "skipLibCheck": true,
     "allowJs": false,
     "isolatedModules": true,
-    "types": ["node", "chrome"]
+    "types": ["node"]
   },
-  "include": [
-    "packages/**/*.ts",
-    "extension/**/*.ts",
-    "tests/**/*.ts",
-    "vitest.config.ts",
-    "viewer/**/*.ts"
-  ],
+  "include": ["packages/**/*.ts", "tests/**/*.ts", "vitest.config.ts", "viewer/**/*.ts"],
   "exclude": ["node_modules", "build"]
 }

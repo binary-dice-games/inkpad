@@ -1,5 +1,7 @@
 # 02_presenter_extension — Chrome extension (presenter side)
 
+> **Removed: the extension no longer exists. The presenter page (`spec/06_static_presenter/DESIGN.md`) replaced it; `ShareHost` lives on in `viewer/src/share-host.ts`. This document is kept as history.**
+
 Builds on `spec/01_core_features/DESIGN.md` (architecture, collab core, presenter
 role) and `spec/03_tab_streaming/DESIGN.md` (capture). The viewer and the
 presenter console are in `spec/04_viewer_site/DESIGN.md`.

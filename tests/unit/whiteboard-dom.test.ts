@@ -2,7 +2,6 @@
 // MIT License © 2026 Carlos Lopez
 import { describe, expect, it } from 'vitest';
 import { FRAME_UNITS, createWhiteboard, frameAdapter } from '@inkpad/collab-whiteboard';
-import { createBoardKeeper } from '@inkpad/collab-whiteboard/board-keeper';
 import { TestRoom } from '../support/rooms';
 import { until } from '../support/wait';
 
@@ -32,11 +31,15 @@ describe('frame adapter', () => {
 });
 
 describe('whiteboard over a host session', () => {
-  it('draws a sticker, shows the emoticons and lets the keeper merge a load', async () => {
+  it('draws a sticker, shows the emoticons and lets the host board merge a load', async () => {
     const room = new TestRoom();
     try {
       const host = await room.start();
-      const keeper = createBoardKeeper(host);
+      const hostStage = box(800, 450);
+      const hostBoard = createWhiteboard(hostStage, {
+        session: host,
+        adapter: frameAdapter(hostStage, () => 16 / 9),
+      });
       const guest = await room.join('Ana');
       await until(() => guest.host(), 'guest reached host');
 
@@ -50,9 +53,8 @@ describe('whiteboard over a host session', () => {
       expect(names).toContain('sticker-smile');
       expect(names).toContain('sticker-thinking');
 
-      // A load is sent to the host and lands in the keeper.
-      const guestModel = keeper.model;
-      expect(guestModel.live()).toHaveLength(0);
+      // A load is sent to the host and lands on its board.
+      expect(hostBoard.items()).toHaveLength(0);
       wb.load({
         v: 1,
         clock: 1,
@@ -71,8 +73,9 @@ describe('whiteboard over a host session', () => {
         ],
       });
       expect(wb.items()).toHaveLength(1);
-      await until(() => guestModel.live().length === 1, 'keeper has the sticker');
+      await until(() => hostBoard.items().length === 1, 'the host board has the sticker');
       wb.destroy();
+      hostBoard.destroy();
     } finally {
       room.close();
     }

@@ -45,6 +45,18 @@ Settings dialog; Tools and Controls toggles.
 (pointer constraint, remembered settings, live video settings, folding).
 **Result:** done.
 
+## 6. Remove the extension, fold the viewer's tools
+
+**Goal:** the presenter page is the only presenter; the viewer can fold its tools.
+**Deliverables:** `extension/`, its scripts, tests, workflow and docs deleted;
+`ShareHost` and settings moved to `viewer/src/`, without tab, key, `ctl` or keeper;
+the presenter key removed from links and the viewer; `fold.ts`; the viewer's Tools
+button; the viewer's browser tests moved onto the presenter page.
+**Tests:** `tests/unit/share-host.test.ts` (including that `ctl` commands are
+ignored), `tests/e2e/viewer.test.ts` (folding, removal, join codes, touch,
+accessibility, placement), `tests/unit/site-build.test.ts`.
+**Result:** done.
+
 ## Completion Criteria
 
 `npm run check`, unit and browser tests pass; `present.html` is on the built

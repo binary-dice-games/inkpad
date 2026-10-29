@@ -67,11 +67,9 @@ describe('boardAspect', () => {
 });
 
 describe('mayDraw', () => {
-  it('lets the presenter always draw and viewers only while allowed', () => {
-    expect(mayDraw(true, null)).toBe(true);
-    expect(mayDraw(true, stage({ drawing: false }))).toBe(true);
-    expect(mayDraw(false, stage({ drawing: true }))).toBe(true);
-    expect(mayDraw(false, stage({ drawing: false }))).toBe(false);
-    expect(mayDraw(false, null)).toBe(false);
+  it('lets a viewer draw only while the presenter allows it', () => {
+    expect(mayDraw(stage({ drawing: true }))).toBe(true);
+    expect(mayDraw(stage({ drawing: false }))).toBe(false);
+    expect(mayDraw(null)).toBe(false);
   });
 });

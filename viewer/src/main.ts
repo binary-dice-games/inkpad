@@ -2,27 +2,23 @@
 /**
  * @file The viewer app: joins a session from an invite link, shows the
  * presenter's video with the shared whiteboard over it, and lets the person
- * draw. With the presenter key in the link it is the presenter console: it
- * proves the key to the host and shows the presenter's controls. The same
- * code is served from GitHub Pages and bundled in the extension as
- * `viewer.html`.
+ * draw. Served from GitHub Pages next to the presenter page.
  */
 import { createSession, SessionError } from '@inkpad/collab-session';
-import type { Peer, Session } from '@inkpad/collab-session';
+import type { Session } from '@inkpad/collab-session';
 import { createWhiteboard, frameAdapter } from '@inkpad/collab-whiteboard';
 import type { FrameAdapter, Whiteboard } from '@inkpad/collab-whiteboard';
 import {
   CODEC_PREFERENCE,
-  CTL_CHANNEL,
   DEFAULT_ICE_SERVERS,
   DEFAULT_TRACKERS,
   PROTOCOL,
   STAGE_CHANNEL,
-  cleanCtl,
   cleanStage,
   parseInvite,
 } from '@inkpad/defaults';
-import type { PresenterCommand, Stage } from '@inkpad/defaults';
+import type { Stage } from '@inkpad/defaults';
+import { setToolbarFolded } from './fold';
 import {
   boardAspect,
   endMessage,
@@ -53,25 +49,6 @@ function store(key: string, value?: string): string | null {
   }
 }
 
-/** Settings the extension keeps, when this page is the extension's own console. */
-async function extensionSettings(): Promise<{
-  name?: string;
-  color?: string;
-  iceServers?: RTCIceServer[];
-}> {
-  try {
-    const stored = await chrome.storage.sync.get('settings');
-    const s = stored.settings as Record<string, unknown> | undefined;
-    return {
-      name: typeof s?.name === 'string' ? s.name : undefined,
-      color: typeof s?.color === 'string' ? s.color : undefined,
-      iceServers: Array.isArray(s?.iceServers) ? (s.iceServers as RTCIceServer[]) : undefined,
-    };
-  } catch {
-    return {}; // not an extension page
-  }
-}
-
 const invite = parseInvite(location.hash);
 
 /** Connection diagnostics in the browser console (F12), one line per step. */
@@ -83,9 +60,9 @@ let session: Session | null = null;
 let board: Whiteboard | null = null;
 let adapter: FrameAdapter | null = null;
 let stage: Stage | null = null;
-let presenter = false;
-let locked = false;
 let hasVideo = false;
+/** The whiteboard toolbar is folded away (remembered). */
+let folded = store('inkpad.toolsFolded') === '1';
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 function toast(text: string): void {
@@ -100,14 +77,6 @@ function hostId(): string | null {
   return session?.host()?.id ?? null;
 }
 
-/** Sends a presenter command to the host. */
-function command(c: PresenterCommand): void {
-  const to = hostId();
-  if (session && to) {
-    session.channel(CTL_CHANNEL).send({ t: 'cmd', command: c }, { to });
-  }
-}
-
 // ── The page ─────────────────────────────────────────────────────────────────
 
 function video(): HTMLVideoElement {
@@ -119,15 +88,12 @@ function refreshStage(): void {
   adapter?.update();
   $('notice').textContent = placeholder(stage, hasVideo) ?? '';
   if (board) {
-    const allowed = mayDraw(presenter, stage);
+    const allowed = mayDraw(stage);
     if (board.readOnly === allowed) {
       board.readOnly = !allowed;
-      if (!presenter) {
-        toast(allowed ? 'You can draw now.' : 'Drawing is disabled by the presenter.');
-      }
+      toast(allowed ? 'You can draw now.' : 'Drawing is disabled by the presenter.');
     }
   }
-  renderPanel();
 }
 
 function renderPeople(): void {
@@ -152,41 +118,6 @@ function renderPeople(): void {
   const mine = peers.find((p) => p.id === session?.me.id)?.path;
   $('quality').textContent =
     mine === 'direct' ? 'Direct connection' : mine === 'relay' ? 'Relayed connection' : '';
-  renderPanel();
-}
-
-function renderPanel(): void {
-  $('panelToggle').hidden = !presenter;
-  if (!presenter || !session) {
-    $('panel').hidden = true;
-    return;
-  }
-  const me = session.me.id;
-  const list = $('viewers');
-  list.replaceChildren(
-    ...session
-      .peers()
-      .filter((p: Peer) => p.role === 'guest' && p.id !== me)
-      .map((p) => {
-        const li = document.createElement('li');
-        const swatch = document.createElement('span');
-        swatch.className = 'swatch';
-        swatch.style.background = /^#[0-9a-fA-F]{6}$/.test(p.color) ? p.color : '#8b8d98';
-        const name = document.createElement('span');
-        name.className = 'name';
-        name.textContent = p.name || 'Viewer';
-        const kick = document.createElement('button');
-        kick.type = 'button';
-        kick.textContent = 'Remove';
-        kick.setAttribute('aria-label', `Remove ${p.name || 'viewer'}`);
-        kick.addEventListener('click', () => command({ cmd: 'remove', id: p.id }));
-        li.append(swatch, name, kick);
-        return li;
-      }),
-  );
-  $<HTMLInputElement>('drawing').checked = stage?.drawing ?? true;
-  $<HTMLInputElement>('lock').checked = locked;
-  $('pause').textContent = stage?.state === 'paused' ? 'Resume' : 'Pause';
 }
 
 function enterApp(): void {
@@ -202,12 +133,13 @@ function enterApp(): void {
   board = createWhiteboard(stageEl, {
     session,
     adapter,
-    readOnly: !mayDraw(presenter, stage),
+    readOnly: !mayDraw(stage),
   });
   board.on('error', (e) => toast(e.message));
   for (const event of ['loadedmetadata', 'resize', 'playing']) {
     v.addEventListener(event, refreshStage);
   }
+  setToolbarFolded(board, folded);
   refreshStage();
   renderPeople();
 }
@@ -230,7 +162,6 @@ async function join(name: string, color: string): Promise<void> {
   show('wait');
   $('waitTitle').textContent = 'Connecting…';
   $('waitText').textContent = progressMessage(undefined);
-  const config = await extensionSettings();
   try {
     session = await createSession({
       role: 'guest',
@@ -239,7 +170,7 @@ async function join(name: string, color: string): Promise<void> {
       videoCodecs: [...CODEC_PREFERENCE],
       log: logger,
       me: { name, color },
-      iceServers: config.iceServers ?? [...DEFAULT_ICE_SERVERS],
+      iceServers: [...DEFAULT_ICE_SERVERS],
       rendezvous: [
         { kind: 'torrent', urls: invite.trackers ?? [...DEFAULT_TRACKERS] },
         { kind: 'manual' },
@@ -264,16 +195,11 @@ async function join(name: string, color: string): Promise<void> {
     }
   });
   s.on('state', (e) => {
-    locked = !!e.locked;
     if (e.state === 'open') {
       enterApp();
-      if (invite.presenterKey) {
-        authenticate(invite.presenterKey);
-      }
     } else if (e.state === 'ended') {
       endSession(endMessage(e.reason));
     }
-    renderPanel();
   });
   s.on('track', (stream) => {
     const v = video();
@@ -285,20 +211,8 @@ async function join(name: string, color: string): Promise<void> {
     const next = cleanStage(m);
     if (next && from === hostId()) {
       stage = next;
-      if (next.state === 'ended' && !presenter) {
+      if (next.state === 'ended') {
         $('notice').textContent = placeholder(next, hasVideo) ?? '';
-      }
-      refreshStage();
-    }
-  });
-  s.channel(CTL_CHANNEL).on('message', (m, from) => {
-    const message = cleanCtl(m);
-    if (message?.t === 'role' && from === hostId()) {
-      presenter = message.presenter;
-      if (presenter) {
-        $('panel').hidden = false;
-      } else {
-        toast('The presenter key was not accepted: you are a viewer.');
       }
       refreshStage();
     }
@@ -332,23 +246,6 @@ function wireCodes(s: Session): void {
   });
 }
 
-/** Proves the presenter key to the host; retried a few times in case the first message beats the link. */
-function authenticate(key: string): void {
-  let tries = 0;
-  const send = (): void => {
-    const to = hostId();
-    if (presenter || !session || tries >= 5) {
-      return;
-    }
-    tries += 1;
-    if (to) {
-      session.channel(CTL_CHANNEL).send({ t: 'auth', key }, { to });
-    }
-    setTimeout(send, 1500);
-  };
-  send();
-}
-
 // ── Start ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -358,6 +255,14 @@ async function main(): Promise<void> {
   colorInput.value =
     store('inkpad.color') ?? palette[Math.floor(Math.random() * palette.length)] ?? '#3e63dd';
   nameInput.value = store('inkpad.name') ?? '';
+
+  $('toolsToggle').setAttribute('aria-pressed', String(!folded));
+  $('toolsToggle').addEventListener('click', () => {
+    folded = !folded;
+    store('inkpad.toolsFolded', folded ? '1' : '0');
+    $('toolsToggle').setAttribute('aria-pressed', String(!folded));
+    setToolbarFolded(board, folded);
+  });
 
   $('fullscreen').addEventListener('click', () => {
     if (document.fullscreenElement) {
@@ -373,27 +278,6 @@ async function main(): Promise<void> {
     list.hidden = !list.hidden;
     $('people').setAttribute('aria-expanded', String(!list.hidden));
   });
-  $('panelToggle').addEventListener('click', () => ($('panel').hidden = !$('panel').hidden));
-  $<HTMLInputElement>('drawing').addEventListener('change', (e) =>
-    command({ cmd: 'drawing', on: (e.target as HTMLInputElement).checked }),
-  );
-  $<HTMLInputElement>('lock').addEventListener('change', (e) =>
-    command({ cmd: 'lock', on: (e.target as HTMLInputElement).checked }),
-  );
-  $('pause').addEventListener('click', () =>
-    command({ cmd: 'pause', on: stage?.state !== 'paused' }),
-  );
-  $('clear').addEventListener('click', () => {
-    if (confirm('Clear all drawings for everyone?')) {
-      command({ cmd: 'clear' });
-    }
-  });
-  $('end').addEventListener('click', () => {
-    if (confirm('End the session for everyone?')) {
-      command({ cmd: 'end' });
-    }
-  });
-
   if (!invite) {
     show('landing');
     if (location.hash.includes('inkpad=')) {
@@ -403,12 +287,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (invite.presenterKey) {
-    // The console needs no form: the extension's settings name it.
-    const config = await extensionSettings();
-    await join(config.name ?? 'Presenter', config.color ?? '#3e63dd');
-    return;
-  }
   show('join');
   $('joinForm').addEventListener('submit', (e) => {
     e.preventDefault();

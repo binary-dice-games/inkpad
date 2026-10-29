@@ -26,37 +26,100 @@
         font-size: 11px;
       }
       dialog {
-        width: min(460px, calc(100% - 24px));
+        width: min(560px, calc(100% - 24px));
         max-height: calc(100% - 24px);
+        padding: 16px 18px;
         border: 1px solid var(--border);
         border-radius: 12px;
         background: var(--panel);
         color: var(--fg);
       }
+      dialog::backdrop {
+        background: rgba(0, 0, 0, 0.5);
+      }
       dialog h2 {
-        margin: 0 0 8px;
+        margin: 0 0 10px;
         font-size: 16px;
       }
-      dialog fieldset {
-        margin: 0 0 10px;
-        border: 1px solid var(--border);
-        border-radius: 8px;
+      .tabs {
+        display: flex;
+        gap: 4px;
+        border-bottom: 1px solid var(--border);
       }
-      dialog input[type='number'],
-      dialog select,
-      dialog textarea {
+      .tabs button {
+        padding: 6px 14px;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        border-radius: 6px 6px 0 0;
+      }
+      .tabs button[aria-selected='true'] {
+        border-bottom-color: var(--accent);
+        font-weight: 600;
+      }
+      .pane {
+        min-height: 230px;
+        padding: 14px 0 4px;
+        display: grid;
+        align-content: start;
+        gap: 12px;
+      }
+      .pane[hidden] {
+        display: none;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .field label {
+        display: block;
+        margin: 0 0 4px;
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .field input[type='text'],
+      .field input[type='number'],
+      .field select,
+      .field textarea {
         width: 100%;
-        padding: 6px;
+        padding: 7px 8px;
         border: 1px solid var(--border);
         border-radius: 8px;
         font: inherit;
         background: transparent;
         color: inherit;
       }
+      .field input[type='color'] {
+        width: 56px;
+        height: 32px;
+        padding: 0;
+      }
+      .hint {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
       dialog label.check {
         display: flex;
         gap: 8px;
         align-items: center;
+        margin: 0;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border);
+      }
+      .actions .spacer {
+        flex: 1;
+      }
+      @media (max-width: 480px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -140,55 +203,111 @@
     <dialog id="settings" aria-labelledby="settingsTitle">
       <form id="settingsForm">
         <h2 id="settingsTitle">Settings</h2>
-        <fieldset>
-          <legend>You</legend>
-          <label for="name">Name shown to viewers</label>
-          <input id="name" type="text" maxlength="40" autocomplete="nickname" />
-          <label for="color">Colour <input id="color" type="color" /></label>
-          <label class="check"
-            ><input id="viewersMayDraw" type="checkbox" /> Viewers may draw when a session
-            starts</label
+        <div class="tabs" role="tablist" aria-label="Settings sections">
+          <button
+            id="tab-general"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="pane-general"
           >
-        </fieldset>
-        <fieldset>
-          <legend>Capture</legend>
-          <label for="cursor">Mouse pointer in the video</label>
-          <select id="cursor">
-            <option value="always">Always shown</option>
-            <option value="motion">Only while it moves</option>
-            <option value="never">Hidden</option>
-          </select>
-          <p class="muted">
-            Applies the next time you choose what to share. Some browsers or sources ignore it.
-          </p>
-        </fieldset>
-        <fieldset>
-          <legend>Video (applies at once)</legend>
-          <label for="fps">Frames per second</label>
-          <input id="fps" type="number" min="0.5" max="15" step="0.5" />
-          <label for="maxWidth">Largest width (px)</label>
-          <input id="maxWidth" type="number" min="640" max="3840" step="1" />
-          <label for="maxHeight">Largest height (px)</label>
-          <input id="maxHeight" type="number" min="360" max="2160" step="1" />
-          <label for="bitrateKbps">Largest bitrate per viewer (kbit/s)</label>
-          <input id="bitrateKbps" type="number" min="100" max="8000" step="50" />
-          <p class="muted" id="uplink"></p>
-        </fieldset>
-        <fieldset>
-          <legend>Connection (next session)</legend>
-          <label for="trackers">Trackers (one per line, wss://)</label>
-          <textarea id="trackers" rows="3" spellcheck="false"></textarea>
-          <label for="iceServers">STUN / TURN servers (one per line)</label>
-          <textarea id="iceServers" rows="3" spellcheck="false"></textarea>
-          <p class="muted">
-            <code>stun:host:port</code> or <code>turn:host:port username credential</code>
-          </p>
-        </fieldset>
-        <p class="row">
-          <button class="primary" type="submit">Save</button>
+            General
+          </button>
+          <button
+            id="tab-video"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="pane-video"
+            tabindex="-1"
+          >
+            Video
+          </button>
+          <button
+            id="tab-connection"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="pane-connection"
+            tabindex="-1"
+          >
+            Connection
+          </button>
+        </div>
+
+        <div id="pane-general" class="pane" role="tabpanel" aria-labelledby="tab-general">
+          <div class="field">
+            <label for="name">Your name</label>
+            <input id="name" type="text" maxlength="40" autocomplete="nickname" />
+          </div>
+          <div class="field">
+            <label for="color">Your colour</label>
+            <input id="color" type="color" />
+          </div>
+          <div class="field">
+            <label for="cursor">Mouse pointer in the video</label>
+            <select id="cursor">
+              <option value="always">Always shown</option>
+              <option value="motion">Only while it moves</option>
+              <option value="never">Hidden</option>
+            </select>
+            <p class="hint">Applies the next time you choose what to share (Share again).</p>
+          </div>
+          <label class="check">
+            <input id="viewersMayDraw" type="checkbox" /> Viewers may draw when a session starts
+          </label>
+        </div>
+
+        <div id="pane-video" class="pane" role="tabpanel" aria-labelledby="tab-video" hidden>
+          <div class="grid">
+            <div class="field">
+              <label for="fps">Frames per second</label>
+              <input id="fps" type="number" min="0.5" max="15" step="0.5" />
+            </div>
+            <div class="field">
+              <label for="bitrateKbps">Bitrate per viewer (kbit/s)</label>
+              <input id="bitrateKbps" type="number" min="100" max="8000" step="50" />
+            </div>
+            <div class="field">
+              <label for="maxWidth">Largest width (px)</label>
+              <input id="maxWidth" type="number" min="640" max="3840" step="1" />
+            </div>
+            <div class="field">
+              <label for="maxHeight">Largest height (px)</label>
+              <input id="maxHeight" type="number" min="360" max="2160" step="1" />
+            </div>
+          </div>
+          <p class="hint" id="uplink"></p>
+          <p class="hint">Changes here apply to the running session at once.</p>
+        </div>
+
+        <div
+          id="pane-connection"
+          class="pane"
+          role="tabpanel"
+          aria-labelledby="tab-connection"
+          hidden
+        >
+          <div class="field">
+            <label for="trackers">Trackers (one per line, wss://)</label>
+            <textarea id="trackers" rows="3" spellcheck="false"></textarea>
+          </div>
+          <div class="field">
+            <label for="iceServers">STUN / TURN servers (one per line)</label>
+            <textarea id="iceServers" rows="3" spellcheck="false"></textarea>
+            <p class="hint">
+              <code>stun:host:port</code> or <code>turn:host:port username credential</code>.
+              Applies from the next session.
+            </p>
+          </div>
+        </div>
+
+        <div class="actions">
           <button id="resetSettings" type="button">Restore defaults</button>
+          <span class="spacer"></span>
           <button id="closeSettings" type="button">Cancel</button>
-        </p>
+          <button class="primary" type="submit">Save</button>
+        </div>
       </form>
     </dialog>
     <script src="present.js"></script>

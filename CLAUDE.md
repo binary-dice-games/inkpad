@@ -136,7 +136,7 @@ scripts are fine while developing.
 ## Dependencies
 
 npm packages are pinned by `package-lock.json`; add runtime dependencies only
-with good reason (the shipped extension and viewer have none beyond the
+with good reason (the shipped pages have none beyond the
 packages in `packages/`). Do not edit files under `node_modules/`. Code copied
 from other projects goes in `packages/` with a provenance header and a
 `NOTICE` entry.

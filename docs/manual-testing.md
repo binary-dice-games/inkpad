@@ -24,13 +24,13 @@ presenter on Chrome.
 | 9 | Presenter locks viewers' drawing | Viewers' tools disable; a modified client's strokes are dropped |
 | 10 | Presenter generates a new link | Old link no longer joins; current viewers stay |
 | 11 | Tracker view: inspect the tracker's traffic | Only opaque sealed payloads; no token, no SDP |
-| 12 | Share a tab from the popup (a real click), then **Open console** | The console opens in its own window, joins, shows the tab's video; the shared page shows nothing extra |
-| 13 | Draw in the console with a mouse, and with a pen or touch (tablet console link) | Strokes appear on viewers' screens at once; the video follows a moment later |
+| 12 | On `present.html`, **Start sharing** and pick a tab | The page shows the tab's video with the board on top; the shared tab shows nothing extra; the viewer link is given |
+| 13 | Draw on the presenter page with a mouse, and with a pen or touch (a tablet) | Strokes appear on viewers' screens at once; the video follows a moment later |
 | 14 | Resize the shared window, or change its zoom | The viewers' video takes the new shape within a few seconds; drawings keep their place on screen |
-| 15 | Share a tab, then navigate it to another site | The share goes on; after a cross-origin navigation a later resize keeps the old video shape |
+| 15 | Share a tab, then navigate it to another site | The share goes on |
 | 16 | Share a page that plays video or animates | Frame rate stays near the setting; the presenter's CPU stays reasonable |
-| 17 | Close the console window, reopen it with **Open console** | Drawings are still there |
-| 18 | Switch to the console tab while the shared tab stays in the background | Viewers keep getting frames |
+| 17 | Reload the presenter page | The session ends (viewers see "presenter left"); **Start sharing** makes a new link |
+| 18 | Keep the presenter page in the background while the shared window is in front | Viewers keep getting frames |
 | 20 | Viewer on a network that blocks the tracker, joining with a code | The code, the answer and Connect work; video and drawing follow |
 | 21 | Viewer with a screen reader and keyboard only | Join form, toolbar and people list are reachable and named |
 | 22 | Share a page full of small text (a code editor, a document) on a 1440p or 4K screen, and a HiDPI laptop | The viewer reads the text at full size within a second or two of the page going still; moving content may be soft meanwhile |
@@ -39,7 +39,8 @@ presenter on Chrome.
 | 25 | Presenter page: put the page in the background (shared window in front) for 5 minutes while the shared window animates | Viewers keep getting frames at about the set rate; their drawings still reach the page |
 | 26 | Presenter page: click the browser's "Stop sharing", then **Share again** | Viewers see "paused", then the new source on the same link |
 | 27 | Presenter page: Settings, mouse pointer **Hidden**, then share a window and move the mouse over it | Viewers do not see the pointer; "Always shown" brings it back at the next **Share again** |
-| 19 | Pause, resume, clear and end from the console | Viewers see the placeholder, the video, an empty board and the end message |
+| 28 | Fold **Tools** and **Controls** on the presenter page, and **Tools** on the viewer; reload | The toolbar and panel stay out of the way and come back with their buttons; the choice is remembered |
+| 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)
 

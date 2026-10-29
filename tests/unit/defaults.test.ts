@@ -7,15 +7,11 @@ import {
   DEFAULT_VIEWER_BASE,
   UPLINK_WARNING_KBPS,
   VIDEO_LIMITS,
-  cleanCtl,
   cleanStage,
   cleanVideoSettings,
   inviteLink,
-  isPresenterKey,
-  newPresenterKey,
   parseInvite,
   parseInviteHash,
-  safeEqual,
   toMediaParams,
   uplinkKbps,
 } from '@inkpad/defaults';
@@ -111,71 +107,12 @@ describe('invite links', () => {
   });
 });
 
-describe('presenter key and ctl messages', () => {
-  it('makes distinct 22-character keys', () => {
-    const a = newPresenterKey();
-    expect(a).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(isPresenterKey(a)).toBe(true);
-    expect(newPresenterKey()).not.toBe(a);
-    expect(isPresenterKey('short')).toBe(false);
-    expect(isPresenterKey(42)).toBe(false);
-  });
-
-  it('compares strings in full', () => {
-    expect(safeEqual('abc', 'abc')).toBe(true);
-    expect(safeEqual('abc', 'abd')).toBe(false);
-    expect(safeEqual('abc', 'abcd')).toBe(false);
-  });
-
-  it('accepts well formed ctl messages and drops unknown fields', () => {
-    const key = newPresenterKey();
-    expect(cleanCtl({ t: 'auth', key, extra: 1 })).toEqual({ t: 'auth', key });
-    expect(cleanCtl({ t: 'role', presenter: true })).toEqual({ t: 'role', presenter: true });
-    expect(cleanCtl({ t: 'cmd', command: { cmd: 'lock', on: true, evil: 1 } })).toEqual({
-      t: 'cmd',
-      command: { cmd: 'lock', on: true },
-    });
-    expect(cleanCtl({ t: 'cmd', command: { cmd: 'remove', id: 'peer-1234' } })).toEqual({
-      t: 'cmd',
-      command: { cmd: 'remove', id: 'peer-1234' },
-    });
-    expect(cleanCtl({ t: 'cmd', command: { cmd: 'clear' } })).toEqual({
-      t: 'cmd',
-      command: { cmd: 'clear' },
-    });
-    expect(cleanCtl({ t: 'cmd', command: { cmd: 'end' } })).toEqual({
-      t: 'cmd',
-      command: { cmd: 'end' },
-    });
-  });
-
-  it('rejects malformed ctl messages', () => {
-    expect(cleanCtl(null)).toBeNull();
-    expect(cleanCtl('x')).toBeNull();
-    expect(cleanCtl({ t: 'auth', key: 'short' })).toBeNull();
-    expect(cleanCtl({ t: 'role', presenter: 'yes' })).toBeNull();
-    expect(cleanCtl({ t: 'cmd' })).toBeNull();
-    expect(cleanCtl({ t: 'cmd', command: { cmd: 'lock', on: 'yes' } })).toBeNull();
-    expect(cleanCtl({ t: 'cmd', command: { cmd: 'remove', id: '../x' } })).toBeNull();
-    expect(cleanCtl({ t: 'cmd', command: { cmd: 'format' } })).toBeNull();
-    expect(cleanCtl({ t: 'other' })).toBeNull();
-  });
-});
-
-describe('invite links with a presenter key and trackers', () => {
+describe('invite links with trackers', () => {
   const token = 'abcdefghijklmnopqrstuv';
 
-  it('adds the presenter key only when given', () => {
-    const key = newPresenterKey();
-    const viewer = inviteLink(DEFAULT_VIEWER_BASE, `inkpad=${token}`, {
-      trackers: DEFAULT_TRACKERS,
-    });
-    const console_ = inviteLink(DEFAULT_VIEWER_BASE, `inkpad=${token}`, {
-      presenterKey: key,
-      trackers: DEFAULT_TRACKERS,
-    });
-    expect(parseInvite(new URL(viewer).hash)).toEqual({ token });
-    expect(parseInvite(new URL(console_).hash)).toEqual({ token, presenterKey: key });
+  it('has only the room token when the trackers are the defaults', () => {
+    const link = inviteLink(DEFAULT_VIEWER_BASE, `inkpad=${token}`, { trackers: DEFAULT_TRACKERS });
+    expect(parseInvite(new URL(link).hash)).toEqual({ token });
   });
 
   it('carries only non-default trackers', () => {
@@ -188,7 +125,7 @@ describe('invite links with a presenter key and trackers', () => {
     expect(parseInvite(new URL(plain).hash)?.trackers).toBeUndefined();
   });
 
-  it('ignores bad keys and non-websocket trackers in a link', () => {
+  it('ignores a leftover presenter key and non-websocket trackers in a link', () => {
     const hash = `#inkpad=${token}&presenter=bad&tr=https%3A%2F%2Fx.example&tr=wss%3A%2F%2Fok.example`;
     expect(parseInvite(hash)).toEqual({ token, trackers: ['wss://ok.example'] });
     expect(parseInvite('#presenter=abcdefghijklmnopqrstuv')).toBeNull();

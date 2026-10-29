@@ -14,9 +14,9 @@ import {
   cleanTrackers,
   formatIceLines,
   parseIceLines,
-} from '../../extension/src/settings';
-import type { Settings } from '../../extension/src/settings';
-import { ShareHost } from '../../extension/src/share-host';
+} from './settings';
+import type { Settings } from './settings';
+import { ShareHost } from './share-host';
 import { UPLINK_WARNING_KBPS, toMediaParams, uplinkKbps } from '@inkpad/defaults';
 import {
   canCaptureDisplay,
@@ -26,6 +26,7 @@ import {
 } from './display-capture';
 import type { DisplayCapture } from './display-capture';
 import { boardAspect, errorMessage } from './model';
+import { setToolbarFolded } from './fold';
 import { cleanPrefs, loadPrefs, savePrefs } from './present-settings';
 import type { PresenterPrefs } from './present-settings';
 
@@ -235,9 +236,7 @@ async function startSharing(): Promise<void> {
   try {
     host = await ShareHost.start({
       settings,
-      keeper: false,
       clearBoard: () => board?.clear(),
-      onEnd: () => endSession('You ended the session.'),
     });
   } catch (e) {
     picked.stop();
@@ -317,22 +316,12 @@ function saveSettings(): void {
   }
 }
 
-/** Folds the whiteboard toolbar away, or brings it back. Leaves drawing tools when folding. */
+/** Folds the whiteboard toolbar away, or brings it back. */
 function setToolsCollapsed(collapsed: boolean): void {
   prefs = { ...prefs, toolsCollapsed: collapsed };
   savePrefs(prefs);
   $('toolsToggle').setAttribute('aria-pressed', String(!collapsed));
-  const root = board?.element.shadowRoot;
-  // Not the `hidden` attribute: the board stops redrawing a hidden toolbar.
-  for (const selector of ['.toolbar', '.pop']) {
-    const el = root?.querySelector<HTMLElement>(selector);
-    if (el) {
-      el.style.display = collapsed ? 'none' : '';
-    }
-  }
-  if (collapsed) {
-    board?.setTool('pointer');
-  }
+  setToolbarFolded(board, collapsed);
 }
 
 function setPanelCollapsed(collapsed: boolean): void {
@@ -374,9 +363,32 @@ function main(): void {
   });
   $('panelToggle').addEventListener('click', () => setPanelCollapsed(!prefs.panelCollapsed));
   $('toolsToggle').addEventListener('click', () => setToolsCollapsed(!prefs.toolsCollapsed));
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>('#settings [role=tab]')];
+  const selectTab = (tab: HTMLButtonElement, focus = false): void => {
+    for (const other of tabs) {
+      const on = other === tab;
+      other.setAttribute('aria-selected', String(on));
+      other.tabIndex = on ? 0 : -1;
+      $(other.getAttribute('aria-controls') ?? '').hidden = !on;
+    }
+    if (focus) {
+      tab.focus();
+    }
+  };
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => selectTab(tab));
+    tab.addEventListener('keydown', (e) => {
+      const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (step !== 0) {
+        e.preventDefault();
+        selectTab(tabs[(i + step + tabs.length) % tabs.length]!, true);
+      }
+    });
+  });
   const dialog = $<HTMLDialogElement>('settings');
   const openSettings = (): void => {
     fillSettings(prefs);
+    selectTab(tabs[0]!);
     dialog.showModal();
   };
   $('openSettings').addEventListener('click', openSettings);
