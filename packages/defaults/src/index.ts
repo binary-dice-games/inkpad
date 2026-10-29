@@ -22,7 +22,7 @@ export const DEFAULT_VIEWER_BASE: string =
 export const DEFAULT_TRACKERS: readonly string[] = [
   'wss://tracker.openwebtorrent.com',
   'wss://tracker.webtorrent.dev',
-  'wss://tracker.files.fm:7073/announce',
+  'wss://tracker.btorrent.xyz',
 ];
 
 /** STUN only: TURN needs credentials and is left to the user's settings. */

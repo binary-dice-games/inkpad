@@ -73,6 +73,9 @@ async function extensionSettings(): Promise<{
 
 const invite = parseInvite(location.hash);
 
+/** Connection diagnostics in the browser console (F12), one line per step. */
+const logger = (...args: unknown[]): void => console.log('[inkpad]', ...args);
+
 // ── State of the running session ─────────────────────────────────────────────
 
 let session: Session | null = null;
@@ -232,6 +235,7 @@ async function join(name: string, color: string): Promise<void> {
       role: 'guest',
       token: invite.token,
       protocol: PROTOCOL,
+      log: logger,
       me: { name, color },
       iceServers: config.iceServers ?? [...DEFAULT_ICE_SERVERS],
       rendezvous: [

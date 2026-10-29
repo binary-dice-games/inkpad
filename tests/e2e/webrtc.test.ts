@@ -52,6 +52,36 @@ const guestOpen = (page: Page) =>
   );
 
 describe('video and board over real WebRTC', () => {
+  it('connects through a tracker that drops announces over 12 KB, as public ones do', async () => {
+    const small = await FakeTracker.start();
+    small.maxMessageBytes = 12 * 1024;
+    const params = (p: Record<string, string>) =>
+      `${files.origin}/pages/room.html?${new URLSearchParams({ tracker: small.url, ...p })}`;
+    const ctxs = [await browser.newContext(), await browser.newContext()];
+    try {
+      const host = await ctxs[0]!.newPage();
+      await host.goto(params({ role: 'host', video: '1' }));
+      await host.waitForFunction(
+        () => (window as unknown as { app?: { ready?: boolean } }).app?.ready,
+      );
+      const token = await host.evaluate(
+        () => (window as unknown as { app: { token: string } }).app.token,
+      );
+      const guest = await ctxs[1]!.newPage();
+      await guest.goto(params({ role: 'guest', token }));
+      await guest.waitForFunction(
+        () => (window as unknown as { app?: { ready?: boolean } }).app?.ready,
+      );
+      await guestOpen(guest);
+      expect(small.dropped).toBe(0);
+      const widest = Math.max(...small.seen.map((m) => m.length));
+      expect(widest).toBeLessThan(12 * 1024);
+    } finally {
+      for (const c of ctxs) await c.close();
+      await small.stop();
+    }
+  });
+
   it('delivers video frames to a viewer at a low frame rate, and syncs drawings both ways', async () => {
     const host = await open({ role: 'host', video: '1', fps: '3' });
     const token = await host.page.evaluate(
@@ -240,6 +270,50 @@ describe('video and board over real WebRTC', () => {
     } finally {
       await ben.ctx.close();
       await ana.ctx.close();
+      await host.ctx.close();
+    }
+  });
+
+  it('logs every step of making a connection, and nothing secret', async () => {
+    const host = await open({ role: 'host' });
+    const token = await host.page.evaluate(
+      () => (window as unknown as { app: { token: string } }).app.token,
+    );
+    const guest = await open({ role: 'guest', token });
+    try {
+      await guestOpen(guest.page);
+      const logs = (page: Page) =>
+        page.evaluate(() => (window as unknown as { app: { logs: string[] } }).app.logs);
+      const [h, g] = [(await logs(host.page)).join(' | '), (await logs(guest.page)).join(' | ')];
+      for (const line of [
+        'session: host',
+        'tracker: connected to',
+        'offer received from',
+        'answer sent to',
+        'data channel open: reliable',
+        'link open',
+        'session state: open',
+      ]) {
+        expect(h, `host log should contain "${line}"`).toContain(line);
+      }
+      for (const line of [
+        'session: guest',
+        'tracker: connected to',
+        'announce with',
+        'answer received from',
+        'ICE connection: connected',
+        'data channel open: fast',
+        'session state: open',
+      ]) {
+        expect(g, `guest log should contain "${line}"`).toContain(line);
+      }
+      for (const text of [h, g]) {
+        expect(text).not.toContain(token);
+        expect(text).not.toContain('a=fingerprint');
+        expect(text).not.toContain('v=0');
+      }
+    } finally {
+      await guest.ctx.close();
       await host.ctx.close();
     }
   });

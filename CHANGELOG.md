@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Privacy policy page on the viewer site.
 
+### Fixed
+
+- Viewers and the console could not connect through the public trackers (only join codes
+  worked): offers were too large for the trackers. They are now compressed.
+
+- Connection diagnostics: the extension's offscreen page and the viewer write one line per
+  step of making a connection to the browser console, prefixed `[inkpad]`.
+
 ### Removed
 
 - The C++ `inkpad` library and executable; the project is now TypeScript.

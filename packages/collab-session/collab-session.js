@@ -25,6 +25,17 @@
 
 export const PROTOCOL_VERSION = 1;
 
+/**
+ * Diagnostics. A session's `log` option (a function taking the same arguments as
+ * console.log) receives one line per step of making a connection: tracker sockets,
+ * announces, offers and answers, ICE and channel states, links opening and closing.
+ * Nothing secret is logged: no token, no SDP, no message contents. (inkpad addition)
+ */
+let dbg = () => {};
+
+/** Short form of a peer or offer id for the log. */
+const short = (id) => String(id ?? '').slice(0, 8);
+
 /** A failure the user can act on: `reason` is a stable code. */
 export class SessionError extends Error {
   constructor(reason, message) {
@@ -124,10 +135,25 @@ export async function roomKeys(token) {
   return { topic, seal };
 }
 
-/** Encrypts a JSON value with the room's key: base64url(iv || ciphertext). */
+/** Sealed messages above this many bytes of JSON are deflated first (an SDP shrinks about 4 times). */
+const SEAL_COMPRESS_OVER = 256;
+/** The most a sealed message may unfold to. */
+const SEAL_MAX_BYTES = 1 << 20;
+
+/**
+ * Encrypts a JSON value with the room's key: base64url(iv || ciphertext). The plaintext is a
+ * flag byte (1: deflated) and the JSON. inkpad addition: public trackers drop an announce of
+ * more than about 12 KB, and three offers with a video line are about 29 KB uncompressed.
+ */
 export async function sealMessage(keys, value) {
   const iv = randomBytes(12);
-  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: utf8.encode(keys.topic) }, keys.seal, utf8.encode(JSON.stringify(value)));
+  const json = utf8.encode(JSON.stringify(value));
+  const squeeze = json.length > SEAL_COMPRESS_OVER;
+  const body = squeeze ? await compress(json) : json;
+  const plain = new Uint8Array(1 + body.length);
+  plain[0] = squeeze ? 1 : 0;
+  plain.set(body, 1);
+  const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: utf8.encode(keys.topic) }, keys.seal, plain);
   const out = new Uint8Array(12 + data.byteLength);
   out.set(iv);
   out.set(new Uint8Array(data), 12);
@@ -141,8 +167,9 @@ export async function unsealMessage(keys, text) {
     if (bytes.length < 13) {
       return null;
     }
-    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(0, 12), additionalData: utf8.encode(keys.topic) }, keys.seal, bytes.subarray(12));
-    return JSON.parse(fromUtf8.decode(plain));
+    const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.subarray(0, 12), additionalData: utf8.encode(keys.topic) }, keys.seal, bytes.subarray(12)));
+    const body = plain[0] === 1 ? await decompress(plain.subarray(1), SEAL_MAX_BYTES) : plain.subarray(1);
+    return JSON.parse(fromUtf8.decode(body));
   } catch {
     return null;
   }
@@ -344,11 +371,17 @@ class WebRtcLink extends LinkBase {
     this.fast = pc.createDataChannel('fast', { negotiated: true, id: 1, ordered: false, maxRetransmits: 0 });
     for (const ch of [this.reliable, this.fast]) {
       ch.binaryType = 'arraybuffer';
-      ch.onopen = () => this.reliable.readyState === 'open' && this.fast.readyState === 'open' && this.opened();
+      ch.onopen = () => {
+        dbg('data channel open:', ch.label);
+        if (this.reliable.readyState === 'open' && this.fast.readyState === 'open') {
+          this.opened();
+        }
+      };
       ch.onclose = () => this.ended('closed');
       ch.onmessage = (e) => typeof e.data !== 'string' && this.onframe(new Uint8Array(e.data), ch === this.fast);
     }
     pc.addEventListener('connectionstatechange', () => {
+      dbg('peer connection:', pc.connectionState);
       if (pc.connectionState === 'failed') {
         this.ended(this.isOpen ? 'network' : 'ice-failed');
         pc.close();
@@ -357,6 +390,7 @@ class WebRtcLink extends LinkBase {
       }
     });
     pc.addEventListener('iceconnectionstatechange', () => {
+      dbg('ICE connection:', pc.iceConnectionState);
       // A network change: try a restart once while still connected.
       if (pc.iceConnectionState === 'disconnected' && this.isOpen && !this.restarted && typeof pc.restartIce === 'function') {
         this.restarted = true;
@@ -643,19 +677,23 @@ class TorrentRendezvous {
       return;
     }
     this.sockets.set(url, ws);
+    dbg('tracker: connecting to', url);
     ws.onopen = () => {
+      dbg('tracker: connected to', url);
       attempt = 0;
       this.ctx.status('tracker', url);
       this.announce(ws);
     };
     ws.onmessage = (e) => this.received(ws, e.data);
-    ws.onclose = () => {
+    ws.onclose = (e) => {
+      dbg('tracker: closed', url, 'code', e.code, e.reason || '(no reason)');
       if (this.sockets.get(url) === ws && !this.stopped) {
+        dbg('tracker: retry in', Math.min(60000, 2000 * 2 ** attempt) / 1000, 's');
         // Back off: 2, 4, 8 ... 60 seconds.
         setTimeout(() => this.connect(url, attempt + 1), Math.min(60000, 2000 * 2 ** attempt));
       }
     };
-    ws.onerror = () => {};
+    ws.onerror = () => dbg('tracker: error on', url, '(the browser gives no detail)');
   }
 
   /** @private */
@@ -680,6 +718,7 @@ class TorrentRendezvous {
     const base = { action: 'announce', info_hash: this.infoHash, peer_id: this.trackerId, uploaded: 0, downloaded: 0, left: 0, event: 'started' };
     // A guest whose link to the host is opening makes no new offers for a while.
     if (this.ctx.role === 'host' || !this.ctx.wantsLinks() || Date.now() < this.tryingUntil) {
+      dbg('tracker: announce (waiting, no offers)', ws.url);
       ws.send(JSON.stringify({ ...base, numwant: 0, offers: [] }));
       return;
     }
@@ -691,13 +730,15 @@ class TorrentRendezvous {
           const sealed = await sealMessage(this.ctx.keys, { p: this.ctx.protocol, from: this.ctx.peerId, role: 'guest', kind: 'offer', sdp, ts: Date.now() });
           this.pending.set(offerId, { link, pc, at: Date.now() });
           return { offer: { type: 'offer', sdp: sealed }, offer_id: offerId };
-        } catch {
+        } catch (e) {
+          dbg('could not make an offer:', e?.message ?? e);
           return null; // no WebRTC: the session reports it
         }
       }),
     );
     const offers = made.filter(Boolean);
     if (ws.readyState === 1 && !this.stopped) {
+      dbg('tracker: announce with', offers.length, 'offers', ws.url);
       ws.send(JSON.stringify({ ...base, numwant: offers.length, offers }));
     }
   }
@@ -710,34 +751,43 @@ class TorrentRendezvous {
     } catch {
       return;
     }
+    if (m['failure reason'] || m.warning_message) {
+      dbg('tracker says:', m['failure reason'] ?? m.warning_message, ws.url);
+    }
     if (m.info_hash !== this.infoHash || m.peer_id === this.trackerId) {
       return;
     }
     if (m.offer && this.ctx.role === 'host' && typeof m.offer.sdp === 'string' && typeof m.offer_id === 'string') {
       const sealed = await unsealMessage(this.ctx.keys, m.offer.sdp);
       if (!this.fresh(sealed, 'offer', 'guest')) {
+        dbg('offer from a guest ignored (not sealed for this room, old, repeated or another protocol)');
         return;
       }
+      dbg('offer received from', short(sealed.from), 'via', ws.url);
       this.ctx.status('offer', sealed.from);
       try {
         const { link, sdp } = await makeAnswer(this.ctx.iceServers, sealed.sdp, this.gatherMs, this.ctx.media);
         const answer = await sealMessage(this.ctx.keys, { p: this.ctx.protocol, from: this.ctx.peerId, role: 'host', kind: 'answer', sdp, ts: Date.now() });
         this.ctx.link(link);
         if (ws.readyState === 1) {
+          dbg('answer sent to', short(sealed.from), 'via', ws.url);
           ws.send(JSON.stringify({ action: 'announce', info_hash: this.infoHash, peer_id: this.trackerId, to_peer_id: m.peer_id, answer: { type: 'answer', sdp: answer }, offer_id: m.offer_id }));
         }
-      } catch {
-        // a bad offer: ignored
+      } catch (e) {
+        dbg('could not answer an offer:', e?.message ?? e);
       }
     } else if (m.answer && this.ctx.role === 'guest' && typeof m.answer.sdp === 'string') {
       const pending = this.pending.get(m.offer_id);
       if (!pending) {
+        dbg('answer for an offer that is no longer pending (dropped)');
         return;
       }
       const sealed = await unsealMessage(this.ctx.keys, m.answer.sdp);
       if (!this.fresh(sealed, 'answer', 'host')) {
+        dbg('answer ignored (not sealed for this room, old, repeated or another protocol)');
         return;
       }
+      dbg('answer received from', short(sealed.from), 'via', ws.url);
       // One answer is enough: the other offers are given up, and no new
       // ones go out while this link opens.
       this.pending.delete(m.offer_id);
@@ -751,7 +801,8 @@ class TorrentRendezvous {
       try {
         await pending.pc.setRemoteDescription({ type: 'answer', sdp: sealed.sdp });
         this.ctx.link(pending.link);
-      } catch {
+      } catch (e) {
+        dbg('could not use the answer:', e?.message ?? e);
         pending.link.close();
       }
     }
@@ -1254,6 +1305,7 @@ export class Session {
       answer: ['ice-failed', 'Your network and the presenter\'s could not connect directly. Try another network (a phone hotspot), add a TURN server, or use the join codes.'],
       offer: ['ice-failed', 'Your network and the presenter\'s could not connect directly. Try another network (a phone hotspot), add a TURN server, or use the join codes.'],
     }[this.lastLinkFailure ?? this.stage] ?? ['no-answer', 'The presenter did not answer: the link may be old, the presenter may have left, or the session is locked.'];
+    dbg('no connection yet:', why[0]);
     this.emit('error', new SessionError(why[0], why[1]));
     // Keep trying: the presenter may still come.
     this.connectTimer = setTimeout(() => this.connectTimeout(), this.connectTimeoutMs * 2);
@@ -1272,6 +1324,7 @@ export class Session {
     link.onframe = (frame, fast) => this.frame(entry, frame, fast);
     link.onclose = (reason) => this.linkClosed(entry, reason);
     link.onopen = () => {
+      dbg('link open, waiting for hello/welcome');
       if (this.role === 'guest') {
         this.sendControlTo(entry, { t: 'hello', id: this.me.id, instance: this.instance, name: this.me.name, color: this.me.color, protocol: this.protocol, v: PROTOCOL_VERSION });
       }
@@ -1295,6 +1348,7 @@ export class Session {
 
   /** @private */
   linkClosed(entry, reason) {
+    dbg('link closed:', reason ?? '(no reason)', entry.peer ? `peer ${short(entry.peer.id)}` : '(before hello)');
     clearTimeout(entry.helloTimer);
     this.unnamed.delete(entry);
     if (reason === 'ice-failed') {
@@ -1634,6 +1688,7 @@ export class Session {
 
   /** @private */
   setState(state, extra = {}) {
+    dbg('session state:', state);
     this.state = state;
     this.emit('state', { state, locked: this.locked, ...extra });
   }
@@ -1643,6 +1698,7 @@ export class Session {
     if (this.state === 'ended') {
       return;
     }
+    dbg('session ended:', reason);
     this.state = 'ended';
     clearTimeout(this.connectTimer);
     clearTimeout(this.reconnectTimer);
@@ -1695,6 +1751,7 @@ export class Session {
  *          when WebRTC is needed and missing
  */
 export async function createSession(options) {
+  dbg = typeof options.log === 'function' ? (...args) => options.log(...args) : () => {};
   if (options.role !== 'host' && options.role !== 'guest') {
     throw new SessionError('config', 'role is host or guest');
   }
@@ -1707,6 +1764,7 @@ export async function createSession(options) {
     throw new SessionError('no-webrtc', 'This browser cannot make peer-to-peer connections (WebRTC).');
   }
   const keys = await roomKeys(token);
+  dbg('session:', options.role, 'peer', short(options.peerId ?? ''), 'rendezvous', (options.rendezvous ?? []).map((r) => r.kind ?? 'custom').join('+') || 'none', 'ICE servers', (options.iceServers ?? []).length);
   const session = new Session({ ...options, token }, keys);
   session.start();
   return session;

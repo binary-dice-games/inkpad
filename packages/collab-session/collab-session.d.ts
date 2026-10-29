@@ -85,6 +85,11 @@ export interface SessionOptions {
   accept?: (channel: string, message: unknown, from: string) => boolean;
   connectTimeoutMs?: number;
   reconnectMs?: number;
+  /**
+   * Receives one line per step of making a connection (arguments as for console.log):
+   * trackers, announces, offers, answers, ICE and channel states. No secrets are logged.
+   */
+  log?: (...args: unknown[]) => void;
 }
 
 export interface MemoryNetwork {

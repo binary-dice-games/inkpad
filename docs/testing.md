@@ -166,6 +166,22 @@ screen of the viewer, and the popup) to connect anyway.
 | The popup says the video stopped | The capture could not restart after a resize; stop sharing and start again |
 | Nothing at all happens after clicking the icon | Open the extension's service worker console (below) and look for errors |
 
+Connection logs: both the viewer/console page (F12) and the extension's *offscreen.html*
+(`chrome://extensions` → inkpad → *Inspect views*) write `[inkpad]` lines to the console, one
+per step. A healthy join reads, on the viewer: `tracker: connected to ...`, `announce with 3
+offers`, `answer received from ...`, `ICE connection: connected`, `data channel open: fast`,
+`session state: open`. Where it stops tells you the stage that fails:
+
+| Last line you see | The problem is |
+|---|---|
+| `tracker: closed ... code 1006`, repeated | The tracker is unreachable (blocked, down or DNS) |
+| `announce with 3 offers` and nothing after | The tracker dropped the announce, or nobody is in the room: check the presenter's log shows `offer received from` |
+| presenter: `offer received`, but no `answer sent` | The presenter could not answer: the line after says why |
+| `answer received`, then `ICE connection: failed` | The two networks cannot reach each other: try another network or a TURN server |
+| `link open` but never `session state: open` | The protocol versions differ (the presenter refuses the hello) |
+
+Nothing secret is logged: no link, token, presenter key, SDP or message contents.
+
 Where to look:
 
 - `chrome://extensions` → inkpad → *Inspect views*: *service worker* (starting and stopping)

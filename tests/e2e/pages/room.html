@@ -32,7 +32,7 @@
 
   const q = new URLSearchParams(location.search);
   const role = q.get('role');
-  const app = (window.app = { role, errors: [], tracks: 0, ticks: 0, state: null });
+  const app = (window.app = { role, errors: [], tracks: 0, ticks: 0, state: null, logs: [] });
 
   const session = await createSession({
     role,
@@ -47,6 +47,7 @@
       },
     ],
     iceServers: [],
+    log: (...a) => app.logs.push(a.join(' ')),
     accept: role === 'host' ? (_c, m) => (q.get('lock') ? m.t === 'cur' : true) : undefined,
   });
   app.session = session;

@@ -104,6 +104,7 @@ export class ShareHost {
     const session = await createSession({
       role: 'host',
       protocol: PROTOCOL,
+      log: (...args: unknown[]) => console.log('[inkpad]', ...args),
       me: { name: settings.name, color: settings.color },
       iceServers: settings.iceServers,
       rendezvous: options.rendezvous ?? [

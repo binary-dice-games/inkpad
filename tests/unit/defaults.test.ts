@@ -173,3 +173,13 @@ describe('invite links with a presenter key and trackers', () => {
     expect(parseInvite('#presenter=abcdefghijklmnopqrstuv')).toBeNull();
   });
 });
+
+describe('default trackers', () => {
+  it('are the three that nymph uses, all secure websockets', () => {
+    expect(DEFAULT_TRACKERS).toEqual([
+      'wss://tracker.openwebtorrent.com',
+      'wss://tracker.webtorrent.dev',
+      'wss://tracker.btorrent.xyz',
+    ]);
+  });
+});

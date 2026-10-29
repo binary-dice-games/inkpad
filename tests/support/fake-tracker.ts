@@ -22,6 +22,10 @@ export class FakeTracker {
   private readonly swarms = new Map<string, Map<string, WebSocket>>();
   /** Every message the tracker has received (to check what a tracker could see). */
   readonly seen: string[] = [];
+  /** Messages larger than this many bytes are dropped, as public trackers do (0: no limit). */
+  maxMessageBytes = 0;
+  /** How many messages were dropped for their size. */
+  dropped = 0;
 
   private constructor(server: WebSocketServer) {
     this.server = server;
@@ -58,6 +62,10 @@ export class FakeTracker {
     const joined: { hash: string; id: string }[] = [];
     ws.on('message', (data) => {
       const text = data.toString();
+      if (this.maxMessageBytes > 0 && text.length > this.maxMessageBytes) {
+        this.dropped += 1;
+        return;
+      }
       this.seen.push(text);
       let m: Announce;
       try {
