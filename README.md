@@ -24,6 +24,14 @@ viewer page (`index.html`). Both are served from GitHub Pages
 (`spec/06_static_presenter`). There used to be a Chrome extension; it was removed
 because the page does the same and more.
 
+## Using the board
+
+Keys 1-6 pick the tool (1 pointer, 2 line, 3 text, 4 sticker, 5 eraser, 6 colour); pressing the
+same number again goes through its options. Drag your own items to move them, right click to
+remove them; stickers and images scale with Shift+drag and turn with Ctrl+drag. The wheel zooms
+at the pointer (0 resets), and image files can be dropped on the board. **Ask for a turn** (lower
+left) queues you to speak; the presenter can remove anyone.
+
 ## Build and test
 
 ```

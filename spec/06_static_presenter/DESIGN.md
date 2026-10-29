@@ -100,6 +100,14 @@ Closing the page ends the session (viewers see `host-gone`).
 `present.html?tr=wss://...` (repeatable) replaces the public trackers, and the viewer
 link then carries them (the same `tr` rule as `spec/01_core_features/DESIGN.md`).
 
+### Link lifetime
+
+The WebTorrent tracker protocol has no time to live a client can set: a tracker forgets a peer
+when it stops announcing or on its own schedule. `trackerTtlMinutes` (default 60, 0 = no
+limit) is how long the host stays announced (`ttlMs` of the `torrent` rendezvous); then it
+sends `event: stopped` and stops, the page shows that the link expired, and **New link**
+(a new token, a new announce) lets more people in. People already connected stay.
+
 ### Settings and folding
 
 The dialog is a compact window with three tabs (**General**, **Video**, **Connection**;
@@ -108,7 +116,7 @@ so it fits without scrolling on a laptop and on a phone-sized window.
 
 A **Settings** dialog (start screen and live panel) holds the
 settings (name, colour, viewers may draw, frame rate, size and bitrate limits,
-trackers, ICE servers) plus the pointer mode, validated by
+trackers, link lifetime, avatar, ICE servers) plus the pointer mode, validated by
 `cleanSettings` and kept in `localStorage` (`viewer/src/present-settings.ts`).
 Video limits reach a running share at once (`mediaParams`); the rest applies from
 the next session (connection, name) or share (pointer).

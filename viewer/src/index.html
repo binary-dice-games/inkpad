@@ -237,6 +237,18 @@
         color: inherit;
         word-break: break-all;
       }
+      .avatar-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .avatar-row img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 1px solid var(--border);
+      }
       #people {
         padding: 2px 8px;
       }
@@ -311,6 +323,13 @@
         <input id="name" type="text" maxlength="40" autocomplete="nickname" required />
         <label for="color">Your colour</label>
         <input id="color" type="color" />
+        <label for="avatar">Your picture (optional)</label>
+        <div class="avatar-row">
+          <img id="avatarPreview" alt="" hidden />
+          <input id="avatar" type="file" accept="image/*" />
+          <button id="avatarClear" type="button">Remove</button>
+        </div>
+        <p id="avatarHint" class="muted">Shown on your cursor instead of your name.</p>
         <p><button class="primary" type="submit">Join</button></p>
         <p class="muted">
           The presenter will see your connection address. Nothing you do here is stored on a server.

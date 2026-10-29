@@ -8,7 +8,9 @@
  * at commit 13de939afdd5b52f35b1bbd8ef90cd677c3ae844 (2026-10). Changes:
  * emoticon stickers, `frameAdapter` (board units = a frame 1000 units wide,
  * see spec/01_core_features/DESIGN.md section 4.2) and `drawingGate` (the
- * host-side lock on viewers' changes).
+ * host-side lock on viewers' changes), and later: numbered tools with options, moving, scaling
+ * and turning one's own items, images dropped on the board, zoom (in `frameAdapter`), cursors
+ * that show the tool and the avatar, and a queue for the turn to speak.
  *
  *   import { createWhiteboard } from './collab-whiteboard.js';
  *   const wb = createWhiteboard(container, { session, adapter });
@@ -27,6 +29,9 @@ export const LIMITS = Object.freeze({
   points: 5000,
   text: 500,
   snapshotBytes: 1 << 20,
+  images: 20,
+  imageChars: 300000,
+  avatarChars: 16000,
 });
 
 /** A refused change (a limit, read-only), with a message for the user. */
@@ -35,7 +40,10 @@ export class WhiteboardError extends Error {}
 const ID = /^[A-Za-z0-9_.-]{1,64}$/;
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const STICKER = /^[a-z0-9-]{1,32}$/;
-const KINDS = new Set(['ink', 'text', 'sticker']);
+const KINDS = new Set(['ink', 'text', 'sticker', 'image']);
+const IMAGE_DATA = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+const TOOL_NAMES = new Set(['pointer', 'pen', 'text', 'sticker', 'eraser']);
+const turned = (r) => (finite(r, -360, 360) && r !== 0 ? { rot: r } : {});
 const finite = (n, lo = -1e6, hi = 1e6) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
 
 function validStamp(s) {
@@ -76,6 +84,12 @@ export function cleanItem(item) {
     }
     return { ...base, points: p.slice(), color: item.color, width: item.width };
   }
+  if (item.kind === 'image') {
+    if (!finite(item.x) || !finite(item.y) || !finite(item.size, 8, 2000) || !finite(item.ratio, 0.05, 20) || !cleanImageData(item.data)) {
+      return null;
+    }
+    return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, data: item.data, ...turned(item.rot) };
+  }
   if (!finite(item.x) || !finite(item.y) || !finite(item.size, 4, 400)) {
     return null;
   }
@@ -88,7 +102,59 @@ export function cleanItem(item) {
   if (!STICKER.test(item.name ?? '')) {
     return null;
   }
-  return { ...base, x: item.x, y: item.y, size: item.size, name: item.name };
+  return { ...base, x: item.x, y: item.y, size: item.size, name: item.name, ...turned(item.rot) };
+}
+
+/** The data URL if it is a small PNG, JPEG or WebP image (at most `maxChars` long), else null. */
+export function cleanImageData(value, maxChars = LIMITS.imageChars) {
+  return typeof value === 'string' && value.length <= maxChars && IMAGE_DATA.test(value) ? value : null;
+}
+
+/**
+ * Reads an image file into a data URL small enough to travel in a message: scaled down until it
+ * fits in `maxChars` (JPEG, or PNG for a PNG). `square` crops the middle (for an avatar).
+ * @returns {Promise<{data: string, width: number, height: number}>}
+ * @throws {WhiteboardError} when the file is not an image the browser can read, or stays too big
+ */
+export async function fileToImageData(file, { maxSide = 800, square = false, maxChars = LIMITS.imageChars } = {}) {
+  if (!file || !/^image\//.test(file.type)) {
+    throw new WhiteboardError('That file is not an image.');
+  }
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new WhiteboardError('That image cannot be read.');
+  }
+  try {
+    const png = file.type === 'image/png';
+    const crop = square ? Math.min(bitmap.width, bitmap.height) : 0;
+    for (const k of [1, 0.75, 0.5, 0.35, 0.25]) {
+      const long = Math.max(32, Math.round(maxSide * k));
+      const w = square ? Math.min(long, crop) : Math.max(1, Math.round(bitmap.width * Math.min(1, long / Math.max(bitmap.width, bitmap.height))));
+      const h = square ? w : Math.max(1, Math.round(bitmap.height * (w / bitmap.width)));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!png) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+      }
+      if (square) {
+        ctx.drawImage(bitmap, (bitmap.width - crop) / 2, (bitmap.height - crop) / 2, crop, crop, 0, 0, w, h);
+      } else {
+        ctx.drawImage(bitmap, 0, 0, w, h);
+      }
+      const data = canvas.toDataURL(png ? 'image/png' : 'image/jpeg', 0.82);
+      if (cleanImageData(data, maxChars)) {
+        return { data, width: w, height: h };
+      }
+    }
+  } finally {
+    bitmap.close?.();
+  }
+  throw new WhiteboardError('That image is too large.');
 }
 
 // ── Points ────────────────────────────────────────────────────────────────────
@@ -246,6 +312,9 @@ export class WhiteboardModel {
     if (this.live().length >= LIMITS.items) {
       throw new WhiteboardError(`The whiteboard is full (${LIMITS.items} items): erase some first.`);
     }
+    if (fields.kind === 'image' && this.live().filter((i) => i.kind === 'image').length >= LIMITS.images) {
+      throw new WhiteboardError(`The whiteboard has ${LIMITS.images} images already: erase one first.`);
+    }
     this.counter += 1;
     const id = `${this.peerId}.${this.counter}`;
     return this.put(null, { ...fields, id, author: this.peerId });
@@ -396,13 +465,26 @@ const PLACEHOLDER = '<circle cx="12" cy="12" r="10.5" fill="#d9d9e0" stroke="#8b
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const PALETTE = ['#e5484d', '#f5a524', '#30a46c', '#0f9f86', '#3e63dd', '#8e4ec6', '#1c2024'];
+const COLOR_NAMES = ['red', 'orange', 'green', 'teal', 'blue', 'purple', 'black'];
+/** The options of the pen (thin, normal, thick) and of text (small, medium, large). */
+const WIDTHS = [2, 4, 8];
+const WIDTH_NAMES = ['thin', 'normal', 'thick'];
+const SIZES = [18, 28, 44];
+const SIZE_NAMES = ['small', 'medium', 'large'];
+/** Where each tool's cursor points, in its 24-unit icon. */
+const HOTSPOT = { pointer: [5, 3], pen: [4, 20], text: [12, 12], sticker: [12, 12], eraser: [5, 19] };
+const MAX_QUEUE = 50;
+
+const nearest = (list, v) => list.reduce((best, x, i) => (Math.abs(x - v) < Math.abs(list[best] - v) ? i : best), 0);
+const readableOn = (hex) => ((parseInt(hex.slice(1, 3), 16) * 299 + parseInt(hex.slice(3, 5), 16) * 587 + parseInt(hex.slice(5, 7), 16) * 114) / 1000 > 150 ? '#1c2024' : '#ffffff');
+const degrees = (a) => Math.round((((a + 180) % 360) + 360) % 360 * 10 - 1800) / 10;
 
 /** Labels a host can translate (`strings` option). */
 const STRINGS = {
   pointer: 'Pointer: use the page below (Esc)',
   pen: 'Pen',
   text: 'Text note',
-  sticker: 'Sticker',
+  sticker: 'Sticker (Shift+drag scales, Ctrl+drag turns)',
   eraser: 'Eraser',
   undo: 'Undo (Ctrl+Z)',
   redo: 'Redo (Ctrl+Y)',
@@ -410,6 +492,14 @@ const STRINGS = {
   color: 'Colour',
   readOnly: 'Drawing is locked',
   typeHere: 'Type, then Enter (Shift+Enter for a new line)',
+  ask: 'Ask for a turn',
+  endTurn: 'End my turn',
+  leaveQueue: 'Leave the queue',
+  queue: 'Speaking order',
+  speaking: 'speaking',
+  you: 'you',
+  yourTurn: 'Your turn to speak',
+  removeFromQueue: 'Remove from the queue',
 };
 
 const ICONS = {
@@ -430,21 +520,33 @@ const STYLE = `
 @media (prefers-color-scheme: dark) { :host { --wb-bg: #18191b; --wb-fg: #edeef0; --wb-border: #363a3f; --wb-hover: #272a2d; } }
 svg.board { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 svg.board.active { pointer-events: auto; touch-action: none; }
-svg.board.active .item { pointer-events: visiblePainted; }
-svg.board.active .item .hit { pointer-events: stroke; }
+svg.board .item { pointer-events: visiblePainted; touch-action: none; }
+svg.board .item .hit { pointer-events: stroke; }
 svg.board.pen { cursor: crosshair; } svg.board.text { cursor: text; } svg.board.sticker { cursor: copy; }
 svg.board.eraser { cursor: cell; }
-svg.board.text .item.text-item, svg.board.sticker .item.sticker-item { cursor: move; }
+svg.board:not(.pen):not(.eraser) .item.own { cursor: move; }
 .capture { fill: transparent; }
 .item text { white-space: pre; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; paint-order: stroke; stroke: #ffffff; stroke-width: 0.25em; stroke-linejoin: round; }
 .item.erasing { opacity: 0.3; }
 .cursors { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .cursor { position: absolute; left: 0; top: 0; will-change: transform; transition: transform 60ms linear; }
-.cursor svg { display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
+.cursor .shape { position: absolute; }
+.cursor svg { display: block; filter: drop-shadow(0 0 1px #fff) drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
+.cursor svg.pointer path { stroke: #fff; stroke-width: 1.4; stroke-linejoin: round; }
+.cursor .ring { display: none; position: absolute; left: -20px; top: -20px; width: 40px; height: 40px; box-sizing: border-box; border-radius: 50%;
+  border: 3px solid var(--c); box-shadow: 0 0 0 2px #fff, 0 0 14px 4px var(--c); animation: pulse 1.2s ease-in-out infinite; }
+.cursor.active .ring { display: block; }
+.cursor.active .shape { transform: scale(1.7); transform-origin: var(--hx) var(--hy); }
+@keyframes pulse { 50% { transform: scale(1.25); opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { .cursor .ring { animation: none; } }
+.cursor img { position: absolute; left: 14px; top: 14px; width: 26px; height: 26px; box-sizing: border-box; border-radius: 50%; border: 2px solid #8b8d98; object-fit: cover; background: #fff; }
+.cursor img[hidden], .cursor span[hidden] { display: none; }
+.cursor.active img { left: 22px; top: 24px; width: 44px; height: 44px; border-width: 3px; box-shadow: 0 0 0 2px #fff; }
+.cursor.active span { left: 26px; top: 30px; font-size: 14px; font-weight: 600; box-shadow: 0 0 0 2px #fff; }
 .cursor span { position: absolute; left: 14px; top: 16px; padding: 1px 6px; border-radius: 6px; color: #fff; font-size: 11px; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 .toolbar { position: absolute; left: 8px; top: 8px; display: flex; flex-direction: column; gap: 2px; padding: 4px; border-radius: 10px;
   background: var(--wb-bg); color: var(--wb-fg); border: 1px solid var(--wb-border); box-shadow: 0 2px 10px rgba(0,0,0,.15); pointer-events: auto; }
-.toolbar button { all: unset; box-sizing: border-box; width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; cursor: pointer; color: inherit; }
+.toolbar button { all: unset; box-sizing: border-box; position: relative; width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; cursor: pointer; color: inherit; }
 .toolbar button:hover { background: var(--wb-hover); }
 .toolbar button:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: -2px; }
 .toolbar button[aria-pressed="true"] { background: var(--wb-accent); color: #fff; }
@@ -459,6 +561,24 @@ svg.board.text .item.text-item, svg.board.sticker .item.sticker-item { cursor: m
 .pop button { all: unset; width: 34px; height: 34px; border-radius: 7px; display: grid; place-items: center; cursor: pointer; }
 .pop button:hover, .pop button[aria-pressed="true"] { background: var(--wb-hover); }
 .pop .swatch { width: 20px; height: 20px; border-radius: 50%; }
+.toolbar button[data-key]::after { content: attr(data-key); position: absolute; right: 3px; bottom: 1px; font: 9px/1 system-ui, sans-serif; opacity: .6; pointer-events: none; }
+.hint { position: absolute; padding: 3px 8px; border-radius: 6px; background: var(--wb-fg); color: var(--wb-bg); font-size: 12px; white-space: nowrap; pointer-events: none; }
+.hint[hidden] { display: none; }
+.queue { position: absolute; left: 8px; bottom: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: min(260px, 70%); pointer-events: none; }
+.queue[hidden] { display: none; }
+.queue .entry { display: flex; align-items: center; gap: 6px; max-width: 100%; box-sizing: border-box; padding: 3px 10px 3px 4px; border-radius: 999px; font-size: 12px;
+  box-shadow: 0 1px 6px rgba(0,0,0,.3); pointer-events: auto; }
+.queue .entry.first { font-size: 14px; font-weight: 700; box-shadow: 0 0 0 3px #fff, 0 2px 12px rgba(0,0,0,.45); }
+.queue .entry img, .queue .entry .initial { width: 24px; height: 24px; flex: none; border-radius: 50%; object-fit: cover; background: rgba(255,255,255,.4); display: grid; place-items: center; font-weight: 700; }
+.queue .entry.first img, .queue .entry.first .initial { width: 30px; height: 30px; }
+.queue .entry .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue .entry .num { opacity: .75; font-variant-numeric: tabular-nums; }
+.queue .entry button { all: unset; cursor: pointer; padding: 0 4px; opacity: .75; }
+.queue .entry button:hover { opacity: 1; }
+.queue .entry button:focus-visible, .queue .turn:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: 1px; }
+.queue .turn { all: unset; box-sizing: border-box; cursor: pointer; padding: 5px 12px; border-radius: 999px; background: var(--wb-bg); color: var(--wb-fg);
+  border: 1px solid var(--wb-border); box-shadow: 0 2px 8px rgba(0,0,0,.2); pointer-events: auto; }
+.queue .turn:hover { background: var(--wb-hover); }
 textarea.note { position: absolute; margin: 0; padding: 2px 4px; border: 1px dashed var(--wb-accent); border-radius: 4px; background: rgba(255,255,255,.92);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.2; resize: none; overflow: hidden; outline: none; pointer-events: auto; min-width: 4em; transform-origin: 0 0; }
 `;
@@ -550,14 +670,22 @@ export class Whiteboard {
     this.listeners = new Map();
     this.tool = 'pointer';
     const own = this.session.me.color;
-    this.style = { color: COLOR.test(own ?? '') ? own : PALETTE[0], width: 3, size: 28, sticker: 'check' };
+    this.style = { color: COLOR.test(own ?? '') ? own : PALETTE[0], width: WIDTHS[1], size: SIZES[1], sticker: 'check' };
     this.readOnlyFlag = !!options.readOnly;
     this.nodes = new Map(); // item id -> SVG node
     this.liveInk = new Map(); // `${peer}:${id}` -> {node, points, seq}
     this.cursors = new Map(); // peer id -> {node, x, y, timer}
     this.cleanups = [];
     this.lastCursorSent = 0;
+    this.lastPoint = null;
     this.inkSeq = 0;
+    // The numbered tools (1 is the first); the colour comes last and is not a tool.
+    this.slots = [...this.tools, 'color'];
+    this.avatar = cleanImageData(options.avatar, LIMITS.avatarChars) ?? '';
+    this.avatars = new Map(); // peer id -> data URL
+    this.queue = []; // peer ids waiting to speak; the first has the turn
+    this.queueKey = '';
+    this.turns = options.turns !== false;
     if (getComputedStyle(container).position === 'static') {
       container.style.position = 'relative';
     }
@@ -581,6 +709,88 @@ export class Whiteboard {
     this.popover.hidden = true;
     this.renderToolbar();
     this.emit('tool', name);
+    this.sendCursorAgain();
+  }
+
+  /**
+   * The shortcut of the `n`th tool (1 is the first): selects it, and pressing the tool in use
+   * again goes through its options (line: thin, normal, thick; text: small, medium, large;
+   * sticker: each sticker). The colour is last: it only changes the colour.
+   */
+  chooseSlot(n) {
+    const name = this.slots[n - 1];
+    if (name === 'color') {
+      this.cycle('color');
+    } else if (name && this.tool !== name) {
+      this.setTool(name);
+    } else if (name) {
+      this.cycle(name);
+    }
+  }
+
+  /** @private The next option of a tool, shown for a moment. */
+  cycle(what) {
+    const s = this.strings;
+    if (what === 'color') {
+      const i = (PALETTE.indexOf(this.style.color) + 1) % PALETTE.length;
+      this.setStyle({ color: PALETTE[i] });
+      this.flash(`${s.color}: ${COLOR_NAMES[i]}`);
+    } else if (what === 'pen') {
+      const i = (nearest(WIDTHS, this.style.width) + 1) % WIDTHS.length;
+      this.setStyle({ width: WIDTHS[i] });
+      this.flash(`${s.pen}: ${WIDTH_NAMES[i]}`);
+    } else if (what === 'text') {
+      const i = (nearest(SIZES, this.style.size) + 1) % SIZES.length;
+      this.setStyle({ size: SIZES[i] });
+      this.flash(`${s.text}: ${SIZE_NAMES[i]}`);
+    } else if (what === 'sticker') {
+      const names = [...this.stickers.keys()];
+      const next = names[(names.indexOf(this.style.sticker) + 1) % names.length];
+      this.setStyle({ sticker: next });
+      this.flash(`Sticker: ${next}`);
+    }
+  }
+
+  /** @private A short note beside the toolbar. */
+  flash(text) {
+    this.hintBox.textContent = text;
+    this.hintBox.hidden = false;
+    clearTimeout(this.hintTimer);
+    this.hintTimer = setTimeout(() => (this.hintBox.hidden = true), 1400);
+  }
+
+  /** Sets (or, with null, removes) this person's avatar: a small image data URL shown in place of the name. */
+  setAvatar(data) {
+    this.avatar = cleanImageData(data, LIMITS.avatarChars) ?? '';
+    this.send({ t: 'avatar', data: this.avatar });
+    this.renderQueue();
+  }
+
+  /** Puts this person at the end of the speaking queue (nothing if already in it). */
+  requestTurn() {
+    this.turnAction('join');
+  }
+
+  /** Takes this person out of the queue; when they had the turn, the next one has it. */
+  endTurn() {
+    this.turnAction('leave');
+  }
+
+  /** The people waiting to speak, as peer ids; the first has the turn. */
+  turnQueue() {
+    return [...this.queue];
+  }
+
+  /** The host only: takes someone out of the queue. */
+  removeFromQueue(id) {
+    if (this.session.role === 'host') {
+      this.hubTurn(id, 'leave');
+    }
+  }
+
+  /** Zoom back to the whole frame (when the adapter can zoom). */
+  resetZoom() {
+    this.adapter.resetView?.();
   }
 
   /** The style of new items: {color, width, size, sticker}. */
@@ -711,6 +921,7 @@ export class Whiteboard {
     for (const c of this.cursors.values()) {
       clearTimeout(c.timer);
     }
+    clearTimeout(this.hintTimer);
     this.host.remove();
     this.destroyed = true;
   }
@@ -724,13 +935,19 @@ export class Whiteboard {
       this.channel.on('message', (m, from) => this.received(m, from)),
       // A peer joined (or this guest reached the host): swap snapshots,
       // so both sides end up with everything (DESIGN.md section 3.6).
-      this.channel.on('join', (peer) => this.channel.send({ t: 'sync', snapshot: this.model.snapshot() }, { to: peer.id })),
+      this.channel.on('join', (peer) => {
+        this.send({ t: 'sync', snapshot: this.model.snapshot() }, { to: peer.id });
+        this.sendExtras(peer.id);
+      }),
       this.session.on('peers', () => this.prunePeers()),
     );
     // Made after the session opened: ask the host for what it has.
     const host = this.session.role === 'guest' ? this.session.host?.() : null;
     if (host) {
       this.send({ t: 'sync', snapshot: this.model.snapshot(), want: true }, { to: host.id });
+    }
+    if (this.avatar) {
+      this.send({ t: 'avatar', data: this.avatar });
     }
   }
 
@@ -760,6 +977,7 @@ export class Whiteboard {
     } else if (m.t === 'sync') {
       if (m.want === true && this.session.role === 'host') {
         this.send({ t: 'sync', snapshot: this.model.snapshot() }, { to: from });
+        this.sendExtras(from);
       }
       const before = this.model.items.size;
       const ops = this.model.merge(m.snapshot);
@@ -777,6 +995,12 @@ export class Whiteboard {
       this.remoteCursor(from, m);
     } else if (m.t === 'ink') {
       this.remoteInk(from, m);
+    } else if (m.t === 'avatar') {
+      this.remoteAvatar(from, m);
+    } else if (m.t === 'queue') {
+      this.remoteQueue(from, m);
+    } else if (m.t === 'turn') {
+      this.remoteTurn(from, m);
     }
   }
 
@@ -803,6 +1027,12 @@ export class Whiteboard {
   /** @private Forget cursors and live ink of peers who left. */
   prunePeers() {
     const here = new Set(this.session.peers().map((p) => p.id));
+    for (const id of this.avatars.keys()) {
+      if (!here.has(id)) {
+        this.avatars.delete(id);
+      }
+    }
+    this.pruneQueue(here);
     for (const [id, c] of this.cursors) {
       if (!here.has(id)) {
         clearTimeout(c.timer);
@@ -822,6 +1052,7 @@ export class Whiteboard {
         this.styleCursor(c, p);
       }
     }
+    this.renderQueue();
   }
 
   // ── DOM ──────────────────────────────────────────────────────────────────
@@ -843,12 +1074,15 @@ export class Whiteboard {
     this.cursorLayer = htmlEl('div', { class: 'cursors' });
     this.toolbarBox = htmlEl('div', { class: 'toolbar', role: 'toolbar', 'aria-label': 'Whiteboard', hidden: !withToolbar });
     this.popover = htmlEl('div', { class: 'pop', hidden: true });
-    this.root.append(this.board, this.cursorLayer, this.toolbarBox, this.popover);
+    this.hintBox = htmlEl('div', { class: 'hint', hidden: true, role: 'status' });
+    this.queueBox = htmlEl('div', { class: 'queue', role: 'group', 'aria-label': this.strings.queue, hidden: !this.turns });
+    this.root.append(this.board, this.cursorLayer, this.toolbarBox, this.popover, this.hintBox, this.queueBox);
     this.container.append(this.host);
     for (const [name, svg] of this.stickers) {
       this.defs.append(this.symbol(name, svg));
     }
     this.renderToolbar();
+    this.renderQueue();
   }
 
   /** @private A sticker as a <symbol id="sticker-name">. */
@@ -864,41 +1098,59 @@ export class Whiteboard {
       return;
     }
     const s = this.strings;
-    const button = (name, label, icon, opts = {}) => {
-      const b = htmlEl('button', { type: 'button', title: label, 'aria-label': label, 'aria-pressed': opts.pressed === undefined ? undefined : String(opts.pressed), disabled: opts.disabled }, icon);
+    const button = (label, title, icon, key, opts = {}) => {
+      const b = htmlEl('button', { type: 'button', title, 'aria-label': label, 'aria-keyshortcuts': key, 'data-key': key, 'aria-pressed': opts.pressed === undefined ? undefined : String(opts.pressed), disabled: opts.disabled }, icon);
       b.addEventListener('click', opts.run);
       return b;
     };
     const parts = [];
-    for (const t of this.tools) {
+    this.tools.forEach((t, i) => {
       parts.push(
-        button(t, s[t], `<svg viewBox="0 0 24 24">${ICONS[t]}</svg>`, {
+        button(s[t], `${s[t]} (${i + 1})`, `<svg viewBox="0 0 24 24">${this.toolIcon(t)}</svg>`, String(i + 1), {
           pressed: this.tool === t,
           disabled: this.readOnlyFlag && t !== 'pointer',
           run: () => {
-            if (t === 'sticker' && this.tool === 'sticker') {
+            if (this.tool === t && t === 'sticker') {
               this.togglePopover('sticker');
-              return;
-            }
-            this.setTool(t);
-            if (t === 'sticker') {
-              this.togglePopover('sticker');
+            } else if (this.tool === t) {
+              this.cycle(t);
+            } else {
+              this.setTool(t);
+              if (t === 'sticker') {
+                this.togglePopover('sticker');
+              }
             }
           },
         }),
       );
-    }
+    });
     if (this.readOnlyFlag) {
       parts.push(htmlEl('div', { class: 'locked' }, ''));
       parts[parts.length - 1].textContent = s.readOnly;
     } else {
       parts.push(htmlEl('hr'));
-      const sw = button('color', s.color, `<span class="swatch" style="background:${this.style.color}"></span>`, { run: () => this.togglePopover('color') });
-      parts.push(sw);
-      parts.push(button('undo', s.undo, `<svg viewBox="0 0 24 24">${ICONS.undo}</svg>`, { disabled: !this.model.undoStack.length, run: () => this.undo() }));
-      parts.push(button('redo', s.redo, `<svg viewBox="0 0 24 24">${ICONS.redo}</svg>`, { disabled: !this.model.redoStack.length, run: () => this.redo() }));
+      const n = this.slots.length;
+      parts.push(button(s.color, `${s.color} (${n})`, `<span class="swatch" style="background:${this.style.color}"></span>`, String(n), { run: () => this.togglePopover('color') }));
+      parts.push(button(s.undo, s.undo, `<svg viewBox="0 0 24 24">${ICONS.undo}</svg>`, undefined, { disabled: !this.model.undoStack.length, run: () => this.undo() }));
+      parts.push(button(s.redo, s.redo, `<svg viewBox="0 0 24 24">${ICONS.redo}</svg>`, undefined, { disabled: !this.model.redoStack.length, run: () => this.redo() }));
     }
     this.toolbarBox.replaceChildren(...parts);
+  }
+
+  /** @private A tool's icon; the pen, the text and the sticker show the option in use. */
+  toolIcon(t) {
+    if (t === 'pen') {
+      const w = [1, 2.5, 4][nearest(WIDTHS, this.style.width)];
+      return `${ICONS.pen}<path d="M5 22h14" stroke="currentColor" stroke-width="${w}" stroke-linecap="round"/>`;
+    }
+    if (t === 'text') {
+      const size = [12, 16, 21][nearest(SIZES, this.style.size)];
+      return `<text x="12" y="${12 + size * 0.35}" font-size="${size}" font-weight="700" text-anchor="middle" fill="currentColor" font-family="system-ui, sans-serif">A</text>`;
+    }
+    if (t === 'sticker') {
+      return `<use href="#sticker-${this.style.sticker}" x="1" y="1" width="22" height="22"/>`;
+    }
+    return ICONS[t];
   }
 
   /** @private The colour or sticker chooser beside the toolbar. */
@@ -962,6 +1214,8 @@ export class Whiteboard {
     this.toolbarBox.style.left = `${left}px`;
     this.toolbarBox.style.top = `${top}px`;
     this.popover.style.left = `${left + 44}px`;
+    this.hintBox.style.left = `${left + 44}px`;
+    this.hintBox.style.top = `${top + 6}px`;
     for (const c of this.cursors.values()) {
       this.moveCursor(c);
     }
@@ -1030,7 +1284,9 @@ export class Whiteboard {
 
   /** @private One item's SVG. Text goes in as textContent only. */
   itemNode(item) {
-    const g = svgEl('g', { class: `item ${item.kind}-item`, 'data-id': item.id });
+    const own = item.author === this.model.peerId ? ' own' : '';
+    const g = svgEl('g', { class: `item ${item.kind}-item${own}`, 'data-id': item.id });
+    const turn = item.rot ? { transform: `rotate(${item.rot} ${item.x} ${item.y})` } : {};
     if (item.kind === 'ink') {
       const d = inkPath(item.points);
       g.append(
@@ -1045,12 +1301,15 @@ export class Whiteboard {
         text.append(span);
       });
       g.append(text);
+    } else if (item.kind === 'image') {
+      const h = item.size * item.ratio;
+      g.append(svgEl('image', { href: item.data, x: item.x - item.size / 2, y: item.y - h / 2, width: item.size, height: h, preserveAspectRatio: 'none', ...turn }));
     } else {
       const known = this.stickers.has(item.name);
       if (!known && !this.defs.querySelector(`#sticker-${item.name}`)) {
         this.defs.append(this.symbol(item.name, PLACEHOLDER));
       }
-      g.append(svgEl('use', { href: `#sticker-${item.name}`, x: item.x - item.size / 2, y: item.y - item.size / 2, width: item.size, height: item.size }));
+      g.append(svgEl('use', { href: `#sticker-${item.name}`, x: item.x - item.size / 2, y: item.y - item.size / 2, width: item.size, height: item.size, ...turn }));
     }
     return g;
   }
@@ -1076,6 +1335,8 @@ export class Whiteboard {
         const lines = i.text.split('\n');
         add(i.x, i.y, 0);
         add(i.x + Math.max(...lines.map((l) => l.length)) * i.size * 0.6, i.y + lines.length * i.size * 1.2, 0);
+      } else if (i.kind === 'image') {
+        add(i.x, i.y, (i.size * Math.max(1, i.ratio)) / 2);
       } else {
         add(i.x, i.y, i.size / 2);
       }
@@ -1103,28 +1364,227 @@ export class Whiteboard {
     const peer = this.session.peers().find((p) => p.id === from);
     if (!c) {
       const node = htmlEl('div', { class: 'cursor' });
-      node.append(htmlEl('div', {}, '<svg width="16" height="20" viewBox="0 0 16 20"><path d="M1 1l13 9-6 1.2L5 18z" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>'), htmlEl('span'));
+      const shape = htmlEl('div', { class: 'shape' });
+      node.append(htmlEl('div', { class: 'ring' }), shape, htmlEl('span'), htmlEl('img', { alt: '', hidden: true }));
       this.cursorLayer.append(node);
-      c = { node };
+      c = { node, shape, tool: '' };
       this.cursors.set(from, c);
-      this.styleCursor(c, peer ?? { name: '', color: '#8b8d98' });
+      this.styleCursor(c, peer ?? { id: from, name: '', color: '#8b8d98' });
     }
+    this.setCursorTool(c, TOOL_NAMES.has(m.tool) ? m.tool : 'pointer');
+    c.node.classList.toggle('active', from === this.queue[0]);
     c.x = m.x;
     c.y = m.y;
     c.node.hidden = false;
     this.moveCursor(c);
     clearTimeout(c.timer);
-    c.timer = setTimeout(() => (c.node.hidden = true), 5000);
+    c.timer = setTimeout(() => (c.node.hidden = true), from === this.queue[0] ? 30000 : 5000);
+  }
+
+  /** @private The cursor's shape is its owner's tool. */
+  setCursorTool(c, tool) {
+    if (c.tool === tool) {
+      return;
+    }
+    c.tool = tool;
+    const [hx, hy] = HOTSPOT[tool];
+    c.shape.innerHTML = `<svg class="${tool}" viewBox="0 0 24 24" width="24" height="24">${ICONS[tool]}</svg>`;
+    c.shape.style.left = `${-hx}px`;
+    c.shape.style.top = `${-hy}px`;
+    c.shape.style.setProperty('--hx', `${hx}px`);
+    c.shape.style.setProperty('--hy', `${hy}px`);
+  }
+
+  /** @private The avatar of a peer (this one's own too), or ''. */
+  avatarOf(id) {
+    return id === this.session.me.id ? this.avatar : (this.avatars.get(id) ?? '');
+  }
+
+  /** @private Colour, and the avatar or else the name. */
+  styleCursor(c, peer) {
+    const color = COLOR.test(peer.color ?? '') ? peer.color : '#8b8d98';
+    c.node.style.setProperty('--c', color);
+    c.shape.style.color = color;
+    const label = c.node.querySelector('span');
+    const img = c.node.querySelector('img');
+    const avatar = this.avatarOf(peer.id);
+    if (avatar) {
+      img.src = avatar;
+      img.style.borderColor = color;
+    } else {
+      img.removeAttribute('src');
+    }
+    img.hidden = !avatar;
+    label.textContent = typeof peer.name === 'string' ? peer.name.slice(0, 40) : '';
+    label.style.background = color;
+    label.hidden = !!avatar || !label.textContent;
+  }
+
+  /** @private The cursor of whoever has the turn stands out. */
+  markActiveCursor() {
+    for (const [id, c] of this.cursors) {
+      c.node.classList.toggle('active', id === this.queue[0]);
+    }
+  }
+
+  // ── Avatars and the speaking queue ───────────────────────────────────────
+
+  /** @private What a peer who just joined needs: our avatar and, from the host, the others and the queue. */
+  sendExtras(to) {
+    const host = this.session.role === 'host';
+    if (this.avatar) {
+      this.send({ t: 'avatar', data: this.avatar }, host ? { to } : {});
+    }
+    if (host) {
+      for (const [id, data] of this.avatars) {
+        if (id !== to) {
+          this.send({ t: 'avatar', of: id, data }, { to });
+        }
+      }
+      this.send({ t: 'queue', ids: this.queue }, { to });
+    }
+  }
+
+  /** @private An avatar from its owner, or (`of`) from the host on behalf of someone who joined before. */
+  remoteAvatar(from, m) {
+    let id = from;
+    if (m.of !== undefined) {
+      const hostId = this.session.role === 'host' ? this.session.me.id : this.session.host?.()?.id;
+      if (from !== hostId || !ID.test(m.of)) {
+        return;
+      }
+      id = m.of;
+    }
+    if (id === this.session.me.id) {
+      return;
+    }
+    const data = cleanImageData(m.data, LIMITS.avatarChars);
+    if (data) {
+      this.avatars.set(id, data);
+    } else {
+      this.avatars.delete(id);
+    }
+    const c = this.cursors.get(id);
+    const peer = this.session.peers().find((p) => p.id === id);
+    if (c && peer) {
+      this.styleCursor(c, peer);
+    }
+    this.renderQueue();
   }
 
   /** @private */
-  styleCursor(c, peer) {
-    const color = COLOR.test(peer.color ?? '') ? peer.color : '#8b8d98';
-    c.node.querySelector('path').setAttribute('fill', color);
-    const label = c.node.querySelector('span');
-    label.textContent = typeof peer.name === 'string' ? peer.name.slice(0, 40) : '';
-    label.style.background = color;
-    label.hidden = !label.textContent;
+  turnAction(op) {
+    if (this.session.role === 'host') {
+      this.hubTurn(this.session.me.id, op);
+    } else {
+      const host = this.session.host?.();
+      if (host) {
+        this.send({ t: 'turn', op }, { to: host.id });
+      }
+    }
+  }
+
+  /** @private The host keeps the queue: `id` asks for a turn or gives it up. */
+  hubTurn(id, op) {
+    const at = this.queue.indexOf(id);
+    if (op === 'join' && at < 0 && this.queue.length < MAX_QUEUE) {
+      this.setQueue([...this.queue, id], true);
+    } else if (op === 'leave' && at >= 0) {
+      this.setQueue(this.queue.filter((q) => q !== id), true);
+    }
+  }
+
+  /** @private A guest's request, only the host takes it. */
+  remoteTurn(from, m) {
+    if (this.session.role === 'host' && (m.op === 'join' || m.op === 'leave')) {
+      this.hubTurn(from, m.op);
+    }
+  }
+
+  /** @private The queue as the host says it. */
+  remoteQueue(from, m) {
+    const hostId = this.session.host?.()?.id;
+    if (this.session.role !== 'guest' || from !== hostId || !Array.isArray(m.ids) || m.ids.length > MAX_QUEUE) {
+      return;
+    }
+    const ids = m.ids.filter((id, i) => ID.test(id ?? '') && m.ids.indexOf(id) === i);
+    this.setQueue(ids, false);
+  }
+
+  /** @private The host drops people who left from the queue. */
+  pruneQueue(here) {
+    if (this.session.role === 'host' && this.queue.some((id) => !here.has(id))) {
+      this.setQueue(this.queue.filter((id) => here.has(id)), true);
+    }
+  }
+
+  /** @private */
+  setQueue(ids, announce) {
+    if (ids.length === this.queue.length && ids.every((id, i) => id === this.queue[i])) {
+      return;
+    }
+    const me = this.session.me.id;
+    const wasMine = this.queue[0] === me;
+    this.queue = ids;
+    if (announce) {
+      this.send({ t: 'queue', ids });
+    }
+    this.markActiveCursor();
+    this.renderQueue();
+    if (ids[0] === me && !wasMine) {
+      this.flash(this.strings.yourTurn);
+    }
+    this.emit('queue', { ids: [...ids] });
+  }
+
+  /** @private The queue in the lower left corner: who speaks and who waits, then the button. */
+  renderQueue() {
+    if (!this.queueBox || !this.turns) {
+      return;
+    }
+    const s = this.strings;
+    const me = this.session.me.id;
+    const hub = this.session.role === 'host';
+    const peers = new Map(this.session.peers().map((p) => [p.id, p]));
+    const key = JSON.stringify([me, this.queue.map((id) => [id, peers.get(id)?.name, peers.get(id)?.color, this.avatarOf(id).length])]);
+    if (key === this.queueKey) {
+      return;
+    }
+    this.queueKey = key;
+    const parts = this.queue.map((id, i) => {
+      const p = peers.get(id);
+      const color = COLOR.test(p?.color ?? '') ? p.color : '#8b8d98';
+      const name = typeof p?.name === 'string' && p.name ? p.name.slice(0, 40) : '?';
+      const entry = htmlEl('div', { class: i === 0 ? 'entry first' : 'entry', title: i === 0 ? `${name} (${s.speaking})` : name });
+      entry.style.background = color;
+      entry.style.color = readableOn(color);
+      const data = this.avatarOf(id);
+      let face;
+      if (data) {
+        face = htmlEl('img', { alt: '' });
+        face.src = data;
+      } else {
+        face = htmlEl('span', { class: 'initial' });
+        face.textContent = [...name][0]?.toUpperCase() ?? '?';
+      }
+      const num = htmlEl('span', { class: 'num' });
+      num.textContent = String(i + 1);
+      const label = htmlEl('span', { class: 'name' });
+      label.textContent = id === me ? `${name} (${s.you})` : name;
+      entry.append(face, num, label);
+      if (hub && id !== me) {
+        const remove = htmlEl('button', { type: 'button', 'aria-label': `${s.removeFromQueue}: ${name}`, title: s.removeFromQueue });
+        remove.textContent = '\u00d7';
+        remove.addEventListener('click', () => this.removeFromQueue(id));
+        entry.append(remove);
+      }
+      return entry;
+    });
+    const mine = this.queue.indexOf(me);
+    const turn = htmlEl('button', { type: 'button', class: 'turn' });
+    turn.textContent = mine < 0 ? s.ask : mine === 0 ? s.endTurn : s.leaveQueue;
+    turn.addEventListener('click', () => (mine < 0 ? this.requestTurn() : this.endTurn()));
+    this.queueBox.replaceChildren(...parts, turn);
   }
 
   /** @private */
@@ -1188,6 +1648,17 @@ export class Whiteboard {
     listen(this.board, 'pointerup', (ev) => this.up(ev));
     listen(this.board, 'pointercancel', (ev) => this.up(ev, true));
     listen(window, 'keydown', (ev) => this.key(ev), { capture: true });
+    listen(this.board, 'contextmenu', (ev) => this.menu(ev));
+    // Zoom with the wheel at the pointer, pan with the middle button (or, zoomed in, the pointer tool).
+    listen(this.container, 'wheel', (ev) => this.wheel(ev), { passive: false });
+    listen(this.container, 'mousedown', (ev) => ev.button === 1 && this.adapter.panBy && ev.preventDefault());
+    listen(this.container, 'pointerdown', (ev) => this.panStart(ev));
+    listen(this.container, 'pointermove', (ev) => this.panMove(ev));
+    listen(this.container, 'pointerup', (ev) => this.panEnd(ev));
+    listen(this.container, 'pointercancel', (ev) => this.panEnd(ev));
+    // Images dropped on the board.
+    listen(this.container, 'dragover', (ev) => this.hasFiles(ev) && ev.preventDefault());
+    listen(this.container, 'drop', (ev) => this.dropped(ev));
   }
 
   /** @private At most 30 a second, over the fast channel. */
@@ -1198,7 +1669,96 @@ export class Whiteboard {
     }
     this.lastCursorSent = now;
     const p = this.eventPoint(ev);
-    this.send({ t: 'cur', x: round1(p.x), y: round1(p.y) }, { fast: true });
+    this.lastPoint = { x: round1(p.x), y: round1(p.y) };
+    this.sendCursorAgain();
+  }
+
+  /** @private The cursor with the tool in use (again when the tool changes). */
+  sendCursorAgain() {
+    if (this.lastPoint) {
+      this.send({ t: 'cur', ...this.lastPoint, tool: this.tool }, { fast: true });
+    }
+  }
+
+  /** @private Over the toolbar, the chooser or the queue, the page's own gestures stay. */
+  onControls(ev) {
+    const path = ev.composedPath();
+    return path.includes(this.toolbarBox) || path.includes(this.popover) || path.includes(this.queueBox);
+  }
+
+  /** @private */
+  wheel(ev) {
+    if (!this.adapter.zoomAt || this.onControls(ev)) {
+      return;
+    }
+    const r = this.host.getBoundingClientRect();
+    ev.preventDefault();
+    this.adapter.zoomAt(ev.clientX - r.left, ev.clientY - r.top, Math.exp(-ev.deltaY * (ev.deltaMode === 1 ? 0.05 : 0.0015)));
+  }
+
+  /** @private */
+  panStart(ev) {
+    const middle = ev.button === 1;
+    const empty = ev.button === 0 && this.tool === 'pointer' && !ev.composedPath().includes(this.board);
+    if (!this.adapter.panBy || this.onControls(ev) || !(middle || (empty && this.adapter.zoomed?.()))) {
+      return;
+    }
+    this.pan = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
+    this.container.setPointerCapture?.(ev.pointerId);
+    ev.preventDefault();
+  }
+
+  /** @private */
+  panMove(ev) {
+    if (this.pan && ev.pointerId === this.pan.id) {
+      this.adapter.panBy(ev.clientX - this.pan.x, ev.clientY - this.pan.y);
+      this.pan.x = ev.clientX;
+      this.pan.y = ev.clientY;
+    }
+  }
+
+  /** @private */
+  panEnd(ev) {
+    if (this.pan && ev.pointerId === this.pan.id) {
+      this.container.releasePointerCapture?.(ev.pointerId);
+      this.pan = null;
+    }
+  }
+
+  /** @private */
+  hasFiles(ev) {
+    return !this.readOnlyFlag && [...(ev.dataTransfer?.types ?? [])].includes('Files');
+  }
+
+  /** @private Image files dropped on the board become images where they landed. */
+  async dropped(ev) {
+    if (!this.hasFiles(ev)) {
+      return;
+    }
+    ev.preventDefault();
+    const files = [...ev.dataTransfer.files].filter((f) => /^image\/(png|jpeg|webp|gif|bmp)$/.test(f.type)).slice(0, 5);
+    const at = this.eventPoint(ev);
+    for (const [n, file] of files.entries()) {
+      try {
+        const img = await fileToImageData(file);
+        const size = Math.min(300, img.width);
+        this.local(() => this.model.add({ kind: 'image', x: round1(at.x + n * 24), y: round1(at.y + n * 24), size, ratio: Math.round((img.height / img.width) * 10000) / 10000, data: img.data }));
+      } catch (e) {
+        if (!(e instanceof WhiteboardError)) {
+          throw e;
+        }
+        this.emit('error', e);
+      }
+    }
+  }
+
+  /** @private The context menu key or right button on your own item removes it. */
+  menu(ev) {
+    const hit = this.readOnlyFlag ? null : this.itemAt(ev);
+    if (hit && hit.author === this.model.peerId) {
+      ev.preventDefault();
+      this.local(() => this.model.remove(hit.id));
+    }
   }
 
   /** @private The item under a pointer event (not the capture rectangle). */
@@ -1214,15 +1774,23 @@ export class Whiteboard {
 
   /** @private */
   down(ev) {
-    if (this.tool === 'pointer' || this.readOnlyFlag || ev.button > 0) {
+    if (this.readOnlyFlag || ev.button > 0) {
+      return;
+    }
+    const hit = this.itemAt(ev);
+    const mine = hit && hit.author === this.model.peerId ? hit : null;
+    // Your own items move with the pointer tool, and with the tool that makes them.
+    const grab = mine && (this.tool === 'pointer' || (this.tool === 'text' && mine.kind === 'text') || (this.tool === 'sticker' && (mine.kind === 'sticker' || mine.kind === 'image')));
+    if (this.tool === 'pointer' && !grab) {
       return;
     }
     ev.preventDefault();
     this.popover.hidden = true;
     this.board.setPointerCapture?.(ev.pointerId);
     const p = this.eventPoint(ev);
-    const hit = this.itemAt(ev);
-    if (this.tool === 'pen') {
+    if (grab) {
+      this.dragging = { item: mine, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0 };
+    } else if (this.tool === 'pen') {
       this.inkSeq += 1;
       this.drawing = { id: `${this.model.peerId}.${this.model.counter + 1}`, points: [p.x, p.y], sent: 0, seq: 0 };
       this.drawing.node = svgEl('path', { fill: 'none', stroke: this.style.color, 'stroke-width': this.style.width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
@@ -1231,8 +1799,6 @@ export class Whiteboard {
     } else if (this.tool === 'eraser') {
       this.erasing = new Set();
       this.eraseAt(ev);
-    } else if ((this.tool === 'text' && hit?.kind === 'text') || (this.tool === 'sticker' && hit?.kind === 'sticker')) {
-      this.dragging = { item: hit, from: p, moved: false };
     } else if (this.tool === 'text') {
       this.pendingText = p;
     } else if (this.tool === 'sticker') {
@@ -1259,18 +1825,59 @@ export class Whiteboard {
     } else if (this.erasing) {
       this.eraseAt(ev);
     } else if (this.dragging) {
-      const p = this.eventPoint(ev);
-      const d = this.dragging;
-      const dx = p.x - d.from.x;
-      const dy = p.y - d.from.y;
-      if (!d.moved && Math.hypot(dx, dy) < 2) {
-        return;
+      this.drag(ev);
+    }
+  }
+
+  /**
+   * @private Moves the item grabbed; for a sticker or an image, Shift scales it and Ctrl (or Alt)
+   * turns it about its centre instead.
+   */
+  drag(ev) {
+    const d = this.dragging;
+    const it = d.item;
+    const p = this.eventPoint(ev);
+    const dx = p.x - d.from.x;
+    const dy = p.y - d.from.y;
+    if (!d.moved && Math.hypot(dx, dy) < 2) {
+      return;
+    }
+    d.moved = true;
+    const flat = it.kind === 'sticker' || it.kind === 'image';
+    const scaling = flat && ev.shiftKey;
+    const turning = flat && (ev.ctrlKey || ev.metaKey || ev.altKey);
+    if (scaling || turning) {
+      const fields = {};
+      if (scaling) {
+        const grown = (it.size * Math.max(1, Math.hypot(p.x - it.x, p.y - it.y))) / Math.max(1, Math.hypot(d.from.x - it.x, d.from.y - it.y));
+        fields.size = round1(Math.min(it.kind === 'image' ? 2000 : 400, Math.max(it.kind === 'image' ? 8 : 4, grown)));
       }
-      d.moved = true;
-      const node = this.nodes.get(d.item.id)?.node;
-      node?.setAttribute('transform', `translate(${dx} ${dy})`);
+      if (turning) {
+        const a = Math.atan2(p.y - it.y, p.x - it.x) - Math.atan2(d.from.y - it.y, d.from.x - it.x);
+        fields.rot = degrees((it.rot ?? 0) + (a * 180) / Math.PI);
+      }
+      d.fields = fields;
+      d.preview = true;
+      this.showPreview(it, fields);
+    } else {
+      if (d.preview) {
+        d.preview = false;
+        this.showPreview(it, {});
+      }
+      d.fields = null;
       d.dx = dx;
       d.dy = dy;
+      this.nodes.get(it.id)?.node.setAttribute('transform', `translate(${dx} ${dy})`);
+    }
+  }
+
+  /** @private Shows an item with other fields until the change is made (or given up). */
+  showPreview(item, fields) {
+    const entry = this.nodes.get(item.id);
+    if (entry) {
+      const node = this.itemNode({ ...item, ...fields });
+      entry.node.replaceWith(node);
+      entry.node = node;
     }
   }
 
@@ -1303,12 +1910,22 @@ export class Whiteboard {
       }
     } else if (this.dragging) {
       const d = this.dragging;
+      const it = d.item;
       this.dragging = null;
-      this.nodes.get(d.item.id)?.node.removeAttribute('transform');
+      this.nodes.get(it.id)?.node.removeAttribute('transform');
+      if (d.preview) {
+        this.showPreview(it, {});
+      }
       if (d.moved && !cancelled) {
-        this.local(() => this.model.change(d.item.id, { x: round1(d.item.x + d.dx), y: round1(d.item.y + d.dy) }));
-      } else if (!d.moved && d.item.kind === 'text' && !cancelled) {
-        this.editText(d.item);
+        if (d.fields) {
+          this.local(() => this.model.change(it.id, d.fields));
+        } else if (it.kind === 'ink') {
+          this.local(() => this.model.change(it.id, { points: it.points.map((v, i) => round1(v + (i % 2 ? d.dy : d.dx))) }));
+        } else {
+          this.local(() => this.model.change(it.id, { x: round1(it.x + d.dx), y: round1(it.y + d.dy) }));
+        }
+      } else if (!d.moved && it.kind === 'text' && this.tool === 'text' && !cancelled) {
+        this.editText(it);
       }
     } else if (this.pendingText && !cancelled) {
       const p = this.pendingText;
@@ -1399,14 +2016,27 @@ export class Whiteboard {
     }
   }
 
-  /** @private Keys only while drawing, so the page keeps its own. */
+  /**
+   * @private The number keys choose the tools (1 is the first); Escape and undo/redo work only
+   * while drawing, so the page keeps its own keys.
+   */
   key(ev) {
-    if (this.tool === 'pointer' || this.editing || ev.target?.closest?.('input, textarea, [contenteditable]')) {
+    if (this.editing || ev.target?.closest?.('input, textarea, select, dialog, [contenteditable]')) {
       return;
     }
     const ctrl = ev.ctrlKey || ev.metaKey;
     let handled = true;
-    if (ev.key === 'Escape') {
+    if (!ctrl && !ev.altKey && /^[1-9]$/.test(ev.key) && this.slots[Number(ev.key) - 1]) {
+      if (this.toolbarBox.style.display !== 'none') {
+        this.chooseSlot(Number(ev.key));
+      } else {
+        handled = false;
+      }
+    } else if (!ctrl && !ev.altKey && ev.key === '0' && this.adapter.resetView) {
+      this.resetZoom();
+    } else if (this.tool === 'pointer') {
+      handled = false;
+    } else if (ev.key === 'Escape') {
       this.setTool('pointer');
     } else if (ctrl && !ev.shiftKey && (ev.key === 'z' || ev.key === 'Z')) {
       this.undo();
@@ -1459,31 +2089,59 @@ export function letterbox(width, height, aspect) {
   return { x: (width - w) / 2, y: (height - h) / 2, width: w, height: h };
 }
 
+/** The most the frame can be zoomed in. */
+const MAX_ZOOM = 8;
+
 /**
  * An adapter that maps board units (the frame is FRAME_UNITS wide) onto the
  * letterboxed frame inside `element`: the page viewport for the presenter,
  * the displayed video for a viewer.
  *
+ * The frame can be zoomed (`zoomAt`) and moved (`panBy`); `content`, if given (the video), is
+ * zoomed with it, so the drawings keep their place on the picture.
+ *
  * @param {HTMLElement} element the box the frame is shown in
  * @param {() => number} aspect frame width / height, read on every layout
+ * @param {HTMLElement} [content] the element showing the picture in that box, zoomed with the frame
  * @returns the adapter, plus `update()` to call when the aspect changes
  */
-export function frameAdapter(element, aspect) {
+export function frameAdapter(element, aspect, content) {
   const callbacks = new Set();
+  const view = { scale: 1, x: 0, y: 0 };
   const rect = () => letterbox(element.clientWidth, element.clientHeight, aspect());
+  // Keeps the zoomed box covering the element, and shows it on the content.
+  const fit = () => {
+    view.scale = Math.min(MAX_ZOOM, Math.max(1, view.scale));
+    view.x = Math.min(0, Math.max(element.clientWidth * (1 - view.scale), view.x));
+    view.y = Math.min(0, Math.max(element.clientHeight * (1 - view.scale), view.y));
+    if (content) {
+      content.style.transformOrigin = '0 0';
+      content.style.transform = view.scale === 1 ? '' : `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+    }
+  };
+  const changed = () => {
+    fit();
+    callbacks.forEach((cb) => cb());
+  };
   return {
     element,
     transform: () => {
       const r = rect();
-      const s = r.width / FRAME_UNITS || 1;
-      return { a: s, b: 0, c: 0, d: s, e: r.x, f: r.y };
+      const s = (r.width / FRAME_UNITS || 1) * view.scale;
+      return { a: s, b: 0, c: 0, d: s, e: r.x * view.scale + view.x, f: r.y * view.scale + view.y };
     },
-    clip: rect,
+    clip: () => {
+      const r = rect();
+      return { x: r.x * view.scale + view.x, y: r.y * view.scale + view.y, width: r.width * view.scale, height: r.height * view.scale };
+    },
     onChange: (cb) => {
       callbacks.add(cb);
       let ro = null;
       if (typeof ResizeObserver === 'function') {
-        ro = new ResizeObserver(() => cb());
+        ro = new ResizeObserver(() => {
+          fit();
+          cb();
+        });
         ro.observe(element);
       }
       return () => {
@@ -1491,7 +2149,31 @@ export function frameAdapter(element, aspect) {
         ro?.disconnect();
       };
     },
-    update: () => callbacks.forEach((cb) => cb()),
+    update: changed,
+    /** Zooms by `factor` about the point (x, y) of the element, in its CSS pixels. */
+    zoomAt: (x, y, factor) => {
+      const before = view.scale;
+      const next = Math.min(MAX_ZOOM, Math.max(1, before * factor));
+      if (next !== before) {
+        view.x = x - (x - view.x) * (next / before);
+        view.y = y - (y - view.y) * (next / before);
+        view.scale = next;
+        changed();
+      }
+    },
+    panBy: (dx, dy) => {
+      view.x += dx;
+      view.y += dy;
+      changed();
+    },
+    resetView: () => {
+      view.scale = 1;
+      view.x = 0;
+      view.y = 0;
+      changed();
+    },
+    zoomed: () => view.scale > 1.001,
+    view: () => ({ ...view }),
   };
 }
 
@@ -1500,7 +2182,7 @@ export function frameAdapter(element, aspect) {
 /**
  * A Session `accept` callback for the host: while `drawing()` is false,
  * viewers' changes (ops, ink, snapshots with items) are dropped, so a
- * modified viewer cannot bypass the lock; cursors still pass. Whatever the
+ * modified viewer cannot bypass the lock; cursors, avatars and turn requests still pass. Whatever the
  * state, one peer sends at most `opsPerSecond` ops a second. Messages on
  * other channels pass.
  *
@@ -1516,6 +2198,16 @@ export function drawingGate(drawing, { channel = 'wb', opsPerSecond = 50, now = 
     const t = message?.t;
     if (t === 'cur') {
       return true;
+    }
+    // The queue is the host's alone; asking for a turn and an avatar are always welcome.
+    if (t === 'queue') {
+      return false;
+    }
+    if (t === 'turn') {
+      return message.op === 'join' || message.op === 'leave';
+    }
+    if (t === 'avatar') {
+      return message.of === undefined && (message.data === '' || cleanImageData(message.data, LIMITS.avatarChars) !== null);
     }
     if (!drawing()) {
       // A join or a first request carries an empty snapshot and is harmless.

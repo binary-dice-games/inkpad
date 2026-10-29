@@ -105,6 +105,18 @@
         align-items: center;
         margin: 0;
       }
+      .avatar-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .avatar-row img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 1px solid var(--border);
+      }
       .actions {
         display: flex;
         gap: 8px;
@@ -176,6 +188,7 @@
         <div class="row">
           <input id="link" type="text" readonly />
           <button id="copyLink" type="button">Copy</button>
+          <button id="newLink" type="button">New link</button>
         </div>
         <ul id="viewers" aria-label="Viewers"></ul>
         <label><input id="drawing" type="checkbox" /> Viewers can draw</label>
@@ -245,6 +258,15 @@
             <input id="color" type="color" />
           </div>
           <div class="field">
+            <label for="avatar">Your picture</label>
+            <div class="avatar-row">
+              <img id="avatarPreview" alt="" hidden />
+              <input id="avatar" type="file" accept="image/*" />
+              <button id="avatarClear" type="button">Remove</button>
+            </div>
+            <p class="hint">Shown on your cursor instead of your name.</p>
+          </div>
+          <div class="field">
             <label for="cursor">Mouse pointer in the video</label>
             <select id="cursor">
               <option value="always">Always shown</option>
@@ -291,6 +313,15 @@
           <div class="field">
             <label for="trackers">Trackers (one per line, wss://)</label>
             <textarea id="trackers" rows="3" spellcheck="false"></textarea>
+          </div>
+          <div class="field">
+            <label for="trackerTtl">Viewer link lifetime (minutes, 0: no limit)</label>
+            <input id="trackerTtl" type="number" min="0" max="10080" step="1" />
+            <p class="hint">
+              After this time the trackers forget the session: nobody new can join with the link
+              (press New link for a fresh one); people already here stay. Applies from the next
+              session.
+            </p>
           </div>
           <div class="field">
             <label for="iceServers">STUN / TURN servers (one per line)</label>

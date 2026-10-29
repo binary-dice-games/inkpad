@@ -40,6 +40,13 @@ presenter on Chrome.
 | 26 | Presenter page: click the browser's "Stop sharing", then **Share again** | Viewers see "paused", then the new source on the same link |
 | 27 | Presenter page: Settings, mouse pointer **Hidden**, then share a window and move the mouse over it | Viewers do not see the pointer; "Always shown" brings it back at the next **Share again** |
 | 28 | Fold **Tools** and **Controls** on the presenter page, and **Tools** on the viewer; reload | The toolbar and panel stay out of the way and come back with their buttons; the choice is remembered |
+| 29 | On a viewer and on the presenter page press 2, 2, 2, 2, then 3, 3 and 4, 4, 6 | The line goes thin/normal/thick, text small/medium/large, the sticker and colour change; the toolbar icons show the choice |
+| 30 | Draw a line and a sticker, drag them, right click them; try someone else's | Yours move and disappear; theirs do not. Shift+drag scales and Ctrl+drag turns a sticker |
+| 31 | Drop a photo from the file manager on the board (viewer and presenter); move, turn, delete it | It appears for everyone, and late joiners see it |
+| 32 | Wheel over a spot of a busy video, draw, zoom out | The zoom is centred on the pointer; drawings stay on the same part of the picture |
+| 33 | Two viewers with different tools and one with an avatar | Others see each tool's cursor shape; the avatar replaces the name |
+| 34 | Three people ask for a turn; the first ends it; the presenter removes the second | The queue in the lower left updates everywhere; the speaker's cursor is larger and ringed |
+| 35 | Set the link lifetime to 1 minute, start, wait, try to join | The page says the link expired and the join fails; **New link** works for a new viewer |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

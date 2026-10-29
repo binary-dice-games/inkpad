@@ -65,6 +65,8 @@ export type RendezvousSpec =
       announceMs?: { host: number; guest: number };
       gatherMs?: number;
       offers?: number;
+      /** How long to stay announced to the trackers, in ms; 0 (default) until stopped. */
+      ttlMs?: number;
     }
   | { kind: 'manual'; gatherMs?: number }
   | { kind: 'broadcast' }

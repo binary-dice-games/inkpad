@@ -34,6 +34,8 @@ export function endMessage(reason: string | undefined): string {
 /** The text for a problem while connecting (`reason` of a session error). */
 export function errorMessage(reason: string | undefined): string {
   switch (reason) {
+    case 'tracker-expired':
+      return 'The viewer link has expired: nobody new can join with it. Press New link to let more people in; those already here stay.';
     case 'no-tracker':
       return 'No tracker could be reached: this network may block them. Try another network.';
     case 'no-answer':

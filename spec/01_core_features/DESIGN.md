@@ -159,12 +159,37 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   board units to the letterboxed frame inside an element.
 - **Clear** affects everyone and is allowed to viewers only while drawing is on.
 
+- **Numbered tools and options.** The toolbar order gives the shortcuts (1 pointer, 2 pen,
+  3 text, 4 sticker, 5 eraser, last the colour). A number selects the tool; pressing it
+  again cycles its options (pen thin/normal/thick = 2/4/8 units, text 18/28/44, each
+  sticker, the palette). Options are local style, never synced.
+- **Own items.** Items carry `author`; the author can drag them (pointer tool, or the
+  tool that made them), and right click removes them. Shift+drag scales and Ctrl/Alt+drag
+  rotates stickers and images about their centre (`rot` degrees, absent when 0). The
+  model still lets any peer change any item (last writer wins); "own" is a UI rule.
+- **Images.** `image` items hold a small PNG/JPEG/WebP data URL (at most 300 000
+  characters, 20 per board); a dropped file is scaled down in the browser until it fits.
+  They travel in ops and snapshots like any item, so late joiners get them.
+- **Zoom.** Lives in the frame adapter, not in the items: `zoomAt`/`panBy` change a view
+  (scale 1-8, always covering the box) that is folded into `transform()` and `clip()`, and
+  applied as a CSS transform to the `content` element (the video). Drawings and picture
+  therefore zoom together; cursors are sent in board units, so they are unaffected.
+- **Cursors.** `cur` messages carry the sender's `tool`; receivers draw that tool's icon
+  with its hot spot on the point. Avatars (`avatar` messages, a small data URL, at most
+  16 000 characters) replace the name; the host re-sends known avatars to late joiners
+  (`of` = owner, accepted only from the host).
+- **Turn queue.** The host keeps the queue (`queue` message with peer ids, accepted only
+  from the host and refused by the gate when a guest sends it); guests send `turn`
+  (`join`/`leave`) to the host. The host drops people who leave and can remove anyone. The
+  first id has the turn: its cursor gets a ring and a larger shape. Turn requests and
+  avatars pass the drawing gate even when viewers cannot draw.
+
 ### 4.3 Channels and messages
 
 | Channel | Transport | Direction | Purpose |
 |---|---|---|---|
 | `$` | reliable | both | nymph control (hello, welcome, roster, refuse, locked, end, removed) |
-| `wb` | reliable + fast | both | whiteboard ops, snapshots, cursors, live ink (nymph protocol) |
+| `wb` | reliable + fast | both | whiteboard ops, snapshots, cursors, live ink (nymph protocol); plus `avatar`, `turn` (guest to host) and `queue` (host to all), and the tool in `cur` |
 | `ctl` | reliable | guest ↔ host only | presenter auth and commands (4.5); never relayed |
 | `stage` | reliable | host → guests | `{aspect, w, h, fps, state: live\|paused\|ended, drawing:boolean, title?}`; resent on join and on every change |
 

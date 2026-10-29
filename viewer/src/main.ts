@@ -6,7 +6,13 @@
  */
 import { createSession, SessionError } from '@inkpad/collab-session';
 import type { Session } from '@inkpad/collab-session';
-import { createWhiteboard, frameAdapter } from '@inkpad/collab-whiteboard';
+import {
+  LIMITS,
+  cleanImageData,
+  createWhiteboard,
+  fileToImageData,
+  frameAdapter,
+} from '@inkpad/collab-whiteboard';
 import type { FrameAdapter, Whiteboard } from '@inkpad/collab-whiteboard';
 import {
   CODEC_PREFERENCE,
@@ -64,6 +70,8 @@ let hasVideo = false;
 /** The whiteboard toolbar is folded away (remembered). */
 let folded = store('inkpad.toolsFolded') === '1';
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
+/** The picture chosen on the join form (an image data URL), or ''. */
+let avatar = cleanImageData(store('inkpad.avatar'), LIMITS.avatarChars) ?? '';
 
 function toast(text: string): void {
   const el = $('toast');
@@ -127,13 +135,16 @@ function enterApp(): void {
   show('app');
   const stageEl = $('stage');
   const v = video();
-  adapter = frameAdapter(stageEl, () =>
-    boardAspect({ width: v.videoWidth, height: v.videoHeight }, stage),
+  adapter = frameAdapter(
+    stageEl,
+    () => boardAspect({ width: v.videoWidth, height: v.videoHeight }, stage),
+    v,
   );
   board = createWhiteboard(stageEl, {
     session,
     adapter,
     readOnly: !mayDraw(stage),
+    avatar,
   });
   board.on('error', (e) => toast(e.message));
   for (const event of ['loadedmetadata', 'resize', 'playing']) {
@@ -288,6 +299,31 @@ async function main(): Promise<void> {
   }
 
   show('join');
+  const showAvatar = (data: string): void => {
+    avatar = data;
+    store('inkpad.avatar', data);
+    const img = $<HTMLImageElement>('avatarPreview');
+    img.hidden = data === '';
+    if (data) {
+      img.src = data;
+    } else {
+      img.removeAttribute('src');
+    }
+  };
+  showAvatar(avatar);
+  $<HTMLInputElement>('avatar').addEventListener('change', (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (file) {
+      fileToImageData(file, { maxSide: 96, square: true, maxChars: LIMITS.avatarChars }).then(
+        (picture) => showAvatar(picture.data),
+        (err: unknown) => {
+          $('avatarHint').textContent =
+            err instanceof Error ? err.message : 'That picture cannot be used.';
+        },
+      );
+    }
+  });
+  $('avatarClear').addEventListener('click', () => showAvatar(''));
   $('joinForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const name = nameInput.value.trim() || 'Guest';

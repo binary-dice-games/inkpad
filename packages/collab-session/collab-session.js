@@ -644,6 +644,9 @@ class TorrentRendezvous {
     this.announceMs = spec.announceMs ?? { host: 15000, guest: 4000 };
     this.gatherMs = spec.gatherMs ?? 3000;
     this.offers = spec.offers ?? 3;
+    // inkpad addition: the tracker protocol has no time to live a client can set, so this is how
+    // long we stay announced (0: until stopped); then we tell the trackers we are gone.
+    this.ttlMs = spec.ttlMs ?? 0;
     this.sockets = new Map();
     this.pending = new Map(); // offer id -> {link, pc, at}
     this.seen = new Set();
@@ -664,6 +667,9 @@ class TorrentRendezvous {
       this.connect(url, 0);
     }
     this.timer = setInterval(() => this.announceAll(), ctx.role === 'host' ? this.announceMs.host : this.announceMs.guest);
+    if (this.ttlMs > 0) {
+      this.ttlTimer = setTimeout(() => this.expire(), Math.min(this.ttlMs, 2 ** 31 - 1));
+    }
     this.noTracker = setTimeout(() => {
       if (![...this.sockets.values()].some((s) => s.readyState === 1)) {
         ctx.status('no-tracker', 'No tracker could be reached.');
@@ -671,10 +677,23 @@ class TorrentRendezvous {
     }, 10000);
   }
 
+  /** @private The time to live is over: leave the swarm and stop looking for peers. */
+  expire() {
+    dbg('tracker: time to live over, leaving the swarm');
+    for (const ws of this.sockets.values()) {
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({ action: 'announce', info_hash: this.infoHash, peer_id: this.trackerId, uploaded: 0, downloaded: 0, left: 0, event: 'stopped', numwant: 0, offers: [] }));
+      }
+    }
+    this.stop();
+    this.ctx.status('expired', 'The trackers no longer know this room: no new people can join with the link.');
+  }
+
   stop() {
     this.stopped = true;
     clearInterval(this.timer);
     clearTimeout(this.noTracker);
+    clearTimeout(this.ttlTimer);
     for (const ws of this.sockets.values()) {
       try {
         ws.close();

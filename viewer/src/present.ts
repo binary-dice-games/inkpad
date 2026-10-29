@@ -6,7 +6,7 @@
  * shown here with the whiteboard over it, mounted on the host session.
  */
 import { SessionError } from '@inkpad/collab-session';
-import { createWhiteboard, frameAdapter } from '@inkpad/collab-whiteboard';
+import { LIMITS, createWhiteboard, fileToImageData, frameAdapter } from '@inkpad/collab-whiteboard';
 import type { FrameAdapter, Whiteboard } from '@inkpad/collab-whiteboard';
 import {
   DEFAULT_SETTINGS,
@@ -48,6 +48,8 @@ let board: Whiteboard | null = null;
 let adapter: FrameAdapter | null = null;
 let settings: Settings | null = null;
 let prefs: PresenterPrefs = loadPrefs();
+/** The avatar in the settings dialog, until it is saved. */
+let avatarDraft = '';
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 /** Set while a picker is open, so a second click does not open another. */
 let picking = false;
@@ -181,10 +183,17 @@ function enterApp(): void {
   const stageEl = $('stage');
   const v = video();
   const h = host;
-  adapter = frameAdapter(stageEl, () =>
-    boardAspect({ width: v.videoWidth, height: v.videoHeight }, h.stage()),
+  adapter = frameAdapter(
+    stageEl,
+    () => boardAspect({ width: v.videoWidth, height: v.videoHeight }, h.stage()),
+    v,
   );
-  board = createWhiteboard(stageEl, { session: h.session, adapter, readOnly: false });
+  board = createWhiteboard(stageEl, {
+    session: h.session,
+    adapter,
+    readOnly: false,
+    avatar: settings?.avatar,
+  });
   board.on('error', (e) => toast(e.message));
   host.onChange(render);
   setToolsCollapsed(prefs.toolsCollapsed);
@@ -263,6 +272,8 @@ function fillSettings(p: PresenterPrefs): void {
   input('maxWidth').value = String(s.video.maxWidth);
   input('maxHeight').value = String(s.video.maxHeight);
   input('bitrateKbps').value = String(s.video.bitrateKbps);
+  showAvatar(s.avatar);
+  input('trackerTtl').value = String(s.trackerTtlMinutes);
   $<HTMLTextAreaElement>('trackers').value = s.trackers.join('\n');
   $<HTMLTextAreaElement>('iceServers').value = formatIceLines(s.iceServers);
   showUplink();
@@ -276,6 +287,8 @@ function readSettings(): PresenterPrefs {
     settings: {
       name: input('name').value,
       color: input('color').value,
+      avatar: avatarDraft,
+      trackerTtlMinutes: input('trackerTtl').valueAsNumber,
       viewersMayDraw: input('viewersMayDraw').checked,
       video: {
         fps: input('fps').valueAsNumber,
@@ -287,6 +300,19 @@ function readSettings(): PresenterPrefs {
       iceServers: parseIceLines($<HTMLTextAreaElement>('iceServers').value),
     },
   });
+}
+
+/** Shows the avatar chosen in the dialog (`''`: none). */
+function showAvatar(data: string): void {
+  avatarDraft = data;
+  const img = $<HTMLImageElement>('avatarPreview');
+  img.hidden = data === '';
+  if (data) {
+    img.src = data;
+  } else {
+    img.removeAttribute('src');
+  }
+  input('avatar').value = '';
 }
 
 function showUplink(): void {
@@ -309,7 +335,8 @@ function saveSettings(): void {
   savePrefs(prefs);
   summary();
   if (host && settings) {
-    settings = { ...settings, video: prefs.settings.video };
+    settings = { ...settings, video: prefs.settings.video, avatar: prefs.settings.avatar };
+    board?.setAvatar(prefs.settings.avatar);
     host.session.mediaParams(toMediaParams(settings.video));
     frameChanged();
     toast('Saved. Video changes apply now; the rest from the next session or share.');
@@ -397,12 +424,23 @@ function main(): void {
   $('resetSettings').addEventListener('click', () =>
     fillSettings({ ...prefs, ...cleanPrefs({ settings: DEFAULT_SETTINGS }) }),
   );
+  input('avatar').addEventListener('change', () => {
+    const file = input('avatar').files?.[0];
+    if (file) {
+      fileToImageData(file, { maxSide: 96, square: true, maxChars: LIMITS.avatarChars }).then(
+        (picture) => showAvatar(picture.data),
+        (e: unknown) => toast(e instanceof Error ? e.message : 'That picture cannot be used.'),
+      );
+    }
+  });
+  $('avatarClear').addEventListener('click', () => showAvatar(''));
   $('settingsForm').addEventListener('input', showUplink);
   $('settingsForm').addEventListener('submit', (e) => {
     e.preventDefault();
     saveSettings();
     dialog.close();
   });
+  $('newLink').addEventListener('click', () => void host?.command({ cmd: 'newLink' }));
   $('copyLink').addEventListener('click', () => {
     const link = $<HTMLInputElement>('link');
     link.select();

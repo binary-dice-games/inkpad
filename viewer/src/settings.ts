@@ -11,6 +11,7 @@ import {
   cleanVideoSettings,
 } from '@inkpad/defaults';
 import type { VideoSettings } from '@inkpad/defaults';
+import { LIMITS, cleanImageData } from '@inkpad/collab-whiteboard';
 
 export interface Settings {
   viewerBase: string;
@@ -23,6 +24,13 @@ export interface Settings {
   name: string;
   /** The presenter's colour (`#rrggbb`). */
   color: string;
+  /** The presenter's picture (an image data URL), shown instead of the name on the cursor; `''`: none. */
+  avatar: string;
+  /**
+   * How long the host stays announced to the trackers, in minutes; then the link admits no new
+   * viewers until a new link is made. 0: no limit.
+   */
+  trackerTtlMinutes: number;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -33,11 +41,15 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   viewersMayDraw: true,
   name: 'Presenter',
   color: '#3e63dd',
+  avatar: '',
+  trackerTtlMinutes: 60,
 };
 
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const ICE_URL = /^(stun|stuns|turn|turns):[^\s]+$/;
 const MAX_LIST = 10;
+/** A week: more is the same as no limit for a presentation. */
+const MAX_TTL_MINUTES = 7 * 24 * 60;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -138,6 +150,11 @@ export function cleanSettings(input: unknown): Settings {
       typeof o.viewersMayDraw === 'boolean' ? o.viewersMayDraw : DEFAULT_SETTINGS.viewersMayDraw,
     name: name || DEFAULT_SETTINGS.name,
     color: typeof o.color === 'string' && COLOR.test(o.color) ? o.color : DEFAULT_SETTINGS.color,
+    avatar: cleanImageData(o.avatar, LIMITS.avatarChars) ?? '',
+    trackerTtlMinutes:
+      typeof o.trackerTtlMinutes === 'number' && Number.isFinite(o.trackerTtlMinutes)
+        ? Math.min(MAX_TTL_MINUTES, Math.max(0, Math.round(o.trackerTtlMinutes)))
+        : DEFAULT_SETTINGS.trackerTtlMinutes,
   };
 }
 

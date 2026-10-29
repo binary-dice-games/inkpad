@@ -75,6 +75,26 @@ describe('settings', () => {
     ]);
   });
 
+  it('defaults the tracker lifetime to an hour and keeps it within bounds', () => {
+    expect(DEFAULT_SETTINGS.trackerTtlMinutes).toBe(60);
+    expect(cleanSettings({ trackerTtlMinutes: 15.4 }).trackerTtlMinutes).toBe(15);
+    expect(cleanSettings({ trackerTtlMinutes: 0 }).trackerTtlMinutes).toBe(0);
+    expect(cleanSettings({ trackerTtlMinutes: -5 }).trackerTtlMinutes).toBe(0);
+    expect(cleanSettings({ trackerTtlMinutes: 1e9 }).trackerTtlMinutes).toBe(7 * 24 * 60);
+    expect(cleanSettings({ trackerTtlMinutes: 'soon' }).trackerTtlMinutes).toBe(60);
+    expect(cleanSettings({ trackerTtlMinutes: NaN }).trackerTtlMinutes).toBe(60);
+  });
+
+  it('keeps a small image as the avatar and drops anything else', () => {
+    const png =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    expect(cleanSettings({ avatar: png }).avatar).toBe(png);
+    expect(cleanSettings({}).avatar).toBe('');
+    expect(cleanSettings({ avatar: 'https://example.com/me.png' }).avatar).toBe('');
+    expect(cleanSettings({ avatar: 'data:text/html;base64,PHNjcmlwdD4=' }).avatar).toBe('');
+    expect(cleanSettings({ avatar: png + 'A'.repeat(20000) }).avatar).toBe('');
+  });
+
   it('round-trips the text form of ICE servers', () => {
     const text = 'stun:stun.example:3478\nturn:t.example:3478 user secret';
     const servers = parseIceLines(text);

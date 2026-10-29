@@ -85,7 +85,10 @@ export class ShareHost {
     session.on('peers', () => this.changed());
     session.on('state', () => this.changed());
     session.on('status', (e) => {
-      if (e.stage === 'no-tracker') {
+      if (e.stage === 'expired') {
+        this.problem = 'tracker-expired';
+        this.changed();
+      } else if (e.stage === 'no-tracker') {
         this.problem = 'no-tracker';
         this.changed();
       } else if (e.stage === 'tracker' && this.problem === 'no-tracker') {
@@ -109,7 +112,7 @@ export class ShareHost {
       me: { name: settings.name, color: settings.color },
       iceServers: settings.iceServers,
       rendezvous: options.rendezvous ?? [
-        { kind: 'torrent', urls: settings.trackers },
+        { kind: 'torrent', urls: settings.trackers, ttlMs: settings.trackerTtlMinutes * 60_000 },
         { kind: 'manual' },
       ],
       accept: (channel, message, from) => host?.accept(channel, message, from) ?? false,
@@ -245,6 +248,9 @@ export class ShareHost {
     switch (command.cmd) {
       case 'newLink':
         await this.session.newInvite();
+        if (this.problem === 'tracker-expired') {
+          this.problem = null;
+        }
         break;
       case 'viewport':
         if (

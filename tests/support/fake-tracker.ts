@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 
 interface Announce {
   action?: string;
+  event?: string;
   info_hash?: string;
   peer_id?: string;
   to_peer_id?: string;
@@ -80,6 +81,11 @@ export class FakeTracker {
       this.swarms.set(m.info_hash, swarm);
       if (!swarm.has(m.peer_id)) {
         joined.push({ hash: m.info_hash, id: m.peer_id });
+      }
+      if (m.event === 'stopped') {
+        // The peer leaves the swarm, as on a real tracker.
+        swarm.delete(m.peer_id);
+        return;
       }
       swarm.set(m.peer_id, ws);
 

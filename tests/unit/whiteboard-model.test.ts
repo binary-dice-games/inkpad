@@ -223,3 +223,73 @@ describe('drawingGate', () => {
     expect(gate('wb', op, 'g')).toBe(true);
   });
 });
+
+const PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+describe('images and turning', () => {
+  it('keeps a well formed image and its turn, drops a bad one', () => {
+    const image = {
+      id: 'a.1',
+      author: 'a',
+      stamp: [1, 'a'],
+      kind: 'image',
+      x: 10,
+      y: 20,
+      size: 200,
+      ratio: 0.5,
+      data: PNG,
+      rot: 45,
+    };
+    expect(cleanItem(image)).toEqual(image);
+    expect(cleanItem({ ...image, data: 'https://example.com/x.png' })).toBeNull();
+    expect(cleanItem({ ...image, data: 'data:image/svg+xml;base64,AAAA' })).toBeNull();
+    expect(cleanItem({ ...image, data: PNG + 'A'.repeat(LIMITS.imageChars) })).toBeNull();
+    expect(cleanItem({ ...image, ratio: 0 })).toBeNull();
+    expect(cleanItem({ ...image, rot: 'x' })).not.toHaveProperty('rot');
+  });
+
+  it('turns a sticker and forgets a zero turn', () => {
+    const sticker = {
+      id: 'a.1',
+      author: 'a',
+      stamp: [1, 'a'],
+      kind: 'sticker',
+      x: 1,
+      y: 2,
+      size: 30,
+      name: 'star',
+    };
+    expect(cleanItem({ ...sticker, rot: -90 })).toMatchObject({ rot: -90 });
+    expect(cleanItem({ ...sticker, rot: 0 })).not.toHaveProperty('rot');
+    expect(cleanItem({ ...sticker, rot: 999 })).not.toHaveProperty('rot');
+  });
+
+  it('limits the images on the board', () => {
+    const m = new WhiteboardModel('peer-a');
+    const image = { kind: 'image', x: 0, y: 0, size: 50, ratio: 1, data: PNG };
+    for (let i = 0; i < LIMITS.images; i++) {
+      m.add(image);
+    }
+    expect(() => m.add(image)).toThrow(WhiteboardError);
+    expect(() => m.add(ink())).not.toThrow();
+  });
+});
+
+describe('gate for avatars and turns', () => {
+  const gate = drawingGate(() => false);
+  it('lets avatars and turn requests through even while drawing is locked', () => {
+    expect(gate('wb', { t: 'avatar', data: PNG }, 'g')).toBe(true);
+    expect(gate('wb', { t: 'avatar', data: '' }, 'g')).toBe(true);
+    expect(gate('wb', { t: 'turn', op: 'join' }, 'g')).toBe(true);
+    expect(gate('wb', { t: 'turn', op: 'leave' }, 'g')).toBe(true);
+  });
+
+  it('refuses bad avatars, other turn requests and a viewer speaking for the host', () => {
+    expect(gate('wb', { t: 'avatar', data: 'javascript:alert(1)' }, 'g')).toBe(false);
+    expect(gate('wb', { t: 'avatar', data: PNG, of: 'someone' }, 'g')).toBe(false);
+    expect(gate('wb', { t: 'turn', op: 'kick' }, 'g')).toBe(false);
+    expect(drawingGate(() => true)('wb', { t: 'queue', ids: ['g'] }, 'g')).toBe(false);
+    expect(gate('wb', { t: 'queue', ids: ['g'] }, 'g')).toBe(false);
+  });
+});
