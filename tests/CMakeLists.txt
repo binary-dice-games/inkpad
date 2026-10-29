@@ -7,6 +7,7 @@ inkpad_add_test(extension_settings tests/unit/extension-settings.test.ts)
 inkpad_add_test(share_host tests/unit/share-host.test.ts)
 inkpad_add_test(viewer_model tests/unit/viewer-model.test.ts)
 inkpad_add_test(display_capture tests/unit/display-capture.test.ts)
+inkpad_add_test(present_settings tests/unit/present-settings.test.ts)
 inkpad_add_test(release tests/unit/release.test.ts)
 
 # Browser tests: webrtc needs Chrome (INKPAD_CHROME); extension needs Playwright's

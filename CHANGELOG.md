@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   extension and choose what to share with the browser's picker (a tab, a window,
   a whole screen, native applications included). The page is presenter and
   console in one: draw over the live preview, copy the viewer link, and manage
-  viewers (remove, lock, pause, clear, end).
+  viewers (remove, lock, pause, clear, end). The mouse pointer can be hidden in the
+  shared video; a Settings dialog sets name, colour, video limits, trackers and
+  STUN/TURN servers; the tools and the controls panel can be folded away.
 - Chrome extension for the presenter: share the active tab (a few frames per
   second, configurable) with a viewer link, and open the presenter console in a
   window of its own to draw on the video and manage the session (kick, lock,

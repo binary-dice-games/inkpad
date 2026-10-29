@@ -50,7 +50,10 @@ no delay. Consequences:
 `navigator.mediaDevices.getDisplayMedia` with `video: true`, `audio: false`,
 `selfBrowserSurface: 'exclude'` (the presenter page is not offered, it would film
 itself), `surfaceSwitching: 'include'` (Chrome's "share this tab instead") and
-`monitorTypeSurfaces: 'include'`.
+`monitorTypeSurfaces: 'include'`. The video constraint carries `cursor`
+(`always`, `motion` or `never`) from the settings, so the mouse pointer is
+optional in the shared video; it is applied when the picker opens, hence at the
+next **Share again**, and a browser or source may ignore it.
 
 Unlike `spec/03` there is **no canvas relay**: the track goes straight to the
 senders. The relay needed timers, and a background tab's timers are throttled;
@@ -96,9 +99,20 @@ Closing the page ends the session (viewers see `host-gone`).
 `present.html?tr=wss://...` (repeatable) replaces the public trackers, and the viewer
 link then carries them (the same `tr` rule as `spec/01_core_features/DESIGN.md`).
 
-Settings: name, colour and "viewers may draw" in `localStorage`; trackers, ICE
-servers and video limits are the defaults of `packages/defaults` (the options
-page of the extension does not apply here; a settings panel is a later addition).
+### Settings and folding
+
+A **Settings** dialog (start screen and live panel) holds the extension's
+settings (name, colour, viewers may draw, frame rate, size and bitrate limits,
+trackers, ICE servers) plus the pointer mode, validated by the extension's
+`cleanSettings` and kept in `localStorage` (`viewer/src/present-settings.ts`).
+Video limits reach a running share at once (`mediaParams`); the rest applies from
+the next session (connection, name) or share (pointer).
+
+The **Tools** button folds the whiteboard toolbar away and **Controls** folds the
+panel, so neither hides the view; both states are remembered. Folding the tools
+also returns to the pointer tool. The toolbar lives in the whiteboard's shadow
+root and is hidden with `display: none`, not the `hidden` attribute (the board
+stops redrawing a hidden toolbar).
 
 ## 5. Security and privacy
 
@@ -109,6 +123,8 @@ page of the extension does not apply here; a settings panel is a later addition)
 - The viewer link carries no presenter key; there is none.
 
 ## 6. Not done here, and why
+
+- **Live pointer change**: `applyConstraints({cursor})` is not reliable across browsers.
 
 - **Always-on-top console** (Document Picture-in-Picture): the whiteboard binds to
   its own document; moving it to a second document needs work in the copied

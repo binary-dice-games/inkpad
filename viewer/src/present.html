@@ -25,6 +25,39 @@
       #panel textarea {
         font-size: 11px;
       }
+      dialog {
+        width: min(460px, calc(100% - 24px));
+        max-height: calc(100% - 24px);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--panel);
+        color: var(--fg);
+      }
+      dialog h2 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      dialog fieldset {
+        margin: 0 0 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      dialog input[type='number'],
+      dialog select,
+      dialog textarea {
+        width: 100%;
+        padding: 6px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font: inherit;
+        background: transparent;
+        color: inherit;
+      }
+      dialog label.check {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
     </style>
   </head>
   <body>
@@ -39,18 +72,12 @@
           Everything in what you choose will be visible to anyone with the link. You choose in the
           next step, and your browser always shows when you are sharing.
         </p>
-        <label for="name">Your name</label>
-        <input
-          id="name"
-          type="text"
-          maxlength="40"
-          autocomplete="nickname"
-          placeholder="Presenter"
-        />
-        <label for="color">Your colour <input id="color" type="color" /></label>
-        <label><input id="startDrawing" type="checkbox" checked /> Viewers can draw</label>
+        <p id="summary" class="muted"></p>
         <p id="startProblem" class="muted" role="alert" hidden></p>
-        <p><button id="startShare" class="primary" type="submit">Start sharing</button></p>
+        <p class="row">
+          <button id="startShare" class="primary" type="submit">Start sharing</button>
+          <button id="openSettings" type="button">Settings…</button>
+        </p>
         <p class="muted">
           You draw on a copy of what you share, in this window, so keep this window next to it:
           anything drawn on the shared screen itself would not reach viewers.
@@ -74,7 +101,10 @@
       <div id="bar">
         <button id="people" type="button" aria-controls="panel"></button>
         <button id="fullscreen" type="button">Full screen</button>
-        <button id="panelToggle" type="button">Controls</button>
+        <button id="toolsToggle" type="button" aria-pressed="true">Tools</button>
+        <button id="panelToggle" type="button" aria-controls="panel" aria-expanded="true">
+          Controls
+        </button>
       </div>
       <aside id="panel" aria-label="Presenter controls">
         <h2>Presenter</h2>
@@ -91,6 +121,7 @@
           <button id="pause" type="button">Pause</button>
           <button id="reshare" type="button">Share again</button>
           <button id="clear" type="button">Clear drawings</button>
+          <button id="settingsLive" type="button">Settings…</button>
         </div>
         <details>
           <summary>Join codes</summary>
@@ -106,6 +137,60 @@
       </aside>
       <div id="toast" role="status" hidden></div>
     </main>
+    <dialog id="settings" aria-labelledby="settingsTitle">
+      <form id="settingsForm">
+        <h2 id="settingsTitle">Settings</h2>
+        <fieldset>
+          <legend>You</legend>
+          <label for="name">Name shown to viewers</label>
+          <input id="name" type="text" maxlength="40" autocomplete="nickname" />
+          <label for="color">Colour <input id="color" type="color" /></label>
+          <label class="check"
+            ><input id="viewersMayDraw" type="checkbox" /> Viewers may draw when a session
+            starts</label
+          >
+        </fieldset>
+        <fieldset>
+          <legend>Capture</legend>
+          <label for="cursor">Mouse pointer in the video</label>
+          <select id="cursor">
+            <option value="always">Always shown</option>
+            <option value="motion">Only while it moves</option>
+            <option value="never">Hidden</option>
+          </select>
+          <p class="muted">
+            Applies the next time you choose what to share. Some browsers or sources ignore it.
+          </p>
+        </fieldset>
+        <fieldset>
+          <legend>Video (applies at once)</legend>
+          <label for="fps">Frames per second</label>
+          <input id="fps" type="number" min="0.5" max="15" step="0.5" />
+          <label for="maxWidth">Largest width (px)</label>
+          <input id="maxWidth" type="number" min="640" max="3840" step="1" />
+          <label for="maxHeight">Largest height (px)</label>
+          <input id="maxHeight" type="number" min="360" max="2160" step="1" />
+          <label for="bitrateKbps">Largest bitrate per viewer (kbit/s)</label>
+          <input id="bitrateKbps" type="number" min="100" max="8000" step="50" />
+          <p class="muted" id="uplink"></p>
+        </fieldset>
+        <fieldset>
+          <legend>Connection (next session)</legend>
+          <label for="trackers">Trackers (one per line, wss://)</label>
+          <textarea id="trackers" rows="3" spellcheck="false"></textarea>
+          <label for="iceServers">STUN / TURN servers (one per line)</label>
+          <textarea id="iceServers" rows="3" spellcheck="false"></textarea>
+          <p class="muted">
+            <code>stun:host:port</code> or <code>turn:host:port username credential</code>
+          </p>
+        </fieldset>
+        <p class="row">
+          <button class="primary" type="submit">Save</button>
+          <button id="resetSettings" type="button">Restore defaults</button>
+          <button id="closeSettings" type="button">Cancel</button>
+        </p>
+      </form>
+    </dialog>
     <script src="present.js"></script>
   </body>
 </html>

@@ -8,9 +8,16 @@
 import { SessionError } from '@inkpad/collab-session';
 import { createWhiteboard, frameAdapter } from '@inkpad/collab-whiteboard';
 import type { FrameAdapter, Whiteboard } from '@inkpad/collab-whiteboard';
-import { cleanSettings, cleanTrackers } from '../../extension/src/settings';
+import {
+  DEFAULT_SETTINGS,
+  cleanSettings,
+  cleanTrackers,
+  formatIceLines,
+  parseIceLines,
+} from '../../extension/src/settings';
 import type { Settings } from '../../extension/src/settings';
 import { ShareHost } from '../../extension/src/share-host';
+import { UPLINK_WARNING_KBPS, toMediaParams, uplinkKbps } from '@inkpad/defaults';
 import {
   canCaptureDisplay,
   fitScale,
@@ -19,6 +26,8 @@ import {
 } from './display-capture';
 import type { DisplayCapture } from './display-capture';
 import { boardAspect, errorMessage } from './model';
+import { cleanPrefs, loadPrefs, savePrefs } from './present-settings';
+import type { PresenterPrefs } from './present-settings';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -30,17 +39,6 @@ function show(screen: Screen): void {
   }
 }
 
-function store(key: string, value?: string): string | null {
-  try {
-    if (value !== undefined) {
-      localStorage.setItem(key, value);
-    }
-    return localStorage.getItem(key);
-  } catch {
-    return null; // private window or blocked storage: the page works without it
-  }
-}
-
 // ── State of the running share ───────────────────────────────────────────────
 
 let host: ShareHost | null = null;
@@ -48,6 +46,7 @@ let capture: DisplayCapture | null = null;
 let board: Whiteboard | null = null;
 let adapter: FrameAdapter | null = null;
 let settings: Settings | null = null;
+let prefs: PresenterPrefs = loadPrefs();
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 /** Set while a picker is open, so a second click does not open another. */
 let picking = false;
@@ -187,6 +186,8 @@ function enterApp(): void {
   board = createWhiteboard(stageEl, { session: h.session, adapter, readOnly: false });
   board.on('error', (e) => toast(e.message));
   host.onChange(render);
+  setToolsCollapsed(prefs.toolsCollapsed);
+  setPanelCollapsed(prefs.panelCollapsed);
   render();
 }
 
@@ -211,17 +212,11 @@ async function startSharing(): Promise<void> {
   }
   const problem = $('startProblem');
   problem.hidden = true;
-  const name = $<HTMLInputElement>('name').value.trim() || 'Presenter';
-  const color = $<HTMLInputElement>('color').value;
-  const draw = $<HTMLInputElement>('startDrawing').checked;
-  store('inkpad.presenter.name', name);
-  store('inkpad.color', color);
-  store('inkpad.presenter.drawing', draw ? '1' : '0');
 
   picking = true;
   let picked: DisplayCapture;
   try {
-    picked = await startDisplayCapture();
+    picked = await startDisplayCapture(prefs.cursor);
   } catch (e) {
     problem.textContent = captureProblem(e);
     problem.hidden = false;
@@ -230,12 +225,10 @@ async function startSharing(): Promise<void> {
     picking = false;
   }
 
-  // `?tr=wss://...` (repeatable) replaces the public trackers; the viewer link then carries them.
+  // `?tr=wss://...` (repeatable) replaces the trackers; the viewer link then carries them.
   const trackers = cleanTrackers(new URLSearchParams(location.search).getAll('tr'));
   settings = cleanSettings({
-    name,
-    color,
-    viewersMayDraw: draw,
+    ...prefs.settings,
     viewerBase: siteBase(),
     ...(trackers && trackers.length > 0 ? { trackers } : {}),
   });
@@ -257,13 +250,100 @@ async function startSharing(): Promise<void> {
   frameChanged();
 }
 
-function main(): void {
-  const palette = ['#e5484d', '#f5a524', '#30a46c', '#0f9f86', '#3e63dd', '#8e4ec6'];
-  $<HTMLInputElement>('color').value =
-    store('inkpad.color') ?? palette[Math.floor(Math.random() * palette.length)] ?? '#3e63dd';
-  $<HTMLInputElement>('name').value = store('inkpad.presenter.name') ?? '';
-  $<HTMLInputElement>('startDrawing').checked = store('inkpad.presenter.drawing') !== '0';
+// ── Settings and collapsing ──────────────────────────────────────────────────
 
+const input = (id: string): HTMLInputElement => $<HTMLInputElement>(id);
+
+function fillSettings(p: PresenterPrefs): void {
+  const s = p.settings;
+  input('name').value = s.name;
+  input('color').value = s.color;
+  input('viewersMayDraw').checked = s.viewersMayDraw;
+  $<HTMLSelectElement>('cursor').value = p.cursor;
+  input('fps').value = String(s.video.fps);
+  input('maxWidth').value = String(s.video.maxWidth);
+  input('maxHeight').value = String(s.video.maxHeight);
+  input('bitrateKbps').value = String(s.video.bitrateKbps);
+  $<HTMLTextAreaElement>('trackers').value = s.trackers.join('\n');
+  $<HTMLTextAreaElement>('iceServers').value = formatIceLines(s.iceServers);
+  showUplink();
+}
+
+/** The prefs as typed in the dialog, validated. */
+function readSettings(): PresenterPrefs {
+  return cleanPrefs({
+    ...prefs,
+    cursor: $<HTMLSelectElement>('cursor').value,
+    settings: {
+      name: input('name').value,
+      color: input('color').value,
+      viewersMayDraw: input('viewersMayDraw').checked,
+      video: {
+        fps: input('fps').valueAsNumber,
+        maxWidth: input('maxWidth').valueAsNumber,
+        maxHeight: input('maxHeight').valueAsNumber,
+        bitrateKbps: input('bitrateKbps').valueAsNumber,
+      },
+      trackers: cleanTrackers($<HTMLTextAreaElement>('trackers').value) ?? [],
+      iceServers: parseIceLines($<HTMLTextAreaElement>('iceServers').value),
+    },
+  });
+}
+
+function showUplink(): void {
+  const kbps = uplinkKbps(10, readSettings().settings.video);
+  const el = $('uplink');
+  el.textContent = `With 10 viewers you upload about ${(kbps / 1000).toFixed(1)} Mbit/s (one stream per viewer).`;
+  el.style.color = kbps > UPLINK_WARNING_KBPS ? '#b45309' : '';
+}
+
+function summary(): void {
+  const { settings: s, cursor } = prefs;
+  const pointer = { always: 'shown', motion: 'shown while it moves', never: 'hidden' }[cursor];
+  $('summary').textContent =
+    `${s.name}, ${s.video.fps} frames per second, mouse pointer ${pointer}.`;
+}
+
+/** Stores the dialog's prefs; the video limits reach a running share at once. */
+function saveSettings(): void {
+  prefs = readSettings();
+  savePrefs(prefs);
+  summary();
+  if (host && settings) {
+    settings = { ...settings, video: prefs.settings.video };
+    host.session.mediaParams(toMediaParams(settings.video));
+    frameChanged();
+    toast('Saved. Video changes apply now; the rest from the next session or share.');
+  }
+}
+
+/** Folds the whiteboard toolbar away, or brings it back. Leaves drawing tools when folding. */
+function setToolsCollapsed(collapsed: boolean): void {
+  prefs = { ...prefs, toolsCollapsed: collapsed };
+  savePrefs(prefs);
+  $('toolsToggle').setAttribute('aria-pressed', String(!collapsed));
+  const root = board?.element.shadowRoot;
+  // Not the `hidden` attribute: the board stops redrawing a hidden toolbar.
+  for (const selector of ['.toolbar', '.pop']) {
+    const el = root?.querySelector<HTMLElement>(selector);
+    if (el) {
+      el.style.display = collapsed ? 'none' : '';
+    }
+  }
+  if (collapsed) {
+    board?.setTool('pointer');
+  }
+}
+
+function setPanelCollapsed(collapsed: boolean): void {
+  prefs = { ...prefs, panelCollapsed: collapsed };
+  savePrefs(prefs);
+  $('panel').hidden = collapsed;
+  $('panelToggle').setAttribute('aria-expanded', String(!collapsed));
+}
+
+function main(): void {
+  summary();
   for (const event of ['loadedmetadata', 'resize']) {
     video().addEventListener(event, frameChanged);
   }
@@ -292,7 +372,25 @@ function main(): void {
         .catch(() => {});
     }
   });
-  $('panelToggle').addEventListener('click', () => ($('panel').hidden = !$('panel').hidden));
+  $('panelToggle').addEventListener('click', () => setPanelCollapsed(!prefs.panelCollapsed));
+  $('toolsToggle').addEventListener('click', () => setToolsCollapsed(!prefs.toolsCollapsed));
+  const dialog = $<HTMLDialogElement>('settings');
+  const openSettings = (): void => {
+    fillSettings(prefs);
+    dialog.showModal();
+  };
+  $('openSettings').addEventListener('click', openSettings);
+  $('settingsLive').addEventListener('click', openSettings);
+  $('closeSettings').addEventListener('click', () => dialog.close());
+  $('resetSettings').addEventListener('click', () =>
+    fillSettings({ ...prefs, ...cleanPrefs({ settings: DEFAULT_SETTINGS }) }),
+  );
+  $('settingsForm').addEventListener('input', showUplink);
+  $('settingsForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveSettings();
+    dialog.close();
+  });
   $('copyLink').addEventListener('click', () => {
     const link = $<HTMLInputElement>('link');
     link.select();

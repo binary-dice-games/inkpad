@@ -35,6 +35,16 @@ cover it; the viewer's landing links to it.
 the real picker, still screen and background tab; CHANGELOG.
 **Result:** done.
 
+## 5. Pointer option, settings dialog, folding
+
+**Goal:** the mouse pointer is optional in the video; settings are editable; the
+console and tools can be folded away.
+**Deliverables:** `cursor` in `startDisplayCapture`; `present-settings.ts`; the
+Settings dialog; Tools and Controls toggles.
+**Tests:** `tests/unit/present-settings.test.ts`; `tests/e2e/present.test.ts`
+(pointer constraint, remembered settings, live video settings, folding).
+**Result:** done.
+
 ## Completion Criteria
 
 `npm run check`, unit and browser tests pass; `present.html` is on the built

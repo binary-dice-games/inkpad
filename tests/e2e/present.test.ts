@@ -59,7 +59,8 @@ async function presenterPage(surface = 'window'): Promise<Page> {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.error('[presenter]', e.message));
   await page.addInitScript((displaySurface: string) => {
-    navigator.mediaDevices.getDisplayMedia = async () => {
+    navigator.mediaDevices.getDisplayMedia = async (options) => {
+      (window as unknown as { asked: unknown }).asked = options;
       const canvas = document.createElement('canvas');
       canvas.width = 640;
       canvas.height = 360;
@@ -82,8 +83,16 @@ async function presenterPage(surface = 'window'): Promise<Page> {
   return page;
 }
 
-async function startSharing(page: Page): Promise<string> {
+/** Saves the name (and, optionally, the pointer mode) through the settings dialog. */
+async function configure(page: Page, cursor?: string): Promise<void> {
+  await page.locator('#openSettings').click();
   await page.locator('#name').fill('Pat');
+  if (cursor) await page.locator('#cursor').selectOption(cursor);
+  await page.locator('#settingsForm button[type=submit]').click();
+}
+
+async function startSharing(page: Page): Promise<string> {
+  await configure(page);
   await page.locator('#startShare').click();
   await page.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
   await expect.poll(() => page.locator('#link').inputValue()).toMatch(/#inkpad=/);
@@ -184,6 +193,56 @@ describe('static presenter page', () => {
     await presenter.locator('#over').waitFor({ state: 'visible' });
     await expect.poll(() => viewer.locator('#notice').textContent()).toMatch(/ended/);
     await expect.poll(() => viewer.locator('#wait').isVisible()).toBe(true);
+  });
+
+  it('hides the pointer when asked, and remembers the settings', async () => {
+    const presenter = await presenterPage();
+    await configure(presenter, 'never');
+    await expect.poll(() => presenter.locator('#summary').textContent()).toMatch(/Pat.*hidden/);
+    await presenter.locator('#startShare').click();
+    await presenter.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+    const asked = await presenter.evaluate(
+      () => (window as unknown as { asked: { video: { cursor?: string } } }).asked,
+    );
+    expect(asked.video.cursor).toBe('never');
+    // Stored: a reload shows them again.
+    await presenter.reload();
+    await expect.poll(() => presenter.locator('#summary').textContent()).toMatch(/Pat.*hidden/);
+  });
+
+  it('applies video settings to a running share', async () => {
+    const presenter = await presenterPage();
+    await startSharing(presenter);
+    await presenter.locator('#settingsLive').click();
+    await presenter.locator('#fps').fill('5');
+    await presenter.locator('#settingsForm button[type=submit]').click();
+    await expect.poll(() => presenter.locator('#toast').textContent()).toMatch(/Saved/);
+    await presenter.locator('#settingsLive').click();
+    expect(await presenter.locator('#fps').inputValue()).toBe('5');
+  });
+
+  it('folds the controls and the tools away so they do not hide the view', async () => {
+    const presenter = await presenterPage();
+    await startSharing(presenter);
+    const toolbar = presenter.locator('collab-whiteboard .toolbar');
+    await expect.poll(() => toolbar.isVisible()).toBe(true);
+    await expect.poll(() => presenter.locator('#panel').isVisible()).toBe(true);
+
+    await presenter.locator('#toolsToggle').click();
+    await expect.poll(() => toolbar.isVisible()).toBe(false);
+    await presenter.locator('#panelToggle').click();
+    await expect.poll(() => presenter.locator('#panel').isVisible()).toBe(false);
+
+    // Remembered across a reload (the next session starts folded).
+    await presenter.reload();
+    await presenter.locator('#startShare').click();
+    await presenter.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+    await expect.poll(() => presenter.locator('#panel').isVisible()).toBe(false);
+    await expect.poll(() => toolbar.isVisible()).toBe(false);
+
+    // Back again.
+    await presenter.locator('#toolsToggle').click();
+    await expect.poll(() => toolbar.isVisible()).toBe(true);
   });
 
   it('warns when a whole screen is shared', async () => {
