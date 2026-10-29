@@ -86,6 +86,11 @@ export interface SessionOptions {
   connectTimeoutMs?: number;
   reconnectMs?: number;
   /**
+   * Guest: video codecs by MIME type in order of preference (e.g. `video/VP9`), listed first in
+   * the offer; the presenter sends with the first one it supports.
+   */
+  videoCodecs?: string[];
+  /**
    * Receives one line per step of making a connection (arguments as for console.log):
    * trackers, announces, offers, answers, ICE and channel states. No secrets are logged.
    */

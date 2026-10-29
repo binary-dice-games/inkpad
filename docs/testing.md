@@ -197,6 +197,9 @@ Be careful with these; nothing tests them automatically:
 - Real window resizing, zoom, and a cross-origin navigation of the shared tab.
 - Real networks: public trackers over time, NATs, TURN, corporate proxies.
 - Browsers other than Chromium, real phones, screen readers.
+- How sharp the video looks on a real display, in real Chrome with real encoders: the
+  automated tests only measure it in headless Chromium. `spikes/video-quality/` measures a
+  text page's sharpness over time (`node spikes/video-quality/run.mjs "name:w=1920&h=1080&..."`).
 - Many viewers (the design aims at about 10) and long sessions.
 - The Pages and release workflows: they have not run yet (CI has, on all three systems).
 - A viewer on another protocol version: it only sees "the presenter did not answer".

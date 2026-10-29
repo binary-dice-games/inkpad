@@ -605,6 +605,60 @@ describe('presenter extension and console', () => {
     await fixture.close();
   }, 120000);
 
+  it('sends a HiDPI screen in device pixels, and a normal one at its own size', async () => {
+    // The same page, on a 1x and a 2x screen. Text is only sharp if it is not resized, so the
+    // 2x screen has to arrive with twice the pixels (and not be shrunk to its CSS size).
+    const sizes: { w: number; h: number; css: { w: number; h: number } }[] = [];
+    for (const deviceScaleFactor of [1, 2]) {
+      const screen = await loadExtension({ deviceScaleFactor });
+      try {
+        const settings = await screen.extensionPage();
+        await settings.evaluate(
+          ([trackerUrl, viewerBase]) =>
+            chrome.storage.sync.set({
+              settings: { trackers: [trackerUrl], iceServers: [], viewerBase, video: { fps: 5 } },
+            }),
+          [tracker.url, `${files.origin}/viewer/index.html`],
+        );
+        const page = await screen.context.newPage();
+        await page.goto(`${files.origin}/pages/fixture.html`);
+        const tabId = await screen.worker.evaluate(async () => {
+          const tabs = await chrome.tabs.query({});
+          return Math.max(...tabs.map((t) => t.id ?? 0));
+        });
+        const started = await settings.evaluate(
+          (id) => chrome.runtime.sendMessage({ target: 'background', type: 'start', tabId: id }),
+          tabId,
+        );
+        expect(started, JSON.stringify(started)).toMatchObject({ ok: true });
+        const link = (await settings.evaluate(() =>
+          chrome.runtime.sendMessage({ target: 'background', type: 'status' }),
+        )) as { link: string };
+        const viewer = await screen.context.newPage();
+        await joinViewer(link.link, 'Ana', viewer);
+        await expect.poll(() => videoWidth(viewer), { timeout: 30000 }).toBeGreaterThan(0);
+        const size = await viewer.evaluate(() => {
+          const v = document.getElementById('video') as HTMLVideoElement;
+          return { w: v.videoWidth, h: v.videoHeight };
+        });
+        const css = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+        sizes.push({ ...size, css });
+        await settings.evaluate(() =>
+          chrome.runtime.sendMessage({ target: 'background', type: 'stop' }),
+        );
+      } finally {
+        await screen.close();
+      }
+    }
+    const [normal, hidpi] = sizes as [(typeof sizes)[number], (typeof sizes)[number]];
+    // 1x: about the page's own size (the tab includes the scrollbar the page's innerWidth leaves out).
+    expect(Math.abs(normal.w - normal.css.w)).toBeLessThanOrEqual(24);
+    // 2x: twice the pixels of the same page, not the CSS size.
+    expect(hidpi.w / normal.w).toBeGreaterThan(1.9);
+    expect(hidpi.w / normal.w).toBeLessThan(2.1);
+    expect(hidpi.w / hidpi.h).toBeCloseTo(normal.w / normal.h, 1);
+  }, 180000);
+
   it('re-fits the video when told the shared tab changed shape', async () => {
     const fixture = await ext.context.newPage();
     await fixture.goto(`${files.origin}/pages/fixture.html`);

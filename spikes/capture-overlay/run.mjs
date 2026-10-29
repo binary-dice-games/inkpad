@@ -19,7 +19,8 @@ const seconds = Number(process.argv[3] ?? 10);
 const [vw, vh] = (process.argv[4] ?? '1280x720').split('x').map(Number);
 // Fit the tab inside 1280x720 without upscaling, keeping the tab's own aspect.
 const fit = Math.min(1, 1280 / vw, 720 / vh);
-const limits = { maxWidth: Math.round(vw * fit), maxHeight: Math.round(vh * fit) };
+const grow = Number(process.env.LIMIT_SCALE ?? 1);
+const limits = { maxWidth: Math.round(vw * fit * grow), maxHeight: Math.round(vh * fit * grow) };
 
 // A copy of the extension with a fixed key, so its id is known (needed for the allowlist flag).
 const work = mkdtempSync(join(tmpdir(), 'inkpad-spike-'));
@@ -48,6 +49,7 @@ const context = await chromium.launchPersistentContext(join(work, 'profile'), {
   channel: 'chromium',
   headless: true,
   viewport: { width: vw, height: vh },
+  deviceScaleFactor: Number(process.env.DSF ?? 1),
   args: [
     `--disable-extensions-except=${extDir}`,
     `--load-extension=${extDir}`,
@@ -63,20 +65,20 @@ try {
     const tabs = await chrome.tabs.query({});
     return Math.max(...tabs.map((t) => t.id));
   });
-  await worker.evaluate(([t, m, s, l, v]) => globalThis.run(t, m, s, l, v), [
-    tabId,
-    mode,
-    seconds,
-    limits,
-    { w: vw, h: vh },
-  ]);
+  await worker.evaluate(
+    ([t, m, s, l, v]) => globalThis.run(t, m, s, l, v),
+    [tabId, mode, seconds, limits, { w: vw, h: vh }],
+  );
   if (process.env.BACKGROUND) {
     // The presenter works in another tab: does the captured one keep producing frames?
     await new Promise((r) => setTimeout(r, 1500));
     const other = await context.newPage();
     await other.goto('about:blank');
     await other.bringToFront();
-    console.error('visibility of the captured tab:', await page.evaluate(() => document.visibilityState));
+    console.error(
+      'visibility of the captured tab:',
+      await page.evaluate(() => document.visibilityState),
+    );
   }
   const deadline = Date.now() + (seconds + 20) * 1000;
   let results;
@@ -88,7 +90,12 @@ try {
   const overlay = await page.evaluate(() => {
     const el = document.documentElement.lastElementChild;
     const r = el.getBoundingClientRect();
-    return { tag: el.tagName, style: el.getAttribute('style'), rect: [r.x, r.y, r.width, r.height], inner: innerWidth + 'x' + innerHeight };
+    return {
+      tag: el.tagName,
+      style: el.getAttribute('style'),
+      rect: [r.x, r.y, r.width, r.height],
+      inner: innerWidth + 'x' + innerHeight,
+    };
   });
   console.log(JSON.stringify({ mode, seconds, overlay, ...results }, null, 2));
 } finally {

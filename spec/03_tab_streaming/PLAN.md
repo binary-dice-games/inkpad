@@ -68,6 +68,16 @@ no new id is available and the capture keeps its old shape.
 content hint, bandwidth estimate in options page.
 **Tests:** measured fps and bitrate within bounds for 3 presets (1, 3, 10 fps);
 live change takes effect without reconnect.
+**Field finding (sharpness):** in first real use the stream was blurry. Measured and fixed,
+see `DESIGN.md` section 4: the default 1280×720 cap shrank every larger screen; every
+session was sent with VP8 whatever the preference (the offer order decides, not the
+answer); HiDPI screens were captured at CSS size. Now: native device pixels up to
+3840×2160, AV1 first, 1500 kbps cap. Tests: codec negotiated per preference (AV1, VP9),
+HiDPI captured at twice the pixels of the same page at 1x; both fail without the fix.
+Not verified: a real display and real Chrome encoders (headless uses software ones;
+H.264 and AV1 hardware encoders may behave differently), CPU load on weak machines,
+and a screen larger than 4K.
+
 **Result:** Partly done. Sender parameters (frame rate, bitrate, content hint,
 codec preference VP9, H.264, VP8) are applied from the settings when the share
 starts. Measured in Chromium: with 5 fps configured and a page changing 25 times

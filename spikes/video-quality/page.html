@@ -1,0 +1,189 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>video quality spike</title>
+<body style="margin: 0; background: #222">
+  <video id="v" muted autoplay playsinline style="width: 640px"></video>
+  <script type="module">
+    import { createSession } from '/packages/collab-session/collab-session.js';
+
+    const q = new URLSearchParams(location.search);
+    const role = q.get('role');
+    const W = Number(q.get('w') ?? 1920);
+    const H = Number(q.get('h') ?? 1080);
+    const fps = Number(q.get('fps') ?? 3);
+    const app = (window.app = { ready: false });
+
+    // The scene: lots of small text, like a document or a code editor. `moving` adds a box that moves.
+    function scene(g, moving, t) {
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, W, H);
+      g.fillStyle = '#1c2024';
+      g.font = '15px Consolas, "Courier New", monospace';
+      for (let y = 0, i = 0; y < H - 10; y += 21, i++) {
+        g.fillText(
+          `${String(i).padStart(3, '0')}  const sharp = render(text, { size: ${12 + (i % 5)}, id: ${(i * 7919) % 1000} }); // inkpad`,
+          20,
+          y + 18,
+        );
+      }
+      g.fillStyle = '#3e63dd';
+      g.fillRect(40, 40, 160, 50);
+      g.fillStyle = '#fff';
+      g.font = 'bold 22px sans-serif';
+      g.fillText('Heading text', 52, 74);
+      if (moving) {
+        g.fillStyle = '#e5484d';
+        g.fillRect(300 + ((t * 9) % 900), 300 + ((t * 5) % 300), 120, 120);
+      }
+    }
+    window.drawScene = scene;
+
+    const session = await createSession({
+      role,
+      token: q.get('token') ?? undefined,
+      me: { name: role, color: '#3e63dd' },
+      rendezvous: [
+        {
+          kind: 'torrent',
+          urls: [q.get('tracker')],
+          announceMs: { host: 1000, guest: 1000 },
+          gatherMs: 500,
+        },
+      ],
+      iceServers: [],
+      videoCodecs: q.get('codecs') ? q.get('codecs').split(',') : undefined,
+      log: (...a) => console.log('[inkpad]', ...a),
+    });
+    app.session = session;
+    session.on('track', (stream) => {
+      document.getElementById('v').srcObject = stream;
+    });
+
+    if (role === 'host') {
+      app.token = session.token;
+      // Source canvas = the tab; relay canvas = what capture.ts does.
+      const src = new OffscreenCanvas(W, H);
+      const sg = src.getContext('2d');
+      const out = document.createElement('canvas');
+      // The relay's downscale (capture.ts fitWithin): the tab fitted inside maxw x maxh, never upscaled.
+      const maxw = Number(q.get('maxw') ?? W),
+        maxh = Number(q.get('maxh') ?? H);
+      const k = Math.min(1, maxw / W, maxh / H);
+      out.width = Math.round((W * k) / 2) * 2;
+      out.height = Math.round((H * k) / 2) * 2;
+      const og = out.getContext('2d');
+      const track = out.captureStream(0).getVideoTracks()[0];
+      track.contentHint = q.get('hint') ?? 'detail';
+      let moving = true;
+      let t = 0;
+      let lastSent = 0;
+      const emit = () => {
+        og.drawImage(src, 0, 0, out.width, out.height);
+        track.requestFrame();
+        lastSent = performance.now();
+      };
+      // The "tab" changes at 10 Hz while moving; the relay sends at `fps`, and repeats a still frame.
+      setInterval(() => {
+        if (moving) {
+          t += 1;
+          scene(sg, true, t);
+        }
+      }, 100);
+      scene(sg, true, 0);
+      setInterval(() => {
+        const refresh = Math.min(1000, 1500 / fps);
+        if (performance.now() - lastSent >= (moving ? 1000 / fps : refresh)) emit();
+      }, 50);
+      app.stop = () => {
+        moving = false;
+        scene(sg, false, 0);
+      };
+      session.mediaParams({
+        fps,
+        maxBitrate: Number(q.get('bitrate') ?? 600000),
+        contentHint: q.get('hint') ?? 'detail',
+        codecs: q.get('codecs') ? q.get('codecs').split(',') : undefined,
+        scale: q.get('scale') ? Number(q.get('scale')) : undefined,
+      });
+      session.setMedia(new MediaStream([track]));
+      app.degradation = q.get('degradation');
+    }
+
+    // Receiver side: how different is what arrives from the original scene?
+    app.measure = () => {
+      const v = document.getElementById('v');
+      if (!v.videoWidth) return null;
+      // Compare at the original size (a viewer sees the video at about this size on a big screen).
+      const a = new OffscreenCanvas(W, H).getContext('2d', { willReadFrequently: true });
+      const b = new OffscreenCanvas(W, H).getContext('2d', { willReadFrequently: true });
+      scene(a, false, 0);
+      b.drawImage(v, 0, 0, W, H);
+      const da = a.getImageData(0, 0, W, H).data;
+      const db = b.getImageData(0, 0, W, H).data;
+      let sumAll = 0,
+        sumInk = 0,
+        ink = 0;
+      for (let i = 0; i < da.length; i += 4) {
+        const d = Math.abs(da[i + 1] - db[i + 1]); // green channel ~ luma
+        sumAll += d;
+        if (da[i + 1] < 200) {
+          sumInk += d;
+          ink += 1;
+        }
+      }
+      return {
+        diff: sumInk / Math.max(1, ink),
+        all: sumAll / (da.length / 4),
+        size: [v.videoWidth, v.videoHeight],
+      };
+    };
+    app.stats = async () => {
+      const link = [...session.links.values()][0]?.link;
+      const report = await link.pc.getStats();
+      const out = {};
+      report.forEach((r) => {
+        if (r.type === 'outbound-rtp' && r.kind === 'video')
+          Object.assign(out, {
+            sent: [r.frameWidth, r.frameHeight],
+            limit: r.qualityLimitationReason,
+            qp: r.qpSum && r.framesEncoded ? +(r.qpSum / r.framesEncoded).toFixed(1) : null,
+            encoder: r.encoderImplementation,
+            codecId: r.codecId,
+            bytes: r.bytesSent,
+            framesEncoded: r.framesEncoded,
+            encodeMs: r.framesEncoded
+              ? +((r.totalEncodeTime / r.framesEncoded) * 1000).toFixed(1)
+              : null,
+            hw: r.powerEfficientEncoder,
+          });
+        if (r.type === 'codec') (out.codecs ??= {})[r.id] = r.mimeType;
+      });
+      out.codec = out.codecs?.[out.codecId];
+      delete out.codecs;
+      return out;
+    };
+    app.dump = async () => {
+      const link = [...session.links.values()][0]?.link;
+      const report = await link.pc.getStats();
+      const rows = [];
+      report.forEach((r) => {
+        if (r.type === 'codec') rows.push(`codec ${r.id} ${r.mimeType} pt=${r.payloadType}`);
+        if (r.type === 'outbound-rtp' && r.kind === 'video')
+          rows.push(
+            `outbound id=${r.id} codecId=${r.codecId} ssrc=${r.ssrc} frames=${r.framesEncoded} ${r.frameWidth}x${r.frameHeight}`,
+          );
+        if (r.type === 'inbound-rtp' && r.kind === 'video')
+          rows.push(`inbound codecId=${r.codecId} frames=${r.framesDecoded}`);
+      });
+      const pick = (d) =>
+        (d?.sdp ?? '')
+          .split(/\r?\n/)
+          .filter((l) => /^m=video|^a=rtpmap:\d+ (VP|H26|AV1)/.test(l))
+          .slice(0, 4);
+      const sdp = pick(link.pc.localDescription);
+      const rsdp = pick(link.pc.remoteDescription);
+      return { rows, local: sdp, remote: rsdp };
+    };
+    app.ready = true;
+  </script>
+</body>

@@ -34,10 +34,15 @@ export const DEFAULT_ICE_SERVERS: readonly RTCIceServer[] = [
 /** Bounds and defaults of the video settings (spec/03_tab_streaming/DESIGN.md section 4). */
 export const VIDEO_LIMITS = {
   fps: { min: 0.5, max: 15, default: 3 },
-  /** Largest side of the frame is not bounded; width x height are. */
-  width: { min: 640, max: 1920, default: 1280 },
-  height: { min: 360, max: 1080, default: 720 },
-  bitrateKbps: { min: 100, max: 3000, default: 600 },
+  /**
+   * The frame is never upscaled, and it is sent at the screen's own resolution up to these
+   * limits: text is only sharp when it is not resized (spikes/video-quality). The defaults
+   * are the largest, so only a screen bigger than 4K is reduced.
+   */
+  width: { min: 640, max: 3840, default: 3840 },
+  height: { min: 360, max: 2160, default: 2160 },
+  /** A still page needs far less than this; it is the cap for moving content. */
+  bitrateKbps: { min: 100, max: 8000, default: 1500 },
 } as const;
 
 export type ContentHint = 'detail' | 'text' | 'motion';
@@ -61,8 +66,19 @@ export const DEFAULT_VIDEO: Readonly<VideoSettings> = {
 /** Frame-rate presets offered by the options page. */
 export const FPS_PRESETS: readonly number[] = [1, 3, 5, 10];
 
-/** Codec preference, best first; the browser's own order follows. */
-export const CODEC_PREFERENCE: readonly string[] = ['video/VP9', 'video/H264', 'video/VP8'];
+/**
+ * Codec preference, best first; the browser's own order follows. Measured on text at 1080p
+ * (spikes/video-quality): AV1 and H.264 are sharp within a second of the page going still,
+ * VP8 and VP9 start soft and refine over ten seconds; AV1 sends a third of the bytes of the
+ * others and costs 4 ms a frame at 1080p. The viewer lists these first in its offer, because
+ * the sender uses the first codec of the offer that it supports.
+ */
+export const CODEC_PREFERENCE: readonly string[] = [
+  'video/AV1',
+  'video/H264',
+  'video/VP9',
+  'video/VP8',
+];
 
 const clamp = (value: unknown, min: number, max: number, fallback: number): number => {
   const n = typeof value === 'number' ? value : Number.NaN;

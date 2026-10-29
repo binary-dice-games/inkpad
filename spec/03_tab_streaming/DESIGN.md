@@ -62,8 +62,8 @@ Defaults and bounds live in `packages/defaults` and the options page.
 | Parameter | Default | Range | Applied via |
 |---|---|---|---|
 | Frame rate | 3 fps | 0.5–15 | `maxFrameRate` on capture + sender `maxFramerate` |
-| Max resolution | 1280×720 (never upscale) | 640×360–1920×1080 | capture constraints + `scaleResolutionDownBy` |
-| Max bitrate | 600 kbps | 100–3000 | `RTCRtpSender.setParameters().encodings[0].maxBitrate` |
+| Max resolution | 3840×2160 (never upscale) | 640×360–3840×2160 | capture constraints and the relay canvas |
+| Max bitrate | 1500 kbps | 100–8000 | `RTCRtpSender.setParameters().encodings[0].maxBitrate` |
 | Content hint | `detail` | `detail`/`text`/`motion` | `track.contentHint` |
 
 Notes:
@@ -74,10 +74,28 @@ Notes:
   offscreen doc forces a keyframe-bearing refresh at least every 2 s so late
   joiners and recovering links get a picture (`requestFrame` via a canvas
   `captureStream(0)` relay if needed).
-- Codec preference order: AV1 (if hardware/screen-content support), VP9, H.264,
-  VP8, set with `setCodecPreferences`. Decided by spike data; default VP9.
-- Budget rule of thumb: uplink = viewers × bitrate, so 10 viewers at 600 kbps ≈
-  6 Mbps. The options page shows this estimate live and warns above ~4 Mbps.
+- **Sharpness (measured, `spikes/video-quality/`):** the viewer's text must not be resized
+  or smeared. On a 1920×1080 text scene, error on the text pixels against the original
+  (0 is perfect; mean grey-level difference):
+  - sent at 1440p→720p or 1440p→1080p: 51 to 71, and it never improves, because the detail
+    is gone before the encoder (the first default, 1280×720, did this to every screen
+    bigger than 720p);
+  - at the screen's own size: 1.2 to 2 once still, whatever the bitrate above ~600 kbps
+    (a still page costs few bits; the bitrate cap is for moving content);
+  - codec, 2000 kbps, 1 s / 10 s after the page went still: VP8 2.7 / 1.8, VP9 7.2 / 1.75
+    (starts soft, refines slowly), AV1 1.9 / 1.6, H.264 1.2 / 1.2 (constant);
+    AV1 sends 130 KB where the others send 360 to 400 KB, and costs 4 ms per 1080p frame
+    (13 ms at 4K), H.264 9 and 27 ms.
+  So: the capture is asked for device pixels (tab size times the display's pixel ratio,
+  capped by the settings, never more because Chrome upscales to the limit), the relay
+  never shrinks below the settings' maximum, and the codec order is AV1, H.264, VP9, VP8.
+- **Codec order must be set on the viewer's offer.** The sender uses the first codec of the
+  offer that it supports; the host's answer order is ignored (a sender preference alone left
+  every session on VP8). The viewer passes `videoCodecs` to `createSession`; the host also
+  sets the preference on its answer. Tested through the receiver's statistics.
+- Budget rule of thumb: uplink = viewers × bitrate while the content moves, so 10 viewers
+  at 1500 kbps ≈ 15 Mbps at worst; a still page needs a small fraction. The options page
+  shows the worst case live and warns above ~4 Mbps.
 - Pause: `track.enabled=false` / replace sender track with `null`; `stage.state`
   becomes `paused` so viewers show "presenter paused" rather than a frozen
   frame. Resume restores and requests a keyframe.

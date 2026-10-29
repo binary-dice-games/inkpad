@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Blurry video: the shared tab is now sent at the screen's own resolution (HiDPI included, up
+  to 4K) instead of being shrunk to 1280x720, and AV1 or H.264 is used instead of VP8, so
+  text is sharp as soon as the page stops moving. The default bitrate cap is 1500 kbps.
 - Viewers and the console could not connect through the public trackers (only join codes
   worked): offers were too large for the trackers. They are now compressed.
 

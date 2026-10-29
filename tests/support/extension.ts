@@ -27,7 +27,9 @@ export interface LoadedExtension {
  * ignores --load-extension, so this uses the Chromium Playwright downloads
  * (`npx playwright-core install chromium`).
  */
-export async function loadExtension(): Promise<LoadedExtension> {
+export async function loadExtension(
+  options: { deviceScaleFactor?: number } = {},
+): Promise<LoadedExtension> {
   const userDataDir = mkdtempSync(join(tmpdir(), 'inkpad-e2e-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
     channel: 'chromium',
@@ -42,6 +44,10 @@ export async function loadExtension(): Promise<LoadedExtension> {
       '--disable-background-timer-throttling',
       '--disable-renderer-backgrounding',
       '--disable-backgrounding-occluded-windows',
+      // A HiDPI screen: every page, the extension's own included, sees this pixel ratio.
+      ...(options.deviceScaleFactor
+        ? [`--force-device-scale-factor=${options.deviceScaleFactor}`]
+        : []),
     ],
   });
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));

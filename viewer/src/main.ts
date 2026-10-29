@@ -12,6 +12,7 @@ import type { Peer, Session } from '@inkpad/collab-session';
 import { createWhiteboard, frameAdapter } from '@inkpad/collab-whiteboard';
 import type { FrameAdapter, Whiteboard } from '@inkpad/collab-whiteboard';
 import {
+  CODEC_PREFERENCE,
   CTL_CHANNEL,
   DEFAULT_ICE_SERVERS,
   DEFAULT_TRACKERS,
@@ -235,6 +236,7 @@ async function join(name: string, color: string): Promise<void> {
       role: 'guest',
       token: invite.token,
       protocol: PROTOCOL,
+      videoCodecs: [...CODEC_PREFERENCE],
       log: logger,
       me: { name, color },
       iceServers: config.iceServers ?? [...DEFAULT_ICE_SERVERS],

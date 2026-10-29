@@ -489,7 +489,8 @@ class MediaController {
     if (this.role !== 'guest') {
       return;
     }
-    pc.addTransceiver('video', { direction: 'recvonly' });
+    const transceiver = pc.addTransceiver('video', { direction: 'recvonly' });
+    this.offerOrder(transceiver);
     pc.addEventListener('track', (e) => {
       if (e.track.kind === 'video') {
         this.emit('track', e.streams[0] ?? new MediaStream([e.track]));
@@ -562,6 +563,27 @@ class MediaController {
     sender.setParameters(p).catch(() => {});
   }
 
+  /**
+   * @private Guest: lists the preferred codecs first in the offer. The sender uses the first codec of
+   * the offer it supports, so the order has to be set here and cannot be left to the host's answer.
+   */
+  offerOrder(transceiver) {
+    const wanted = this.videoCodecs;
+    if (!wanted?.length || typeof RTCRtpReceiver?.getCapabilities !== 'function') {
+      return;
+    }
+    const all = RTCRtpReceiver.getCapabilities('video')?.codecs ?? [];
+    const rank = (c) => {
+      const i = wanted.findIndex((m) => m.toLowerCase() === c.mimeType.toLowerCase());
+      return i < 0 ? wanted.length : i;
+    };
+    try {
+      transceiver.setCodecPreferences([...all].sort((a, b) => rank(a) - rank(b)));
+    } catch (e) {
+      dbg('video codec order not applied:', e?.message ?? e);
+    }
+  }
+
   /** @private Preferred codecs by MIME type (e.g. 'video/VP9'), the rest after. */
   codecs(transceiver) {
     const wanted = this.params.codecs;
@@ -575,8 +597,10 @@ class MediaController {
     };
     try {
       transceiver.setCodecPreferences([...all].sort((a, b) => rank(a) - rank(b)));
-    } catch {
+      dbg('video codec preference:', wanted.join(', '));
+    } catch (e) {
       // unsupported: the browser's own order stays
+      dbg('video codec preference not applied:', e?.message ?? e);
     }
   }
 }
@@ -1099,6 +1123,7 @@ export class Session {
     this.rendezvous = [];
     this.manual = null;
     this.media = new MediaController(this.role, (event, detail) => this.emit(event, detail));
+    this.media.videoCodecs = options.videoCodecs;
   }
 
   /**

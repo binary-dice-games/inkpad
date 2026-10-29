@@ -47,6 +47,7 @@
       },
     ],
     iceServers: [],
+    videoCodecs: q.get('codecs') ? q.get('codecs').split(',') : undefined,
     log: (...a) => app.logs.push(a.join(' ')),
     accept: role === 'host' ? (_c, m) => (q.get('lock') ? m.t === 'cur' : true) : undefined,
   });
@@ -82,6 +83,7 @@
         fps: Number(q.get('fps') ?? 3),
         maxBitrate: 400000,
         contentHint: 'detail',
+        codecs: q.get('codecs') ? q.get('codecs').split(',') : undefined,
       });
       session.setMedia(stream);
     }

@@ -15,8 +15,6 @@ declare class MediaStreamTrackProcessor {
   readonly readable: ReadableStream<VideoFrame>;
 }
 
-/** The largest size the raw capture is asked for. */
-const CAPTURE_LIMIT = { width: 1920, height: 1080 };
 /** How often the compositor is asked for frames; the sent rate is the settings'. */
 const CAPTURE_FPS = 10;
 /** A still page is sent again at least this often (ms). */
@@ -109,7 +107,16 @@ export async function startCapture(
 
   /** Opens a tab capture sized to `size` and feeds its frames to the relay. */
   const open = async (id: string, size: { width: number; height: number }): Promise<Source> => {
-    const raw = fitWithin(size.width, size.height, CAPTURE_LIMIT.width, CAPTURE_LIMIT.height);
+    // Ask for the tab in device pixels (a 200% screen has twice the CSS size): Chrome gives the
+    // capture at most the limit, and upscales to it, so asking for more than the screen has
+    // wastes bytes while asking for less (the CSS size) makes the text blurry.
+    const ratio = Math.max(1, window.devicePixelRatio || 1);
+    const raw = fitWithin(
+      size.width * ratio,
+      size.height * ratio,
+      settings.maxWidth,
+      settings.maxHeight,
+    );
     const constraints = {
       audio: false,
       video: {

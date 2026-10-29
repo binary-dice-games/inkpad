@@ -33,6 +33,7 @@ presenter on Chrome.
 | 18 | Switch to the console tab while the shared tab stays in the background | Viewers keep getting frames |
 | 20 | Viewer on a network that blocks the tracker, joining with a code | The code, the answer and Connect work; video and drawing follow |
 | 21 | Viewer with a screen reader and keyboard only | Join form, toolbar and people list are reachable and named |
+| 22 | Share a page full of small text (a code editor, a document) on a 1440p or 4K screen, and a HiDPI laptop | The viewer reads the text at full size within a second or two of the page going still; moving content may be soft meanwhile |
 | 19 | Pause, resume, clear and end from the console | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

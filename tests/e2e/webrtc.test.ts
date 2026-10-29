@@ -174,6 +174,47 @@ describe('video and board over real WebRTC', () => {
     }
   });
 
+  for (const codec of ['video/AV1', 'video/VP9']) {
+    it(`sends the video with ${codec} when the viewer prefers it`, async () => {
+      const codecs = `${codec},video/VP8`;
+      const host = await open({ role: 'host', video: '1', codecs });
+      const token = await host.page.evaluate(
+        () => (window as unknown as { app: { token: string } }).app.token,
+      );
+      const guest = await open({ role: 'guest', token, codecs });
+      try {
+        await guestOpen(guest.page);
+        await guest.page.waitForFunction(
+          () => (document.getElementById('v') as HTMLVideoElement).videoWidth > 0,
+          undefined,
+          { timeout: 30000 },
+        );
+        // The codec the receiver decodes, from its WebRTC statistics.
+        const used = await guest.page.evaluate(async () => {
+          const app = (
+            window as unknown as {
+              app: {
+                session: { links: Map<string, { link: { pc: RTCPeerConnection } }> };
+              };
+            }
+          ).app;
+          const report = await [...app.session.links.values()][0]!.link.pc.getStats();
+          const codecs = new Map<string, string>();
+          let id = '';
+          report.forEach((r) => {
+            if (r.type === 'codec') codecs.set(r.id, r.mimeType);
+            if (r.type === 'inbound-rtp' && r.kind === 'video') id = r.codecId;
+          });
+          return codecs.get(id);
+        });
+        expect(used).toBe(codec);
+      } finally {
+        await guest.ctx.close();
+        await host.ctx.close();
+      }
+    });
+  }
+
   it('keeps the data link when the presenter sends no video', async () => {
     const host = await open({ role: 'host' });
     const token = await host.page.evaluate(

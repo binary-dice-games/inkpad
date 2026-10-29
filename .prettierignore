@@ -6,7 +6,7 @@ viewer/dist/
 site/
 site-archive/
 release/
-spikes/
+
 package-lock.json
 packages/collab-session/collab-session.js
 packages/collab-whiteboard/collab-whiteboard.js
@@ -15,3 +15,4 @@ docs/
 *.md
 .claude/
 .github/
+spikes/

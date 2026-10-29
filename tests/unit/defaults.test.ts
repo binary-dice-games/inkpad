@@ -1,6 +1,7 @@
 // MIT License © 2026 Carlos Lopez
 import { describe, expect, it } from 'vitest';
 import {
+  CODEC_PREFERENCE,
   DEFAULT_TRACKERS,
   DEFAULT_VIDEO,
   DEFAULT_VIEWER_BASE,
@@ -41,13 +42,33 @@ describe('video settings', () => {
     const p = toMediaParams({ ...DEFAULT_VIDEO, bitrateKbps: 500 });
     expect(p.maxBitrate).toBe(500_000);
     expect(p.fps).toBe(3);
-    expect(p.codecs[0]).toBe('video/VP9');
+    expect(p.codecs).toEqual(['video/AV1', 'video/H264', 'video/VP9', 'video/VP8']);
   });
 
   it('estimates the uplink of a star', () => {
-    expect(uplinkKbps(10, DEFAULT_VIDEO)).toBe(6000);
+    expect(uplinkKbps(10, DEFAULT_VIDEO)).toBe(15000);
     expect(uplinkKbps(10, DEFAULT_VIDEO)).toBeGreaterThan(UPLINK_WARNING_KBPS);
     expect(uplinkKbps(-3, DEFAULT_VIDEO)).toBe(0);
+  });
+});
+
+describe('video quality defaults', () => {
+  it('send a screen at its own size, never shrinking one up to 4K', () => {
+    // A 1440p screen sent at 1280x720 scored 70 (blur) against 1.6 at its own size.
+    expect(DEFAULT_VIDEO.maxWidth).toBe(3840);
+    expect(DEFAULT_VIDEO.maxHeight).toBe(2160);
+    expect(VIDEO_LIMITS.width.max).toBe(3840);
+    expect(VIDEO_LIMITS.height.max).toBe(2160);
+  });
+
+  it('prefer the codecs that are sharp on a still page', () => {
+    expect(CODEC_PREFERENCE[0]).toBe('video/AV1');
+    expect(CODEC_PREFERENCE.indexOf('video/H264')).toBeLessThan(
+      CODEC_PREFERENCE.indexOf('video/VP9'),
+    );
+    expect(CODEC_PREFERENCE.indexOf('video/VP9')).toBeLessThan(
+      CODEC_PREFERENCE.indexOf('video/VP8'),
+    );
   });
 });
 
