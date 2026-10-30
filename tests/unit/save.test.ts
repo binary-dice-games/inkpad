@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // MIT License © 2026 Carlos Lopez
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Whiteboard } from '@inkpad/collab-whiteboard';
-import type { Stage } from '@inkpad/defaults';
+import type { Whiteboard } from '@inksplat/collab-whiteboard';
+import type { Stage } from '@inksplat/defaults';
 import {
   exportBackground,
   fileBackgrounds,
@@ -82,16 +82,16 @@ describe('saving', () => {
         calls.push(o);
         return '<svg/>';
       },
-      saveBoard: async (meta: unknown) => ({ format: 'inkpad-board', meta }),
+      saveBoard: async (meta: unknown) => ({ format: 'inksplat-board', meta }),
     };
     const p = setup({ video: false, backgrounds: ['wall'] }, board);
     await saveAs('png', p.host);
     await saveAs('svg', p.host);
     await saveAs('board', p.host);
     expect(downloads.map((d) => d.name.replace(/\d{4}-\d\d-\d\d-\d{4}/, 'DATE'))).toEqual([
-      'inkpad-board-DATE.png',
-      'inkpad-board-DATE.svg',
-      'inkpad-board-DATE.inkpad.json',
+      'inksplat-board-DATE.png',
+      'inksplat-board-DATE.svg',
+      'inksplat-board-DATE.inksplat.json',
     ]);
     expect(downloads[1]!.blob.type).toBe('image/svg+xml');
     expect(calls).toHaveLength(2);
@@ -105,7 +105,7 @@ describe('saving', () => {
       }),
     );
     expect(saved).toEqual({
-      format: 'inkpad-board',
+      format: 'inksplat-board',
       meta: { backgrounds: ['wall', 'blackboard', 'wall', 'cork', 'whiteboard'] },
     });
     expect(p.toasts).toEqual([]);
@@ -151,8 +151,8 @@ describe('opening a board file', () => {
         },
       },
     );
-    await openBoardFile(fileOf('{"format":"inkpad-board"}'), p.host);
-    expect(loaded).toEqual({ format: 'inkpad-board' });
+    await openBoardFile(fileOf('{"format":"inksplat-board"}'), p.host);
+    expect(loaded).toEqual({ format: 'inksplat-board' });
     expect(p.toasts).toEqual(['Added 3 items, 2 files (1 left out).']);
     // No video in this session: that canvas, like the unknown one, stays as it is.
     expect(p.backgrounds).toEqual([['cork', undefined, undefined, 'wall', 'wall']]);
@@ -188,15 +188,15 @@ describe('opening a board file', () => {
       {},
       {
         loadBoard: async () => {
-          throw new Error('That is not an inkpad board file.');
+          throw new Error('That is not an inksplat board file.');
         },
       },
     );
     await openBoardFile(fileOf('not json'), p.host);
     await openBoardFile(fileOf('{}'), p.host);
     expect(p.toasts).toEqual([
-      'That is not an inkpad board file.',
-      'That is not an inkpad board file.',
+      'That is not an inksplat board file.',
+      'That is not an inksplat board file.',
     ]);
     const big = fileOf('{}');
     Object.defineProperty(big, 'size', { value: 100 * 1024 * 1024 });

@@ -31,7 +31,7 @@ jobs:
       - run: npm ci
       - id: pages
         uses: actions/configure-pages@v5
-      # base_path is "/inkpad" for a project site and "" for a user site.
+      # base_path is "/inksplat" for a project site and "" for a user site.
       - run: node scripts/build-site.mjs site --base "${{ steps.pages.outputs.base_path }}/"
       - uses: actions/upload-pages-artifact@v3
         with:

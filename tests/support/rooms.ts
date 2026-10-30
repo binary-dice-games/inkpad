@@ -1,6 +1,6 @@
 // MIT License © 2026 Carlos Lopez
-import { createMemoryNetwork, createSession } from '@inkpad/collab-session';
-import type { Session, SessionOptions } from '@inkpad/collab-session';
+import { createMemoryNetwork, createSession } from '@inksplat/collab-session';
+import type { Session, SessionOptions } from '@inksplat/collab-session';
 
 /** A host and guests in one in-memory room (no WebRTC). */
 export class TestRoom {

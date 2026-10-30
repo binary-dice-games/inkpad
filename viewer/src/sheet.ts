@@ -4,9 +4,9 @@
  * of a few backgrounds (whiteboard, blackboard, wall, cork), for the viewer and the presenter
  * page. Each canvas has its own background (the stage's `backgrounds`). The backgrounds are drawn with CSS and inline SVG, so there are no image files.
  */
-import { letterbox } from '@inkpad/collab-whiteboard';
-import { canvasBackground } from '@inkpad/defaults';
-import type { Background, Stage } from '@inkpad/defaults';
+import { letterbox } from '@inksplat/collab-whiteboard';
+import { canvasBackground } from '@inksplat/defaults';
+import type { Background, Stage } from '@inksplat/defaults';
 
 /** Noise as a tiling SVG image: `rgb` is the colour of the grain, `alpha` how strong it is. */
 function grain(

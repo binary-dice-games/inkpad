@@ -7,8 +7,8 @@ import {
   createModel,
   createWhiteboard,
   mayChange,
-} from '@inkpad/collab-whiteboard';
-import type { NoteItem } from '@inkpad/collab-whiteboard';
+} from '@inksplat/collab-whiteboard';
+import type { NoteItem } from '@inksplat/collab-whiteboard';
 import { TestRoom } from '../support/rooms';
 import { until } from '../support/wait';
 

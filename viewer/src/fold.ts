@@ -3,7 +3,7 @@
  * @file Folding the whiteboard toolbar away so it does not hide the video, for
  * the viewer and the presenter page.
  */
-import type { Whiteboard } from '@inkpad/collab-whiteboard';
+import type { Whiteboard } from '@inksplat/collab-whiteboard';
 
 /**
  * Shows or hides the toolbar (and its colour/sticker chooser) of `board`, and returns to the

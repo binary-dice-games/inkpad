@@ -1,5 +1,5 @@
 {
-  "name": "@inkpad/collab-whiteboard",
+  "name": "@inksplat/collab-whiteboard",
   "version": "0.1.0",
   "private": true,
   "description": "Shared whiteboard overlay (ink, text, stickers, cursors). Adapted from nymph.",

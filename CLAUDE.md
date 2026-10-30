@@ -78,9 +78,9 @@ the in-code documentation.
 ## Tests
 
 Always write automated tests for new or modified behavior. Add a test with
-`inkpad_add_test(<name> <test file>)` in `tests/CMakeLists.txt`.
+`inksplat_add_test(<name> <test file>)` in `tests/CMakeLists.txt`.
 
-# inkpad Coding Style Guide
+# inksplat Coding Style Guide
 
 ## General
 
@@ -105,14 +105,14 @@ Always write automated tests for new or modified behavior. Add a test with
   promises. Keep async critical sections short.
 - Files under `packages/collab-session/collab-session.js` and
   `packages/collab-whiteboard/collab-whiteboard.js` are copies of nymph code
-  (see `NOTICE`): change them only for inkpad needs, record the change in the
+  (see `NOTICE`): change them only for inksplat needs, record the change in the
   header, keep them excluded from Prettier/ESLint.
 
 ## Platform Support
 
 Targets **Linux, macOS and Windows**; CI builds and tests each
 (`.github/workflows/ci.yml`). Node 20+ and npm are required; the browser tests
-need Chrome (set `INKPAD_CHROME` to its path if it is not in a standard
+need Chrome (set `INKSPLAT_CHROME` to its path if it is not in a standard
 location). Use `node:path`, never hard-coded separators.
 
 ## Build Entry
@@ -126,7 +126,7 @@ scripts are fine while developing.
 
 - `describe` / `it` with descriptive names; unit tests in `tests/unit/`,
   browser tests in `tests/e2e/`, helpers in `tests/support/`.
-- Register every test file with `inkpad_add_test(<name> <file> [PROJECT e2e])`
+- Register every test file with `inksplat_add_test(<name> <file> [PROJECT e2e])`
   in `tests/CMakeLists.txt`. ctest runs each in its own process, in parallel:
   no fixed TCP ports (listen on port 0), no shared fixed temp directory names,
   no fixed sleeps (wait on the condition with `until(...)` and a bounded

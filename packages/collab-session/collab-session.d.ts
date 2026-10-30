@@ -1,4 +1,4 @@
-// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inkpad)
+// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inksplat)
 
 export const PROTOCOL_VERSION: number;
 export const FRAME_BYTES: number;
@@ -78,7 +78,7 @@ export interface SessionOptions {
   /** Required for a guest; a host makes one. */
   token?: string;
   peerId?: string;
-  /** Default `inkpad/1`. */
+  /** Default `inksplat/1`. */
   protocol?: string;
   me?: Partial<Presence>;
   rendezvous?: RendezvousSpec[];
@@ -115,7 +115,7 @@ export class Session {
     acceptOffer(code: string): Promise<string>;
     acceptAnswer(code: string): Promise<void>;
   } | null;
-  /** `inkpad=<token>`. */
+  /** `inksplat=<token>`. */
   inviteFragment(): string;
   peers(): Peer[];
   host(): Peer | null;

@@ -4,16 +4,16 @@
  * presenter's video with the shared whiteboard over it, and lets the person
  * draw. Served from GitHub Pages next to the presenter page.
  */
-import { createSession, SessionError } from '@inkpad/collab-session';
-import type { Session } from '@inkpad/collab-session';
+import { createSession, SessionError } from '@inksplat/collab-session';
+import type { Session } from '@inksplat/collab-session';
 import {
   LIMITS,
   cleanImageData,
   createWhiteboard,
   fileToImageData,
   frameAdapter,
-} from '@inkpad/collab-whiteboard';
-import type { FrameAdapter, Whiteboard } from '@inkpad/collab-whiteboard';
+} from '@inksplat/collab-whiteboard';
+import type { FrameAdapter, Whiteboard } from '@inksplat/collab-whiteboard';
 import {
   CODEC_PREFERENCE,
   DEFAULT_ICE_SERVERS,
@@ -22,8 +22,8 @@ import {
   STAGE_CHANNEL,
   cleanStage,
   parseInvite,
-} from '@inkpad/defaults';
-import type { Stage } from '@inkpad/defaults';
+} from '@inksplat/defaults';
+import type { Stage } from '@inksplat/defaults';
 import { setToolbarFolded } from './fold';
 import { filePreview } from './previews';
 import { showSheet } from './sheet';
@@ -61,7 +61,7 @@ function store(key: string, value?: string): string | null {
 const invite = parseInvite(location.hash);
 
 /** Connection diagnostics in the browser console (F12), one line per step. */
-const logger = (...args: unknown[]): void => console.log('[inkpad]', ...args);
+const logger = (...args: unknown[]): void => console.log('[inksplat]', ...args);
 
 // ── State of the running session ─────────────────────────────────────────────
 
@@ -71,10 +71,10 @@ let adapter: FrameAdapter | null = null;
 let stage: Stage | null = null;
 let hasVideo = false;
 /** The whiteboard toolbar is folded away (remembered). */
-let folded = store('inkpad.toolsFolded') === '1';
+let folded = store('inksplat.toolsFolded') === '1';
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 /** The picture chosen on the join form (an image data URL), or ''. */
-let avatar = cleanImageData(store('inkpad.avatar'), LIMITS.avatarChars) ?? '';
+let avatar = cleanImageData(store('inksplat.avatar'), LIMITS.avatarChars) ?? '';
 
 function toast(text: string): void {
   const el = $('toast');
@@ -287,14 +287,14 @@ async function main(): Promise<void> {
   const colorInput = $<HTMLInputElement>('color');
   const palette = ['#e5484d', '#f5a524', '#30a46c', '#0f9f86', '#3e63dd', '#8e4ec6'];
   colorInput.value =
-    store('inkpad.color') ?? palette[Math.floor(Math.random() * palette.length)] ?? '#3e63dd';
-  nameInput.value = store('inkpad.name') ?? '';
+    store('inksplat.color') ?? palette[Math.floor(Math.random() * palette.length)] ?? '#3e63dd';
+  nameInput.value = store('inksplat.name') ?? '';
 
   wireSave({ board: () => board, stage: () => stage, video: () => video(), toast });
   $('toolsToggle').setAttribute('aria-pressed', String(!folded));
   $('toolsToggle').addEventListener('click', () => {
     folded = !folded;
-    store('inkpad.toolsFolded', folded ? '1' : '0');
+    store('inksplat.toolsFolded', folded ? '1' : '0');
     $('toolsToggle').setAttribute('aria-pressed', String(!folded));
     setToolbarFolded(board, folded);
   });
@@ -315,7 +315,7 @@ async function main(): Promise<void> {
   });
   if (!invite) {
     show('landing');
-    if (location.hash.includes('inkpad=')) {
+    if (location.hash.includes('inksplat=')) {
       $('landingProblem').textContent = 'That link is not valid. Ask the presenter for a new one.';
       $('landingProblem').hidden = false;
     }
@@ -325,7 +325,7 @@ async function main(): Promise<void> {
   show('join');
   const showAvatar = (data: string): void => {
     avatar = data;
-    store('inkpad.avatar', data);
+    store('inksplat.avatar', data);
     const img = $<HTMLImageElement>('avatarPreview');
     img.hidden = data === '';
     if (data) {
@@ -351,8 +351,8 @@ async function main(): Promise<void> {
   $('joinForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const name = nameInput.value.trim() || 'Guest';
-    store('inkpad.name', name);
-    store('inkpad.color', colorInput.value);
+    store('inksplat.name', name);
+    store('inksplat.color', colorInput.value);
     void join(name, colorInput.value);
   });
   nameInput.focus();

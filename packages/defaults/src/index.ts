@@ -6,10 +6,10 @@
  */
 
 /** Wire protocol id; changes only on incompatible changes. */
-export const PROTOCOL = 'inkpad/1';
+export const PROTOCOL = 'inksplat/1';
 
 /** Where the viewer is served by default (GitHub Pages of this repository). */
-export const DEFAULT_VIEWER_BASE = 'https://binary-dice-games.github.io/inkpad/';
+export const DEFAULT_VIEWER_BASE = 'https://binary-dice-games.github.io/inksplat/';
 
 /** Public WebTorrent trackers used to introduce peers (they see only sealed bytes). */
 export const DEFAULT_TRACKERS: readonly string[] = [
@@ -250,7 +250,7 @@ export function cleanStage(message: unknown): Stage | null {
 
 // ── Invite links ──────────────────────────────────────────────────────────────
 
-const FRAGMENT_KEY = 'inkpad';
+const FRAGMENT_KEY = 'inksplat';
 const TRACKER_KEY = 'tr';
 const TOKEN = /^[A-Za-z0-9_-]{22}$/;
 const MAX_TRACKERS = 10;
@@ -264,7 +264,7 @@ export interface Invite {
 }
 
 /**
- * `<base>#inkpad=<token>[&tr=<tracker>...]`; `fragment` is
+ * `<base>#inksplat=<token>[&tr=<tracker>...]`; `fragment` is
  * `Session.inviteFragment()`. Trackers are added only when they are not the
  * defaults.
  */
@@ -306,7 +306,7 @@ export function parseInvite(hash: string): Invite | null {
   return invite;
 }
 
-/** The room token in a URL hash (`#inkpad=<token>`), or null if absent or malformed. */
+/** The room token in a URL hash (`#inksplat=<token>`), or null if absent or malformed. */
 export function parseInviteHash(hash: string): string | null {
   return parseInvite(hash)?.token ?? null;
 }

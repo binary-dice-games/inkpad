@@ -17,7 +17,7 @@ export interface PresenterPrefs {
   panelCollapsed: boolean;
 }
 
-const KEY = 'inkpad.presenter.prefs';
+const KEY = 'inksplat.presenter.prefs';
 
 /** Prefs from any stored value: every field validated, missing or invalid ones defaulted. */
 export function cleanPrefs(input: unknown): PresenterPrefs {

@@ -1,5 +1,5 @@
 {
-  "name": "@inkpad/collab-session",
+  "name": "@inksplat/collab-session",
   "version": "0.1.0",
   "private": true,
   "description": "Serverless WebRTC rooms (data channels plus one video track). Adapted from nymph.",

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "inkpad capture spike",
+  "name": "inksplat capture spike",
   "version": "1",
   "permissions": ["tabCapture", "offscreen", "scripting", "activeTab"],
   "host_permissions": ["http://127.0.0.1/*"],

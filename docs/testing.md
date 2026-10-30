@@ -1,6 +1,6 @@
-# inkpad — Testing
+# inksplat — Testing
 
-How to test inkpad: the automated suites, how the browser tests work, how to
+How to test inksplat: the automated suites, how the browser tests work, how to
 try the presenter page by hand, and what is not covered. For the checklist on
 real networks and the real picker see [manual-testing.md](manual-testing.md);
 for setting up the toolchain see [building.md](building.md).
@@ -62,7 +62,7 @@ you do not need to build first.
 ## What the browser tests need
 
 - **Chrome**. The tests look for it in the usual install places; set
-  `INKPAD_CHROME` to its path if yours is elsewhere.
+  `INKSPLAT_CHROME` to its path if yours is elsewhere.
 - No internet. The tests start their own tracker (`tests/support/fake-tracker.ts`),
   serve the site from a loopback server and turn off STUN. They never touch
   public trackers.
@@ -76,7 +76,7 @@ on the manual checklist.
 
 The rules (they are also in `CLAUDE.md`):
 
-- Add every test file to `tests/CMakeLists.txt` with `inkpad_add_test(<name> <file>)`,
+- Add every test file to `tests/CMakeLists.txt` with `inksplat_add_test(<name> <file>)`,
   and `PROJECT e2e` for browser tests. ctest runs each in its own process, in
   parallel.
 - No fixed ports (listen on port 0), no fixed temp directory names, no fixed
@@ -128,10 +128,10 @@ see: what the page looks like, real networks, the real picker.
 | *Start sharing* is disabled and says the browser cannot share | The browser has no screen capture (a phone, or an old browser) |
 | "Sharing was cancelled or blocked" | The picker was closed, or the browser or the system refused (on macOS give the browser the Screen Recording permission) |
 | The viewer waits for the presenter, then gives up | The network blocks the trackers (use a code), the link is old, or the session is locked |
-| The viewer says the presenter did not answer, but everything else looks right | The two sides run different versions of inkpad |
+| The viewer says the presenter did not answer, but everything else looks right | The two sides run different versions of inksplat |
 | The presenter page says *Sharing stopped* | You clicked the browser's *Stop sharing*, or the shared window closed; press *Share again* |
 
-Connection logs: the viewer and the presenter page (F12) write `[inkpad]` lines
+Connection logs: the viewer and the presenter page (F12) write `[inksplat]` lines
 to the console, one per step. A healthy join reads, on the viewer:
 `tracker: connected to ...`, `announce 3 offers`, `answer received from ...`,
 `ICE connection: connected`, `data channel open: fast`, `session state: open`.

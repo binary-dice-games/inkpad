@@ -5,9 +5,14 @@
  * console at once. The captured surface is sent to viewers; the same video is
  * shown here with the whiteboard over it, mounted on the host session.
  */
-import { SessionError } from '@inkpad/collab-session';
-import { LIMITS, createWhiteboard, fileToImageData, frameAdapter } from '@inkpad/collab-whiteboard';
-import type { FrameAdapter, Whiteboard } from '@inkpad/collab-whiteboard';
+import { SessionError } from '@inksplat/collab-session';
+import {
+  LIMITS,
+  createWhiteboard,
+  fileToImageData,
+  frameAdapter,
+} from '@inksplat/collab-whiteboard';
+import type { FrameAdapter, Whiteboard } from '@inksplat/collab-whiteboard';
 import {
   DEFAULT_SETTINGS,
   cleanSettings,
@@ -17,7 +22,7 @@ import {
 } from './settings';
 import type { Settings } from './settings';
 import { ShareHost } from './share-host';
-import { UPLINK_WARNING_KBPS, toMediaParams, uplinkKbps } from '@inkpad/defaults';
+import { UPLINK_WARNING_KBPS, toMediaParams, uplinkKbps } from '@inksplat/defaults';
 import {
   canCaptureDisplay,
   fitScale,

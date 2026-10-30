@@ -12,7 +12,7 @@ collab link, no install, no account, no server beyond static hosting. It joins
 the presenter's session as a guest, shows the video and the shared whiteboard,
 and lets them draw.
 
-Link shape: `https://<owner>.github.io/inkpad/#inkpad=<token>`. The token is in
+Link shape: `https://<owner>.github.io/inksplat/#inksplat=<token>`. The token is in
 the fragment, so GitHub never receives it. The extension's "viewer base URL"
 setting allows self-hosting the same bundle elsewhere.
 
@@ -46,7 +46,7 @@ Out of scope: hosting any dynamic service; presenter functions.
 
 ## 2b. Presenter console
 
-The same app, opened with `#inkpad=<token>&presenter=<key>`, is the **presenter
+The same app, opened with `#inksplat=<token>&presenter=<key>`, is the **presenter
 console** (`spec/01_core_features/DESIGN.md` section 4.5). The extension bundles
 the app as `viewer.html` and opens it in its own window; the same link also works
 on any browser, for example a tablet with a pen.

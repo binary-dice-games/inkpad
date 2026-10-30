@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // MIT License © 2026 Carlos Lopez
 import { describe, expect, it } from 'vitest';
-import { PIN_SHAPES, cleanItem, createWhiteboard } from '@inkpad/collab-whiteboard';
+import { PIN_SHAPES, cleanItem, createWhiteboard } from '@inksplat/collab-whiteboard';
 import { TestRoom } from '../support/rooms';
 
 function box(width: number, height: number): HTMLElement {

@@ -1,6 +1,8 @@
-# inkpad
+<img src="resources/inksplat.png" alt="inksplat" height="200"/>
 
-inkpad turns a shared tab, window or screen into a shared whiteboard. The
+# inksplat
+
+inksplat turns a shared tab, window or screen into a shared whiteboard. The
 presenter opens the presenter page, picks what to share with the browser's own
 picker (so native applications work too) and draws in the same window; viewers
 open a link (nothing to install), watch a low-frame-rate WebRTC video of it, and
@@ -35,7 +37,7 @@ are pinned as previews (the first page of a PDF, the text of an Office file) tha
 a copy out of (Shift+drag it out; a plain drag moves it); **QR code** in the controls shows the link for a camera; a session can also run without video
 (**Start a board without video**), its canvases on whiteboard, blackboard, wall or cork backgrounds.
 **Save...** and **Open...** (viewer bar, presenter controls) save the board as a PNG picture, an SVG drawing, or a board
-file (`.inkpad.json`: items plus the files pinned on them) that **Open...** adds to a new session to carry on;
+file (`.inksplat.json`: items plus the files pinned on them) that **Open...** adds to a new session to carry on;
 everything opened becomes the opener's own, so it can be moved and changed there.
 
 ## Build and test
@@ -59,9 +61,10 @@ Needs Node.js 20+; the browser tests need Chrome. Details in
 | `viewer/` | The viewer app (`main.ts`) and the presenter page (`present.ts`, `share-host.ts`) |
 | `packages/defaults/` | Trackers, ICE servers, video presets, `stage` message, invite links |
 | `tests/` | Vitest unit tests, Chrome WebRTC tests, fake tracker |
-| `cmake/` | CMake modules (Node discovery, `inkpad_add_test`) |
+| `cmake/` | CMake modules (Node discovery, `inksplat_add_test`) |
 | `spec/` | Design and plan documents, one folder per project |
 | `docs/` | User and developer documentation |
+| `resources/` | Project assets: the logo (`inksplat.png`) |
 
 ## Further Documentation
 

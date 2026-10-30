@@ -28,7 +28,7 @@ export class PresenterSite {
   ) {}
 
   static async start(): Promise<PresenterSite> {
-    const work = mkdtempSync(join(tmpdir(), 'inkpad-present-'));
+    const work = mkdtempSync(join(tmpdir(), 'inksplat-present-'));
     const out = join(work, 'site');
     await buildSite(out, { base: '/', archive: join(work, 'none') });
     const server = createServer((req, res) => {
@@ -112,7 +112,7 @@ export class PresenterSite {
     await configure(page);
     await page.locator('#startShare').click();
     await page.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
-    await expect.poll(() => page.locator('#link').inputValue()).toMatch(/#inkpad=/);
+    await expect.poll(() => page.locator('#link').inputValue()).toMatch(/#inksplat=/);
     return page.locator('#link').inputValue();
   }
 
@@ -121,7 +121,7 @@ export class PresenterSite {
     await configure(page);
     await page.locator('#startBoard').click();
     await page.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
-    await expect.poll(() => page.locator('#link').inputValue()).toMatch(/#inkpad=/);
+    await expect.poll(() => page.locator('#link').inputValue()).toMatch(/#inksplat=/);
     return page.locator('#link').inputValue();
   }
 

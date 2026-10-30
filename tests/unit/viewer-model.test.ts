@@ -1,6 +1,6 @@
 // MIT License © 2026 Carlos Lopez
 import { describe, expect, it } from 'vitest';
-import type { Stage } from '@inkpad/defaults';
+import type { Stage } from '@inksplat/defaults';
 import {
   DEFAULT_ASPECT,
   boardAspect,

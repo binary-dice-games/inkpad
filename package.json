@@ -1,5 +1,5 @@
 {
-  "name": "inkpad",
+  "name": "inksplat",
   "version": "0.1.0",
   "private": true,
   "description": "Chrome extension that turns a tab into a shared, serverless whiteboard.",

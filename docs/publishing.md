@@ -1,6 +1,6 @@
-# inkpad — Publishing
+# inksplat — Publishing
 
-inkpad is a static site: the viewer page, the presenter page, a 404 page that
+inksplat is a static site: the viewer page, the presenter page, a 404 page that
 keeps an invite in the address, and the privacy policy. There is nothing else to
 publish and no store listing.
 
@@ -20,7 +20,10 @@ that links made with the old protocol keep a matching viewer.
 
 Pages for a private repository needs a paid GitHub plan; for a public one it is
 free. The presenter page makes viewer links on the address it is served from, so
-a fork or a custom domain needs no setting.
+a fork or a custom domain needs no setting. The site's path is the repository
+name, so the default link in `packages/defaults` (`DEFAULT_VIEWER_BASE`,
+`https://binary-dice-games.github.io/inksplat/`) expects the repository to be
+named `inksplat`.
 
 ## Check by hand
 

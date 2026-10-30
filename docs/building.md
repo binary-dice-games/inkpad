@@ -1,6 +1,6 @@
-# inkpad — Building
+# inksplat — Building
 
-inkpad is TypeScript/JavaScript. CMake is the entry point and calls npm.
+inksplat is TypeScript/JavaScript. CMake is the entry point and calls npm.
 It runs on **Linux, macOS and Windows**.
 
 ## Prerequisites
@@ -40,11 +40,11 @@ npm run test:e2e       # browser tests (project "e2e"), needs Chrome
 
 | Option | Default | Meaning |
 |--------|---------|---------|
-| `INKPAD_BUILD_TESTS` | ON when top level | Register the tests with ctest |
+| `INKSPLAT_BUILD_TESTS` | ON when top level | Register the tests with ctest |
 
 | Environment variable | Meaning |
 |----------------------|---------|
-| `INKPAD_CHROME` | Path of the Chrome executable for the browser tests (otherwise standard install paths, then Playwright's `chrome` channel) |
+| `INKSPLAT_CHROME` | Path of the Chrome executable for the browser tests (otherwise standard install paths, then Playwright's `chrome` channel) |
 
 ## Layout
 
