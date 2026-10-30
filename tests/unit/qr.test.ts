@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { qrModules, qrSvg } from '../../viewer/src/qr';
 
-const link = 'https://binary-dice-games.github.io/inkpad/#inkpad=AbCdEfGhIjKlMnOpQrStUv';
+const link = 'https://binary-dice-games.github.io/inksplat/#inksplat=AbCdEfGhIjKlMnOpQrStUv';
 
 describe('QR code of the viewer link', () => {
   it('makes a square code with the three finder patterns of a QR code', () => {

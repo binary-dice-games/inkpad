@@ -21,7 +21,7 @@
       g.font = '15px Consolas, "Courier New", monospace';
       for (let y = 0, i = 0; y < H - 10; y += 21, i++) {
         g.fillText(
-          `${String(i).padStart(3, '0')}  const sharp = render(text, { size: ${12 + (i % 5)}, id: ${(i * 7919) % 1000} }); // inkpad`,
+          `${String(i).padStart(3, '0')}  const sharp = render(text, { size: ${12 + (i % 5)}, id: ${(i * 7919) % 1000} }); // inksplat`,
           20,
           y + 18,
         );
@@ -52,7 +52,7 @@
       ],
       iceServers: [],
       videoCodecs: q.get('codecs') ? q.get('codecs').split(',') : undefined,
-      log: (...a) => console.log('[inkpad]', ...a),
+      log: (...a) => console.log('[inksplat]', ...a),
     });
     app.session = session;
     session.on('track', (stream) => {

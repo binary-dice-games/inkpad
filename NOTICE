@@ -1,4 +1,4 @@
-inkpad
+inksplat
 MIT License © 2026 Carlos Lopez
 
 This project includes code copied from nymph
@@ -9,12 +9,12 @@ Games, taken at commit 13de939afdd5b52f35b1bbd8ef90cd677c3ae844:
   packages/collab-whiteboard/collab-whiteboard.js
                                                 from web/collab/collab-whiteboard.js
 
-The copies were adapted for inkpad; the changes are listed in each file's
+The copies were adapted for inksplat; the changes are listed in each file's
 header and in spec/01_core_features/DESIGN.md sections 4.1 and 4.2. Each file
-keeps its license line and provenance note. inkpad does not depend on nymph at
+keeps its license line and provenance note. inksplat does not depend on nymph at
 build or run time.
 
-inkpad also uses these libraries, which are not part of its own code:
+inksplat also uses these libraries, which are not part of its own code:
 
   qrcode-generator (MIT License, Copyright (c) 2009 Kazuhiko Arase), bundled in
     the presenter page to draw the QR code of the viewer link.

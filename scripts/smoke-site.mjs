@@ -37,14 +37,14 @@ export async function smokeSite(base, get = (url) => fetch(url, { redirect: 'man
       }
     }
   };
-  await check('', { contains: ['<title>inkpad</title>', 'viewer.js'], label: 'viewer page' });
-  await check('viewer.js', { contains: 'inkpad/', label: 'viewer script' });
+  await check('', { contains: ['<title>inksplat</title>', 'viewer.js'], label: 'viewer page' });
+  await check('viewer.js', { contains: 'inksplat/', label: 'viewer script' });
   await check('v1/', { contains: 'viewer.js', label: 'versioned viewer /v1/' });
   await check('present.html', {
     contains: ['present.js', 'Start sharing'],
     label: 'presenter page',
   });
-  await check('present.js', { contains: 'inkpad/', label: 'presenter script' });
+  await check('present.js', { contains: 'inksplat/', label: 'presenter script' });
   await check('v1/present.html', { contains: 'present.js', label: 'versioned presenter /v1/' });
   await check('privacy.html', { contains: 'privacy policy', label: 'privacy policy' });
   await check('no-such-page-for-smoke-test', {

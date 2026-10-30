@@ -12,7 +12,7 @@ import { smokeSite } from '../../scripts/smoke-site.mjs';
 
 let work: string;
 beforeAll(() => {
-  work = mkdtempSync(join(tmpdir(), 'inkpad-release-'));
+  work = mkdtempSync(join(tmpdir(), 'inksplat-release-'));
 });
 afterAll(() => rmSync(work, { recursive: true, force: true }));
 
@@ -27,11 +27,11 @@ describe('the Pages site', () => {
     const archive = join(work, 'archive');
     mkdirSync(join(archive, 'v0'), { recursive: true });
     writeFileSync(join(archive, 'v0', 'index.html'), 'old viewer');
-    await buildSite(out, { base: '/inkpad/', archive });
+    await buildSite(out, { base: '/inksplat/', archive });
     // Serves the site like GitHub Pages: unknown paths get 404.html with status 404.
     server = createServer((req, res) => {
       const url = new URL(req.url ?? '/', 'http://x');
-      const path = url.pathname.replace(/^\/inkpad\//, '');
+      const path = url.pathname.replace(/^\/inksplat\//, '');
       const file = join(out, path === '' || path.endsWith('/') ? `${path}index.html` : path);
       try {
         const body = readFileSync(file);
@@ -41,7 +41,7 @@ describe('the Pages site', () => {
       }
     });
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
-    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/inkpad/`;
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/inksplat/`;
   });
   afterAll(() => server?.close());
 
@@ -76,8 +76,8 @@ describe('the Pages site', () => {
 
   it('points the 404 page at the site base', () => {
     const page = readFileSync(join(out, '404.html'), 'utf8');
-    expect(page).toContain('src="/inkpad/redirect.js"');
-    expect(page).toContain('data-base="/inkpad/"');
+    expect(page).toContain('src="/inksplat/redirect.js"');
+    expect(page).toContain('data-base="/inksplat/"');
     expect(page).not.toContain('{{base}}');
   });
 
@@ -102,9 +102,9 @@ describe('the Pages site', () => {
   });
 
   it('accepts only sane base paths', () => {
-    expect(normalizeBase('/inkpad')).toBe('/inkpad/');
+    expect(normalizeBase('/inksplat')).toBe('/inksplat/');
     expect(normalizeBase('/')).toBe('/');
-    expect(() => normalizeBase('inkpad')).toThrow();
+    expect(() => normalizeBase('inksplat')).toThrow();
     expect(() => normalizeBase('/a b/')).toThrow();
     expect(() => normalizeBase('//evil.example/')).toThrow();
   });

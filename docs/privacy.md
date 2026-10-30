@@ -1,4 +1,4 @@
-# inkpad — Privacy
+# inksplat — Privacy
 
 The privacy policy is a web page: it is published with the viewer at `privacy.html` and its source is
 [viewer/src/site/privacy.html](../viewer/src/site/privacy.html).

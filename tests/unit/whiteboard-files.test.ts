@@ -9,8 +9,8 @@ import {
   createWhiteboard,
   drawingGate,
   frameAdapter,
-} from '@inkpad/collab-whiteboard';
-import type { PreparedFile } from '@inkpad/collab-whiteboard';
+} from '@inksplat/collab-whiteboard';
+import type { PreparedFile } from '@inksplat/collab-whiteboard';
 import { TestRoom } from '../support/rooms';
 import { until } from '../support/wait';
 

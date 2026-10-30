@@ -42,7 +42,7 @@ works but hides it ~34 ms per frame, a visible blink. Chrome documents Element
 Capture as self-capture only ("for now"), and Zoom/Teams avoid the problem with
 an OS capture-exclusion flag that browsers lack.
 
-**Decision:** inkpad injects nothing into the shared tab. The presenter draws in
+**Decision:** inksplat injects nothing into the shared tab. The presenter draws in
 the console (a separate window), so the video is always clean. See
 `spec/02_presenter_extension/DESIGN.md` section 1. Consequence for capture: the
 console must never be the shared tab (the extension refuses it).

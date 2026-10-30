@@ -1,18 +1,18 @@
-// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inkpad)
+// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inksplat)
 /**
  * @file collab-session.js Rooms of peers talking over WebRTC data
  * channels and one video track, with no server of their own.
  *
  * Provenance: copied from binary-dice-games/nymph, web/collab/collab-session.js
  * at commit 13de939afdd5b52f35b1bbd8ef90cd677c3ae844 (2026-10). Changes:
- * invite fragment `inkpad=`, protocol `inkpad/1`, presenter wording, and
+ * invite fragment `inksplat=`, protocol `inksplat/1`, presenter wording, and
  * video (`setMedia`, `mediaParams`, the `track` event); see
  * spec/01_core_features/DESIGN.md section 4.1. It imports nothing.
  *
  *   import { createSession } from './collab-session.js';
  *   const host = await createSession({ role: 'host', me: { name: 'Ana', color: '#e5484d' },
  *     rendezvous: [{ kind: 'torrent', urls: ['wss://tracker.example'] }] });
- *   location.hash = host.inviteFragment();   // inkpad=<token>
+ *   location.hash = host.inviteFragment();   // inksplat=<token>
  *   host.channel('chat').on('message', (m, from) => ...);
  *
  * One host, any number of guests, in a star: each guest has one link, to
@@ -29,7 +29,7 @@ export const PROTOCOL_VERSION = 1;
  * Diagnostics. A session's `log` option (a function taking the same arguments as
  * console.log) receives one line per step of making a connection: tracker sockets,
  * announces, offers and answers, ICE and channel states, links opening and closing.
- * Nothing secret is logged: no token, no SDP, no message contents. (inkpad addition)
+ * Nothing secret is logged: no token, no SDP, no message contents. (inksplat addition)
  */
 let dbg = () => {};
 
@@ -142,7 +142,7 @@ const SEAL_MAX_BYTES = 1 << 20;
 
 /**
  * Encrypts a JSON value with the room's key: base64url(iv || ciphertext). The plaintext is a
- * flag byte (1: deflated) and the JSON. inkpad addition: public trackers drop an announce of
+ * flag byte (1: deflated) and the JSON. inksplat addition: public trackers drop an announce of
  * more than about 12 KB, and three offers with a video line are about 29 KB uncompressed.
  */
 export async function sealMessage(keys, value) {
@@ -644,7 +644,7 @@ class TorrentRendezvous {
     this.announceMs = spec.announceMs ?? { host: 15000, guest: 4000 };
     this.gatherMs = spec.gatherMs ?? 3000;
     this.offers = spec.offers ?? 3;
-    // inkpad addition: the tracker protocol has no time to live a client can set, so this is how
+    // inksplat addition: the tracker protocol has no time to live a client can set, so this is how
     // long we stay announced (0: until stopped); then we tell the trackers we are gone.
     this.ttlMs = spec.ttlMs ?? 0;
     this.sockets = new Map();
@@ -986,7 +986,7 @@ class BroadcastRendezvous {
   start(ctx) {
     this.ctx = ctx;
     this.links = new Map();
-    this.bc = new BroadcastChannel(`inkpad-session:${ctx.keys.topic}`);
+    this.bc = new BroadcastChannel(`inksplat-session:${ctx.keys.topic}`);
     this.bc.onmessage = (e) => this.received(e.data);
     if (ctx.role === 'guest') {
       this.knock = () => ctx.wantsLinks() && this.bc.postMessage({ k: 'knock', from: ctx.peerId });
@@ -1118,7 +1118,7 @@ export class Session {
     this.role = options.role;
     this.token = options.token;
     this.keys = keys;
-    this.protocol = options.protocol ?? 'inkpad/1';
+    this.protocol = options.protocol ?? 'inksplat/1';
     this.iceServers = options.iceServers ?? [];
     this.accept = options.accept ?? (() => true);
     this.me = { id: options.peerId ?? randomId(8), ...cleanPresence(options.me), role: this.role };
@@ -1168,9 +1168,9 @@ export class Session {
 
   // ── Public API ───────────────────────────────────────────────────────
 
-  /** `inkpad=<token>`, for the host app's invite link. */
+  /** `inksplat=<token>`, for the host app's invite link. */
   inviteFragment() {
-    return `inkpad=${this.token}`;
+    return `inksplat=${this.token}`;
   }
 
   /** Everyone in the room, this peer included: {id, name, color, role, path}. */

@@ -13,8 +13,8 @@ import {
   sealMessage,
   toBase64Url,
   unsealMessage,
-} from '@inkpad/collab-session';
-import type { Session } from '@inkpad/collab-session';
+} from '@inksplat/collab-session';
+import type { Session } from '@inksplat/collab-session';
 import { settle, until } from '../support/wait';
 import { TestRoom } from '../support/rooms';
 
@@ -90,7 +90,7 @@ describe('room over the memory network', () => {
     ).toEqual(['Ana', 'Ben', 'Host']);
     await until(() => ana.peers().length === 3, 'guest roster');
     expect(ana.host()?.name).toBe('Host');
-    expect(host.inviteFragment()).toBe(`inkpad=${host.token}`);
+    expect(host.inviteFragment()).toBe(`inksplat=${host.token}`);
   });
 
   it('relays a guest message to the other guests, stamped with the sender', async () => {
@@ -171,7 +171,7 @@ describe('room over the memory network', () => {
 
   it('refuses a guest speaking another protocol', async () => {
     await room.start();
-    const old = await room.join('Old', { protocol: 'inkpad/0' });
+    const old = await room.join('Old', { protocol: 'inksplat/0' });
     const ended = new Promise<string>((resolve) =>
       old.on('state', (e) => e.state === 'ended' && resolve(e.reason ?? '')),
     );

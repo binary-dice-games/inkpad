@@ -15,10 +15,10 @@ const TYPES: Record<string, string> = {
   '.mjs': 'text/javascript; charset=utf-8',
 };
 
-/** Where to find Chrome: INKPAD_CHROME, else a well known install path, else Playwright's channel. */
+/** Where to find Chrome: INKSPLAT_CHROME, else a well known install path, else Playwright's channel. */
 function chromePath(): string | undefined {
   const candidates = [
-    process.env.INKPAD_CHROME,
+    process.env.INKSPLAT_CHROME,
     'C:/Program Files/Google/Chrome/Application/chrome.exe',
     '/usr/bin/google-chrome',
     '/usr/bin/google-chrome-stable',

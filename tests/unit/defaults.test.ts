@@ -15,7 +15,7 @@ import {
   parseInviteHash,
   toMediaParams,
   uplinkKbps,
-} from '@inkpad/defaults';
+} from '@inksplat/defaults';
 
 describe('video settings', () => {
   it('defaults to a few frames per second', () => {
@@ -106,16 +106,16 @@ describe('invite links', () => {
   const token = 'abcdefghijklmnopqrstuv';
 
   it('puts the token in the fragment only', () => {
-    const link = inviteLink(DEFAULT_VIEWER_BASE, `inkpad=${token}`);
+    const link = inviteLink(DEFAULT_VIEWER_BASE, `inksplat=${token}`);
     const url = new URL(link);
     expect(url.search).toBe('');
-    expect(url.hash).toBe(`#inkpad=${token}`);
+    expect(url.hash).toBe(`#inksplat=${token}`);
     expect(parseInviteHash(url.hash)).toBe(token);
   });
 
   it('rejects a missing or malformed token', () => {
     expect(parseInviteHash('')).toBeNull();
-    expect(parseInviteHash('#inkpad=short')).toBeNull();
+    expect(parseInviteHash('#inksplat=short')).toBeNull();
     expect(parseInviteHash('#collab=abcdefghijklmnopqrstuv')).toBeNull();
   });
 });
@@ -124,22 +124,24 @@ describe('invite links with trackers', () => {
   const token = 'abcdefghijklmnopqrstuv';
 
   it('has only the room token when the trackers are the defaults', () => {
-    const link = inviteLink(DEFAULT_VIEWER_BASE, `inkpad=${token}`, { trackers: DEFAULT_TRACKERS });
+    const link = inviteLink(DEFAULT_VIEWER_BASE, `inksplat=${token}`, {
+      trackers: DEFAULT_TRACKERS,
+    });
     expect(parseInvite(new URL(link).hash)).toEqual({ token });
   });
 
   it('carries only non-default trackers', () => {
     const custom = ['wss://tracker.example/announce', 'ws://127.0.0.1:9999'];
-    const link = inviteLink(DEFAULT_VIEWER_BASE, `inkpad=${token}`, { trackers: custom });
+    const link = inviteLink(DEFAULT_VIEWER_BASE, `inksplat=${token}`, { trackers: custom });
     expect(parseInvite(new URL(link).hash)?.trackers).toEqual(custom);
-    const plain = inviteLink(DEFAULT_VIEWER_BASE, `inkpad=${token}`, {
+    const plain = inviteLink(DEFAULT_VIEWER_BASE, `inksplat=${token}`, {
       trackers: DEFAULT_TRACKERS,
     });
     expect(parseInvite(new URL(plain).hash)?.trackers).toBeUndefined();
   });
 
   it('ignores a leftover presenter key and non-websocket trackers in a link', () => {
-    const hash = `#inkpad=${token}&presenter=bad&tr=https%3A%2F%2Fx.example&tr=wss%3A%2F%2Fok.example`;
+    const hash = `#inksplat=${token}&presenter=bad&tr=https%3A%2F%2Fx.example&tr=wss%3A%2F%2Fok.example`;
     expect(parseInvite(hash)).toEqual({ token, trackers: ['wss://ok.example'] });
     expect(parseInvite('#presenter=abcdefghijklmnopqrstuv')).toBeNull();
   });

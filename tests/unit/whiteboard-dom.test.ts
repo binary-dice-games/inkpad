@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // MIT License © 2026 Carlos Lopez
 import { describe, expect, it } from 'vitest';
-import { FRAME_UNITS, createWhiteboard, frameAdapter } from '@inkpad/collab-whiteboard';
+import { FRAME_UNITS, createWhiteboard, frameAdapter } from '@inksplat/collab-whiteboard';
 import { TestRoom } from '../support/rooms';
 import { until } from '../support/wait';
 

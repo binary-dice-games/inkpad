@@ -1,7 +1,7 @@
 // MIT License © 2026 Carlos Lopez
 // Assembles the GitHub Pages site.
 //
-//   node scripts/build-site.mjs [outDir] [--base /inkpad/]
+//   node scripts/build-site.mjs [outDir] [--base /inksplat/]
 //
 // The site holds the viewer app at the root and again under /v<N>/ (N is the major
 // of the wire protocol, so a link made with protocol N always finds a
@@ -25,17 +25,17 @@ import { PDF_FILES, buildViewer } from './build-viewer.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const siteSrc = join(root, 'viewer', 'src', 'site');
 
-/** The protocol major of this build, read from the defaults (`inkpad/1` gives 1). */
+/** The protocol major of this build, read from the defaults (`inksplat/1` gives 1). */
 export function protocolMajor() {
   const source = readFileSync(join(root, 'packages', 'defaults', 'src', 'index.ts'), 'utf8');
-  const match = /export const PROTOCOL = 'inkpad\/(\d+)'/.exec(source);
+  const match = /export const PROTOCOL = 'inksplat\/(\d+)'/.exec(source);
   if (!match) {
     throw new Error('PROTOCOL not found in packages/defaults');
   }
   return Number(match[1]);
 }
 
-/** A base path with a slash at both ends (`/inkpad/`), or `/` for the root. */
+/** A base path with a slash at both ends (`/inksplat/`), or `/` for the root. */
 export function normalizeBase(base) {
   if (!/^\/([A-Za-z0-9._~-]+\/)*$/.test(base.endsWith('/') ? base : `${base}/`)) {
     throw new Error(`bad base path: ${base}`);

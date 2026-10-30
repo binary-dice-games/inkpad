@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // MIT License © 2026 Carlos Lopez
 import { describe, expect, it } from 'vitest';
-import { NOTE_SHAPES, createWhiteboard } from '@inkpad/collab-whiteboard';
-import type { NoteItem, Whiteboard } from '@inkpad/collab-whiteboard';
+import { NOTE_SHAPES, createWhiteboard } from '@inksplat/collab-whiteboard';
+import type { NoteItem, Whiteboard } from '@inksplat/collab-whiteboard';
 import { TestRoom } from '../support/rooms';
 
 function box(width: number, height: number): HTMLElement {

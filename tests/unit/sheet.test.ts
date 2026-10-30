@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // MIT License © 2026 Carlos Lopez
 import { describe, expect, it } from 'vitest';
-import { BACKGROUNDS } from '@inkpad/defaults';
-import type { Stage } from '@inkpad/defaults';
+import { BACKGROUNDS } from '@inksplat/defaults';
+import type { Stage } from '@inksplat/defaults';
 import { BACKGROUND_STYLES, showSheet } from '../../viewer/src/sheet';
 
 const stage = (over: Partial<Stage> = {}): Stage => ({

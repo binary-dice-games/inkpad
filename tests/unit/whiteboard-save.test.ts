@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // MIT License © 2026 Carlos Lopez
 import { describe, expect, it } from 'vitest';
-import { createWhiteboard, frameAdapter } from '@inkpad/collab-whiteboard';
-import type { ArrowItem, PreparedFile, Whiteboard } from '@inkpad/collab-whiteboard';
+import { createWhiteboard, frameAdapter } from '@inksplat/collab-whiteboard';
+import type { ArrowItem, PreparedFile, Whiteboard } from '@inksplat/collab-whiteboard';
 import { TestRoom } from '../support/rooms';
 import { until } from '../support/wait';
 
@@ -143,7 +143,7 @@ describe('saving a board', () => {
       wb.addLink('https://example.com/');
       const saved = await wb.saveBoard({ background: 'cork' });
       expect(saved).toMatchObject({
-        format: 'inkpad-board',
+        format: 'inksplat-board',
         version: 1,
         meta: { background: 'cork' },
       });
@@ -227,10 +227,12 @@ describe('saving a board', () => {
       expect('file' in image).toBe(false);
       const r2 = await second.loadBoard(broken);
       expect(r2).toMatchObject({ added: 2, skipped: 2, files: 1 });
+      const old = await second.loadBoard({ ...stripped, format: 'inkpad-board' });
+      expect(old.added).toBe(2); // saved before the rename
       await expect(second.loadBoard({ format: 'other', version: 1, items: [] })).rejects.toThrow(
-        /not an inkpad board/,
+        /not an inksplat board/,
       );
-      await expect(second.loadBoard(null)).rejects.toThrow(/not an inkpad board/);
+      await expect(second.loadBoard(null)).rejects.toThrow(/not an inksplat board/);
       second.readOnly = true;
       await expect(second.loadBoard(saved)).rejects.toThrow(/locked/);
     } finally {
@@ -242,7 +244,7 @@ describe('saving a board', () => {
     const p = await party();
     try {
       const big = {
-        format: 'inkpad-board',
+        format: 'inksplat-board',
         version: 1,
         saved: '',
         meta: {},

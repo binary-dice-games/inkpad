@@ -35,7 +35,7 @@ describe('static presenter page', () => {
   it('shares a source: video reaches a viewer, drawings go both ways, pause and end follow', async () => {
     const presenter = await presenterPage();
     const link = await startSharing(presenter);
-    expect(link.startsWith(`${site.origin}/#inkpad=`)).toBe(true);
+    expect(link.startsWith(`${site.origin}/#inksplat=`)).toBe(true);
     const viewer = await joinViewer(link);
 
     // The video arrives, at the source's own size.
@@ -422,7 +422,7 @@ describe('static presenter page', () => {
 
     // The picture: a real PNG of the frame, with the cork behind the items.
     const png = await saved('#savePng');
-    expect(png.name).toMatch(/^inkpad-board-\d{4}-\d\d-\d\d-\d{4}\.png$/);
+    expect(png.name).toMatch(/^inksplat-board-\d{4}-\d\d-\d\d-\d{4}\.png$/);
     expect([...png.bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
     const look = await presenter.evaluate(async (b64) => {
       const img = new Image();
@@ -449,7 +449,7 @@ describe('static presenter page', () => {
 
     // The board file: another session opens it and carries on, with the file and the cork.
     const file = await saved('#saveFile');
-    expect(file.name).toMatch(/\.inkpad\.json$/);
+    expect(file.name).toMatch(/\.inksplat\.json$/);
     const again = await presenterPage();
     await site.startBoard(again);
     await again.locator('#openBoard').click({ trial: true }); // there, without a dialog to find it in

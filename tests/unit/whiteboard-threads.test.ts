@@ -8,8 +8,8 @@ import {
   createWhiteboard,
   pinPoint,
   threadCurve,
-} from '@inkpad/collab-whiteboard';
-import type { ArrowItem, Item, NoteItem } from '@inkpad/collab-whiteboard';
+} from '@inksplat/collab-whiteboard';
+import type { ArrowItem, Item, NoteItem } from '@inksplat/collab-whiteboard';
 import { TestRoom } from '../support/rooms';
 import { until } from '../support/wait';
 

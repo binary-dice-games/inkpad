@@ -23,7 +23,7 @@ const grow = Number(process.env.LIMIT_SCALE ?? 1);
 const limits = { maxWidth: Math.round(vw * fit * grow), maxHeight: Math.round(vh * fit * grow) };
 
 // A copy of the extension with a fixed key, so its id is known (needed for the allowlist flag).
-const work = mkdtempSync(join(tmpdir(), 'inkpad-spike-'));
+const work = mkdtempSync(join(tmpdir(), 'inksplat-spike-'));
 const extDir = join(work, 'ext');
 cpSync(join(here, 'ext'), extDir, { recursive: true });
 const { publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });

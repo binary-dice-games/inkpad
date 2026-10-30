@@ -4,9 +4,9 @@
  * a board file that a later session opens to carry on (the items and the files pinned on them).
  * Both pages share it; each gives the board, the stage and a way to tell the person what happened.
  */
-import type { Whiteboard } from '@inkpad/collab-whiteboard';
-import { DEFAULT_BACKGROUND, cleanBackground } from '@inkpad/defaults';
-import type { Background, Stage } from '@inkpad/defaults';
+import type { Whiteboard } from '@inksplat/collab-whiteboard';
+import { DEFAULT_BACKGROUND, cleanBackground } from '@inksplat/defaults';
+import type { Background, Stage } from '@inksplat/defaults';
 import { BACKGROUND_STYLES } from './sheet';
 
 /** What a page gives the save dialog. */
@@ -83,7 +83,7 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
     background: exportBackground(stage),
     backdrop: stage?.video === false ? undefined : (videoFrame(host.video()) ?? undefined),
   };
-  const name = `inkpad-board-${fileStamp()}`;
+  const name = `inksplat-board-${fileStamp()}`;
   try {
     if (kind === 'png') {
       download(await board.toPng(options), `${name}.png`);
@@ -98,7 +98,7 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
       );
       download(
         new Blob([JSON.stringify(saved)], { type: 'application/json' }),
-        `${name}.inkpad.json`,
+        `${name}.inksplat.json`,
       );
     }
   } catch (e) {
@@ -122,7 +122,7 @@ export async function openBoardFile(file: File, host: SaveHost): Promise<void> {
     try {
       data = JSON.parse(await file.text());
     } catch {
-      throw new Error('That is not an inkpad board file.');
+      throw new Error('That is not an inksplat board file.');
     }
     const r = await board.loadBoard(data);
     const background = cleanBackground(r.meta.background);

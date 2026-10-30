@@ -1,4 +1,4 @@
-// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inkpad)
+// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inksplat)
 /**
  * @file collab-whiteboard.js A shared whiteboard over any element:
  * everyone's cursors, freehand ink, text notes and stickers, synced over any
@@ -12,6 +12,7 @@
  * and turning one's own items, images dropped on the board, zoom (in `frameAdapter`), cursors
  * that show the tool and the avatar, a queue for the turn to speak, and files pinned on the
  * board (a preview on the board, the file itself sent to everyone to drag out as a copy).
+ * Board files saved under the old name (format `inkpad-board`) still open.
  *
  *   import { createWhiteboard } from './collab-whiteboard.js';
  *   const wb = createWhiteboard(container, { session, adapter });
@@ -1002,7 +1003,9 @@ export function threadCurve(a, b, seed = 0.5) {
   return { c, d: `M${round1(a.x)} ${round1(a.y)}Q${round1(c.x)} ${round1(c.y)} ${round1(b.x)} ${round1(b.y)}` };
 }
 
-const BOARD_FORMAT = 'inkpad-board';
+const BOARD_FORMAT = 'inksplat-board';
+/** The format of board files saved before the project was renamed from inkpad; still read. */
+const OLD_BOARD_FORMATS = ['inkpad-board'];
 
 const NOTE_FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 const NOTE_TEXT = 16; // the usual font size of a note, in board units
@@ -1935,8 +1938,8 @@ export class Whiteboard {
     if (this.readOnlyFlag) {
       throw new WhiteboardError('The board is locked: nothing can be added.');
     }
-    if (data?.format !== BOARD_FORMAT || data.version !== 1 || !Array.isArray(data.items) || data.items.length > LIMITS.items * 2) {
-      throw new WhiteboardError('That is not an inkpad board file.');
+    if ((data?.format !== BOARD_FORMAT && !OLD_BOARD_FORMATS.includes(data?.format)) || data.version !== 1 || !Array.isArray(data.items) || data.items.length > LIMITS.items * 2) {
+      throw new WhiteboardError('That is not an inksplat board file.');
     }
     const bytes = new Map();
     for (const f of Array.isArray(data.files) ? data.files : []) {
@@ -4302,7 +4305,7 @@ export function createWhiteboard(container, options) {
   return new Whiteboard(container, options);
 }
 
-// ── Frame board (inkpad) ──────────────────────────────────────────────────────
+// ── Frame board (inksplat) ──────────────────────────────────────────────────────
 
 /** The width of the frame in board units; its height is `FRAME_UNITS / aspect`. */
 export const FRAME_UNITS = 1000;
@@ -4409,7 +4412,7 @@ export function frameAdapter(element, aspect, content) {
   };
 }
 
-// ── Host-side gate (inkpad) ───────────────────────────────────────────────────
+// ── Host-side gate (inksplat) ───────────────────────────────────────────────────
 
 /**
  * A Session `accept` callback for the host: while `drawing()` is false,

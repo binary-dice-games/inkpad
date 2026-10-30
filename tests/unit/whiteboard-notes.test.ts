@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 // MIT License © 2026 Carlos Lopez
 import { describe, expect, it } from 'vitest';
-import { cleanItem, createWhiteboard } from '@inkpad/collab-whiteboard';
-import type { NoteItem } from '@inkpad/collab-whiteboard';
+import { cleanItem, createWhiteboard } from '@inksplat/collab-whiteboard';
+import type { NoteItem } from '@inksplat/collab-whiteboard';
 import { TestRoom } from '../support/rooms';
 import { until } from '../support/wait';
 

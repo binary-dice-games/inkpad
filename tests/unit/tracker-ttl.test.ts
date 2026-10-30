@@ -1,7 +1,7 @@
 // MIT License © 2026 Carlos Lopez
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createSession } from '@inkpad/collab-session';
-import type { Session } from '@inkpad/collab-session';
+import { createSession } from '@inksplat/collab-session';
+import type { Session } from '@inksplat/collab-session';
 import { ShareHost } from '../../viewer/src/share-host';
 import { DEFAULT_SETTINGS } from '../../viewer/src/settings';
 import { FakeTracker } from '../support/fake-tracker';

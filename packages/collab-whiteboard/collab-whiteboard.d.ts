@@ -1,4 +1,4 @@
-// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inkpad)
+// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inksplat)
 
 export type Stamp = [number, string];
 
@@ -297,7 +297,7 @@ export interface ExportOptions {
 
 /** A board saved in a file. */
 export interface BoardFile {
-  format: 'inkpad-board';
+  format: 'inksplat-board';
   version: 1;
   saved: string;
   meta: Record<string, unknown>;

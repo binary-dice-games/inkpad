@@ -9,9 +9,9 @@ import {
   DEFAULT_VIDEO,
   DEFAULT_VIEWER_BASE,
   cleanVideoSettings,
-} from '@inkpad/defaults';
-import type { VideoSettings } from '@inkpad/defaults';
-import { LIMITS, cleanImageData } from '@inkpad/collab-whiteboard';
+} from '@inksplat/defaults';
+import type { VideoSettings } from '@inksplat/defaults';
+import { LIMITS, cleanImageData } from '@inksplat/collab-whiteboard';
 
 export interface Settings {
   viewerBase: string;

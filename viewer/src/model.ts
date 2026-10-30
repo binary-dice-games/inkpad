@@ -4,7 +4,7 @@
  * session state or error, what to show over the video, and which aspect the
  * board is laid out for.
  */
-import type { Stage } from '@inkpad/defaults';
+import type { Stage } from '@inksplat/defaults';
 
 /** The aspect used before the presenter has said anything. */
 export const DEFAULT_ASPECT = 16 / 9;
@@ -39,7 +39,7 @@ export function errorMessage(reason: string | undefined): string {
     case 'no-tracker':
       return 'No tracker could be reached: this network may block them. Try another network.';
     case 'no-answer':
-      return 'The presenter did not answer: the link may be old, the presenter may have left, the session may be locked, or the presenter runs another version of inkpad.';
+      return 'The presenter did not answer: the link may be old, the presenter may have left, the session may be locked, or the presenter runs another version of inksplat.';
     case 'ice-failed':
       return 'Your network and the presenter’s could not connect directly. Try another network, such as a phone hotspot.';
     case 'no-webrtc':

@@ -2,7 +2,7 @@
 
 > **Update: the Chrome extension, the presenter console, the presenter key, the `ctl` channel and the board keeper described here were removed; the presenter page replaced them (`spec/06_static_presenter/DESIGN.md` section 8). The rest (session, star topology, whiteboard, security of the link) still holds.**
 
-Foundation project. It defines what inkpad is, how the pieces fit, the repo
+Foundation project. It defines what inksplat is, how the pieces fit, the repo
 and tooling, and the **collab core** (session + whiteboard) that every other
 project builds on. Related projects:
 
@@ -15,7 +15,7 @@ project builds on. Related projects:
 
 ## 1. Purpose and scope
 
-inkpad turns a browser tab into a shared whiteboard. A **presenter** with the
+inksplat turns a browser tab into a shared whiteboard. A **presenter** with the
 Chrome extension enables it on the active tab. The extension:
 
 1. Gives the presenter a **console**: a separate window that shows the video and
@@ -40,7 +40,7 @@ the presenter's page, multi-tab sharing.
 
 The collab code is **copied** from `binary-dice-games/nymph`
 (`web/collab/collab-session.js`, `web/collab/collab-whiteboard.js`, and the
-ideas in nymph `spec/18_collaboration/DESIGN.md`). inkpad never references
+ideas in nymph `spec/18_collaboration/DESIGN.md`). inksplat never references
 nymph at build or run time. Copied files keep a provenance header (source path,
 commit, date) and nymph's MIT notice in `NOTICE`. Divergence is allowed; the
 header is how to diff against upstream.
@@ -111,11 +111,11 @@ Same public API as nymph (`createSession`, `Session`, `channel`, `peers`,
 
 | Change | Reason |
 |---|---|
-| Fragment key is `inkpad=<token>` (not `collab=`) | Avoid clashing with nymph links |
+| Fragment key is `inksplat=<token>` (not `collab=`) | Avoid clashing with nymph links |
 | `media` option: host passes a `MediaStream` (or track source); guest passes `onTrack` | Video, see below |
 | Guest offers always include a `recvonly` video transceiver | Offers are guest-made; the host attaches its track to that transceiver before answering |
 | Tracker list and ICE servers come from options, defaults in `packages/defaults` | Configurable in extension options |
-| Protocol id `inkpad/1` | Handshake refuses mismatches |
+| Protocol id `inksplat/1` | Handshake refuses mismatches |
 
 Media hooks (contract, details in `spec/03_tab_streaming/DESIGN.md`):
 
@@ -143,7 +143,7 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   cross, question, star, heart, thumbs-up, warning, arrow. Peers send names
   only, never SVG (nymph decision: emoji glyphs differ per OS). The text tool
   still accepts emoji characters.
-- **Permissions.** Nymph's `readOnly` is local. inkpad enforces the lock on
+- **Permissions.** Nymph's `readOnly` is local. inksplat enforces the lock on
   the host: `drawingGate(() => drawing)` is the session's `accept` callback and
   drops viewers' ops, live ink and non-empty snapshots while drawing is off
   (cursors and empty join requests still pass), and rate-limits ops to 50/s per
@@ -251,7 +251,7 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   video is a `foreignObject` box with its CSS, and the video frame a JPEG `<image>` (the page
   takes it: `viewer/src/save.ts`). `toPng` rasterises that SVG on a canvas (2000 px wide); if the
   browser refuses the `foreignObject` (it taints the canvas) it is retried without the sheet.
-  A *board file* (`saveBoard` / `loadBoard`, JSON, `format: 'inkpad-board'`, `version: 1`) holds the
+  A *board file* (`saveBoard` / `loadBoard`, JSON, `format: 'inksplat-board'`, `version: 1`) holds the
   live items, `meta` (the page's: the background), and the pinned files as base64, so it
   is self-contained: files that never arrived or were too big only keep their picture. Loading
   adds everything as the loader's own items under new ids (threads are remapped), validated by
@@ -294,7 +294,7 @@ Same tools, data model, merge rules and limits as nymph. Changes:
 ### 4.5 Presenter role
 
 The host makes a second 128-bit secret, the **presenter key**, besides the room
-token. The console link is `<viewer>#inkpad=<token>&presenter=<key>`; the viewer
+token. The console link is `<viewer>#inksplat=<token>&presenter=<key>`; the viewer
 link has no key. After joining, the console sends `{t:'auth', key}` on `ctl`
 (the channel runs inside the DTLS-encrypted link to a host the sealed signaling
 already authenticated). The host compares it in constant time, remembers that
@@ -341,7 +341,7 @@ viewer/                static viewer site (spec/04) — TypeScript
 tests/                 unit (Vitest), browser e2e (Vitest + playwright-core driving
                        Chrome), local fake tracker
 CMakeLists.txt         top-level entry: target `check` calls npm; ctest runs Vitest
-                       (`inkpad_add_test`); `extension`/`viewer` targets come with
+                       (`inksplat_add_test`); `extension`/`viewer` targets come with
                        projects 02 and 04
 ```
 
@@ -350,8 +350,8 @@ CMakeLists.txt         top-level entry: target `check` calls npm; ctest runs Vit
   + Prettier. esbuild bundling arrives with the extension and viewer.
 - The C++ skeleton (`include/`, `src/`, `app/`, `.clang-format` rules in
   `CLAUDE.md`) is **retired** in the first plan step; CLAUDE.md's C++ style,
-  GoogleTest and `inkpad_add_test` sections are replaced by JS/TS equivalents
-  (`inkpad_add_test` is a ctest wrapper over Vitest files). `extern/` and the
+  GoogleTest and `inksplat_add_test` sections are replaced by JS/TS equivalents
+  (`inksplat_add_test` is a ctest wrapper over Vitest files). `extern/` and the
   googletest submodule are removed.
 - No runtime dependencies in the shipped extension and viewer beyond the two
   copied packages (keeps the Web Store review and the Pages payload small).

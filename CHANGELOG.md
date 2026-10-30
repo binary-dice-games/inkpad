@@ -1,6 +1,6 @@
 # Changelog
 
-All notable user-facing changes to inkpad are documented in this file.
+All notable user-facing changes to inksplat are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -57,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The project is renamed from inkpad to inksplat, with a new logo: page titles, invite links (`#inksplat=`), saved files (`.inksplat.json`; old `.inkpad.json` boards still open), npm packages (`@inksplat/...`), CMake names (`INKSPLAT_...`, `inksplat_add_test`) and the site address (`/inksplat/`). Saved names, colours and avatars are asked again once.
 - Notes, pictures and links turn about their pin (Ctrl+drag, or attached to a turning element), not their centre; the pin and its threads stay put.
 - Dragging an element by its pin outlines the pin (a ring that goes with it), not the element, and outlines with a dashed line the element it would be attached to if dropped there.
 - Pictures and pinned files move with a plain drag, whoever pinned them, and are copied out of the board with Shift+drag (as pins use drag to move and Shift+drag for a thread). They are resized from a corner grip instead of with Shift.
@@ -80,7 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   worked): offers were too large for the trackers. They are now compressed.
 
 - Connection diagnostics: the extension's offscreen page and the viewer write one line per
-  step of making a connection to the browser console, prefixed `[inkpad]`.
+  step of making a connection to the browser console, prefixed `[inksplat]`.
 
 ### Removed
 

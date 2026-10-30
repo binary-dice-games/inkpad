@@ -34,11 +34,11 @@ versioned paths, `viewerBase` injection.
 `scripts/build-site.mjs` (viewer at `/` and `/v1/`, archived majors, `404.html` with
 the base path, `privacy.html`, `.nojekyll`), `scripts/smoke-site.mjs` (viewer page,
 script, versioned copy, privacy page, a missing page must be the 404 page), the
-build-time `INKPAD_VIEWER_BASE`, and `pages.yml` (build, deploy, smoke with retries).
+build-time `INKSPLAT_VIEWER_BASE`, and `pages.yml` (build, deploy, smoke with retries).
 Tested locally: the site builds with the base path, a local server that behaves like
 Pages passes the smoke check, and the check fails when a page is missing or the
 site is unreachable; in Chromium, against a server that serves the site under
-`/inkpad/` like Pages, the 404 page sends a lost invite to the site root keeping the
+`/inksplat/` like Pages, the 404 page sends a lost invite to the site root keeping the
 fragment, the viewer loads at `/` and `/v1/` and the privacy page loads, with no CSP
 violation. Not tested: the workflow itself, or Pages on a private repository (needs a
 paid plan).

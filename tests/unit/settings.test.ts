@@ -38,8 +38,8 @@ describe('settings', () => {
   });
 
   it('accepts https viewer pages and localhost http, and drops the hash and query', () => {
-    expect(cleanViewerBase('https://example.github.io/inkpad/?a=1#x')).toBe(
-      'https://example.github.io/inkpad/',
+    expect(cleanViewerBase('https://example.github.io/inksplat/?a=1#x')).toBe(
+      'https://example.github.io/inksplat/',
     );
     expect(cleanViewerBase('http://localhost:8080/')).toBe('http://localhost:8080/');
     expect(cleanViewerBase('http://127.0.0.1:8080/x')).toBe('http://127.0.0.1:8080/x');

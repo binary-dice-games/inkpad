@@ -4,7 +4,7 @@
  * a PDF is dropped) and the thumbnail or first paragraphs of an Office or OpenDocument file (a zip
  * of XML, read here without a library). The board shows them on the card of the file.
  */
-import type { FilePreview } from '@inkpad/collab-whiteboard';
+import type { FilePreview } from '@inksplat/collab-whiteboard';
 
 type Content = NonNullable<Awaited<ReturnType<FilePreview>>>;
 

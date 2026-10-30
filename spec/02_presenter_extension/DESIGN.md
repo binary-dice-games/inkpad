@@ -18,7 +18,7 @@ so an overlay would be in the video (spike, `spec/03_tab_streaming/PLAN.md`
 step 1). Hiding it per frame made it blink; Element Capture is not available for
 `chrome.tabCapture`. Products such as Zoom avoid this with an OS flag that
 excludes their annotation window from capture; the browser has no equivalent, so
-inkpad draws somewhere else. The cost: the presenter draws on a copy of the page
+inksplat draws somewhere else. The cost: the presenter draws on a copy of the page
 that is a fraction of a second behind, not on the page itself.
 
 Out of scope: viewer UI and console UI (`04`), capture internals (`03`), store

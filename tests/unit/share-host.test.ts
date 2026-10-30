@@ -1,10 +1,10 @@
 // MIT License © 2026 Carlos Lopez
 import { afterEach, describe, expect, it } from 'vitest';
-import { createMemoryNetwork, createSession } from '@inkpad/collab-session';
-import type { Session } from '@inkpad/collab-session';
-import { WhiteboardModel } from '@inkpad/collab-whiteboard';
-import { PROTOCOL, cleanStage } from '@inkpad/defaults';
-import type { Stage } from '@inkpad/defaults';
+import { createMemoryNetwork, createSession } from '@inksplat/collab-session';
+import type { Session } from '@inksplat/collab-session';
+import { WhiteboardModel } from '@inksplat/collab-whiteboard';
+import { PROTOCOL, cleanStage } from '@inksplat/defaults';
+import type { Stage } from '@inksplat/defaults';
 import { ShareHost } from '../../viewer/src/share-host';
 import { DEFAULT_SETTINGS } from '../../viewer/src/settings';
 import type { Settings } from '../../viewer/src/settings';
@@ -63,8 +63,8 @@ describe('ShareHost', () => {
   }
 
   it('builds the link from the viewer base and the session token', async () => {
-    const host = await start({ viewerBase: 'https://example.github.io/inkpad/' });
-    expect(host.link()).toBe(`https://example.github.io/inkpad/#inkpad=${host.session.token}`);
+    const host = await start({ viewerBase: 'https://example.github.io/inksplat/' });
+    expect(host.link()).toBe(`https://example.github.io/inksplat/#inksplat=${host.session.token}`);
     expect(host.ui()).toMatchObject({ phase: 'live', viewers: [], drawing: true });
   });
 

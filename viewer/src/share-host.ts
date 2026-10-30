@@ -5,9 +5,9 @@
  * the `stage` messages. The presenter page mounts its own whiteboard on the
  * host session, so there is no separate console and no presenter key.
  */
-import { createSession } from '@inkpad/collab-session';
-import type { Peer, RendezvousSpec, Session } from '@inkpad/collab-session';
-import { drawingGate } from '@inkpad/collab-whiteboard';
+import { createSession } from '@inksplat/collab-session';
+import type { Peer, RendezvousSpec, Session } from '@inksplat/collab-session';
+import { drawingGate } from '@inksplat/collab-whiteboard';
 import {
   DEFAULT_BACKGROUND,
   PROTOCOL,
@@ -15,8 +15,8 @@ import {
   cleanBackground,
   inviteLink,
   toMediaParams,
-} from '@inkpad/defaults';
-import type { Background, Stage } from '@inkpad/defaults';
+} from '@inksplat/defaults';
+import type { Background, Stage } from '@inksplat/defaults';
 import type { Settings } from './settings';
 
 /** What the presenter page shows about the share. */
@@ -131,7 +131,7 @@ export class ShareHost {
     const session = await createSession({
       role: 'host',
       protocol: PROTOCOL,
-      log: (...args: unknown[]) => console.log('[inkpad]', ...args),
+      log: (...args: unknown[]) => console.log('[inksplat]', ...args),
       me: { name: settings.name, color: settings.color },
       iceServers: settings.iceServers,
       rendezvous: options.rendezvous ?? [

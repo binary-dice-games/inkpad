@@ -10,8 +10,8 @@ import {
   drawingGate,
   letterbox,
   simplifyPoints,
-} from '@inkpad/collab-whiteboard';
-import type { Operation } from '@inkpad/collab-whiteboard';
+} from '@inksplat/collab-whiteboard';
+import type { Operation } from '@inksplat/collab-whiteboard';
 
 const ink = (points = [0, 0, 10, 10]) => ({
   kind: 'ink',

@@ -1,4 +1,4 @@
-# inkpad — Manual testing
+# inksplat — Manual testing
 
 Automated tests run on one machine with a fake tracker. These checks need real
 networks and are done before a release. Record the date, browsers and result

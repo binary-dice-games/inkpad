@@ -16,22 +16,22 @@ Windows.
 **Result:** Done. npm workspace (`packages/*`), strict TypeScript, ESLint,
 Prettier, Vitest 3. C++ skeleton, `.clang-format` and the googletest submodule
 removed. CMake (`LANGUAGES NONE`) installs npm dependencies on configure, has
-a `check` target and registers tests through `inkpad_add_test` (ctest). The
+a `check` target and registers tests through `inksplat_add_test` (ctest). The
 `extension` and `viewer` targets are deferred to projects 02 and 04, which have
 sources to build. CI runs on Linux, macOS and Windows. `CLAUDE.md`, README and
 `docs/building.md` updated. Verified locally on Windows only; the Linux and macOS CI jobs have not run yet.
 
 ## Step 2 — Copy and adapt `collab-session`
 
-**Goal:** Session package with inkpad protocol and media hooks.
+**Goal:** Session package with inksplat protocol and media hooks.
 **Deliverables:** `packages/collab-session` with provenance header, `NOTICE`,
-`.d.ts`; `inkpad=` fragment, protocol `inkpad/1`, `setMedia`, `mediaParams`,
+`.d.ts`; `inksplat=` fragment, protocol `inksplat/1`, `setMedia`, `mediaParams`,
 guest `track` event, `recvonly` video transceiver; `packages/defaults`.
 **Tests:** framing/seal/replay tests; host+guests over memory network and the
 fake tracker; video track reaches guest in Chromium (Playwright); data link
 survives video failure.
-**Result:** Done. Copied at nymph commit 13de939. Changes: `inkpad=`
-fragment, `inkpad/1`, presenter wording, `MediaController` (`setMedia`,
+**Result:** Done. Copied at nymph commit 13de939. Changes: `inksplat=`
+fragment, `inksplat/1`, presenter wording, `MediaController` (`setMedia`,
 `mediaParams` incl. codec preference, guest `track` event, guest `recvonly`
 video transceiver added to every offer, host attaches its track before
 answering). `packages/defaults` added. Verified in Chrome: real video frames

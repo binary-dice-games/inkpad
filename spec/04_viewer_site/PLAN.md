@@ -75,7 +75,7 @@ up to about 9 KB but not 18 KB, and with the video line an offer is 7 KB (721 by
 so the guest's three offers were about 29 KB. Fix: sealed messages are deflated (about 4
 times smaller; `packages/collab-session`, format flag byte). Regression test: the fake
 tracker can drop announces over 12 KB (`tests/e2e/webrtc.test.ts`); without the fix the viewer
-never connects. Also added: a `log` option on the session and `[inkpad]` console logging in the
+never connects. Also added: a `log` option on the session and `[inksplat]` console logging in the
 viewer and the offscreen page; the default trackers now match nymph's (the third, from memory,
 was replaced). Not verified: a connection through the real trackers after the fix (needs the
 redeployed site; `tracker.openwebtorrent.com` relayed nothing in a synthetic probe and has
