@@ -12,6 +12,8 @@
  * and turning one's own items, images dropped on the board, zoom (in `frameAdapter`), cursors
  * that show the tool and the avatar, a queue for the turn to speak, and files pinned on the
  * board (a preview on the board, the file itself sent to everyone to drag out as a copy).
+ * Elements are removed by selecting them and pressing Delete or Backspace (the right button does
+ * nothing to them).
  *
  *   import { createWhiteboard } from './collab-whiteboard.js';
  *   const wb = createWhiteboard(container, { session, adapter });
@@ -1011,6 +1013,8 @@ const noteFont = (item) => item.fs ?? NOTE_TEXT;
 const NOTE_PAD = 10;
 /** What can be selected, to be changed or locked with the bar over it. */
 const SELECTABLE = new Set(['note', 'pin', 'arrow', 'image', 'link']);
+/** Drawn items, selected (to be removed with Delete or locked) with the pointer or the tool that makes them. */
+const DRAWN = new Set(['ink', 'text', 'sticker']);
 /** The elements that carry a pin, and can be attached to another element by it. */
 const ELEMENTS = new Set(['note', 'image', 'link']);
 const NOTE_HANG = 1.6; // a hanging baseline sits this far below the top of a text box line (at the usual size)
@@ -1218,6 +1222,7 @@ svg.board .note-item { cursor: default; }
 svg.board .arrow-item, svg.board .pin-item { cursor: pointer; }
 svg.board.arrow, svg.board.pin { cursor: crosshair; }
 .item.selected .paper { stroke: var(--wb-accent); stroke-width: 2.5; }
+.ink-item.selected, .text-item.selected, .sticker-item.selected { filter: drop-shadow(0 0 2px var(--wb-accent)) drop-shadow(0 0 2px var(--wb-accent)); }
 .item.by-pin .paper { stroke: rgba(0,0,0,0.25); stroke-width: 0.75; }
 .item.drop-target .paper { stroke: var(--wb-accent); stroke-width: 2.5; stroke-dasharray: 7 4; }
 .pin-ring { stroke: var(--wb-accent, #3e63dd); stroke-width: 2.5; }
@@ -3283,7 +3288,6 @@ export class Whiteboard {
     listen(this.board, 'pointerup', (ev) => this.up(ev));
     listen(this.board, 'pointercancel', (ev) => this.up(ev, true));
     listen(window, 'keydown', (ev) => this.key(ev), { capture: true });
-    listen(this.board, 'contextmenu', (ev) => this.menu(ev));
     listen(this.board, 'click', (ev) => this.openLink(ev));
     listen(window, 'paste', (ev) => this.pasted(ev));
     listen(this.board, 'dblclick', (ev) => {
@@ -3463,19 +3467,6 @@ export class Whiteboard {
     }
   }
 
-  /** @private The context menu key or right button on your own item removes it. */
-  menu(ev) {
-    const pin = this.readOnlyFlag ? null : this.pinAt(this.eventPoint(ev));
-    const hit = this.readOnlyFlag ? null : pin?.kind === 'pin' ? pin : this.itemAt(ev);
-    if (hit && !this.canEdit(hit)) {
-      ev.preventDefault();
-      this.flash(this.strings.locked);
-    } else if (hit) {
-      ev.preventDefault();
-      this.local(() => this.model.remove(hit.id));
-    }
-  }
-
   /** @private The item under a pointer event (not the capture rectangle). */
   itemAt(ev) {
     for (const node of this.root.elementsFromPoint(ev.clientX, ev.clientY)) {
@@ -3494,7 +3485,8 @@ export class Whiteboard {
     }
     const hit = this.pinAt(this.eventPoint(ev)) ?? this.itemAt(ev); // a pin wins over what lies on it
     const mine = hit && this.canEdit(hit) ? hit : null; // what can be changed by this peer
-    if (hit && SELECTABLE.has(hit.kind) && ['pointer', 'note', 'pin', 'sticker'].includes(this.tool)) {
+    const drawn = hit && DRAWN.has(hit.kind) && (this.tool === 'pointer' || this.tool === hit.kind);
+    if (hit && (drawn || (SELECTABLE.has(hit.kind) && ['pointer', 'note', 'pin', 'sticker'].includes(this.tool)))) {
       this.select(hit.id);
       if (hit.kind === 'arrow') {
         ev.preventDefault();
@@ -3701,6 +3693,9 @@ export class Whiteboard {
       const a = pinPoint(this.model.get(item.from), this.lookup);
       const b = pinPoint(this.model.get(item.to), this.lookup);
       at = a && b ? { x: (a.x + b.x) / 2, y: Math.max(a.y, b.y) + 30 } : null;
+    } else if (DRAWN.has(item.kind)) {
+      const b = this.bounds([item]);
+      at = { x: b.x + b.width / 2, y: b.y - 22 };
     } else {
       const h = item.kind === 'pin' ? 0 : item.size * (item.kind === 'link' ? 0.5 : item.ratio);
       const where = item.kind === 'pin' ? pinPoint(item, this.lookup) : item; // a pin on something is where it is drawn

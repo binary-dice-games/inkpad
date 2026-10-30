@@ -216,9 +216,10 @@
           <button id="showQr" type="button">QR code</button>
         </div>
         <ul id="viewers" aria-label="Viewers"></ul>
-        <div id="backgroundRow" class="row" hidden>
-          <label for="background">Background</label>
+        <div id="backgroundRow" class="row">
+          <label id="backgroundLabel" for="background">Background of canvas 1</label>
           <select id="background">
+            <option id="backgroundVideo" value="video">Video</option>
             <option value="whiteboard">Whiteboard</option>
             <option value="blackboard">Blackboard</option>
             <option value="wall">Wall</option>

@@ -41,13 +41,13 @@ presenter on Chrome.
 | 27 | Presenter page: Settings, mouse pointer **Hidden**, then share a window and move the mouse over it | Viewers do not see the pointer; "Always shown" brings it back at the next **Share again** |
 | 28 | Fold **Tools** and **Controls** on the presenter page, and **Tools** on the viewer; reload | The toolbar and panel stay out of the way and come back with their buttons; the choice is remembered |
 | 29 | On a viewer and on the presenter page press 2, 2, 2, 2, then 3, 3 and 4, 4, 6 | The line goes thin/normal/thick, text small/medium/large, the sticker and colour change; the toolbar icons show the choice |
-| 30 | Draw a line and a sticker, drag them, right click them; try someone else's | Yours move and disappear; theirs do not. Shift+drag scales and Ctrl+drag turns a sticker; a note, picture or link turns about its pin |
+| 30 | Draw a line and a sticker, drag them, right click them, then click each and press Delete; try a locked one | Right click does nothing to them; Delete removes the selected one; a locked one stays. Shift+drag scales and Ctrl+drag turns a sticker; a note, picture or link turns about its pin |
 | 31 | Drop a photo from the file manager on the board (viewer and presenter); move, turn, delete it | It appears for everyone, and late joiners see it |
 | 32 | Wheel over a spot of a busy video, draw, zoom out | The zoom is centred on the pointer; drawings stay on the same part of the picture |
 | 33 | Two viewers with different tools and one with an avatar | Others see each tool's cursor shape; the avatar replaces the name |
 | 34 | Three people ask for a turn; the first ends it; the presenter removes the second | The queue in the lower left updates everywhere; the speaker's cursor is larger, with a pulsing border on its name tag or avatar |
 | 35 | Set the link lifetime to 1 minute, start, wait, try to join | The page says the link expired and the join fails; **New link** works for a new viewer |
-| 36 | **Start a board without video**; a viewer joins; the presenter cycles the background | Viewer and presenter show a sheet (no video, no waiting message); whiteboard, blackboard, wall and cork follow on both |
+| 36 | **Start a board without video**; a viewer joins; both go through the canvases; the presenter changes the background of one | Viewer and presenter show a sheet (no video, no waiting message): canvases 1 to 5 are whiteboard, blackboard, wall, cork, whiteboard; the change shows on that canvas only, on both |
 | 37 | Drop a photo, a PDF, a zip, a text file and a 10 MB file on the board | The first four are pinned (border, shadow, pin) with previews; the big one is refused with a message |
 | 38 | On a viewer, Shift+drag a pinned PDF onto the desktop, a folder, and a mail or chat web page; double click another | A copy with the right name and contents lands (the desktop and folder in Chrome or Edge; web pages in Chrome and Firefox); double click downloads it |
 | 39 | Join a viewer after files were pinned | The late viewer sees the prints and can drag the files out within a few seconds |
@@ -57,11 +57,11 @@ presenter on Chrome.
 | 43 | Pin a file and a picture on the board | each sits a few degrees tilted (at most 7), a different angle each time |
 | 44 | Copy a web address and press Ctrl+V on the board, or drag one from another tab | a card with the site name and path appears; on a viewer, clicking it opens the page in a new tab; hovering shows the full address |
 | 45 | Choose the wall and cork backgrounds | plaster with soft shading and a rough surface; cork with grain and a wooden frame |
-| 46 | Press 6 and click the board; type; click away. Drag the note, drag its corner, right click it | the note keeps the text, moves, resizes from its bottom right corner and disappears |
+| 46 | Press 6 and click the board; type; click away. Drag the note, drag its corner, select it and press Delete | the note keeps the text, moves, resizes from its bottom right corner and disappears |
 | 47 | On another device, double click the note, then paste in a text editor | the text of the note is pasted; the other device cannot edit, move or delete the note |
 | 48 | Press 6 repeatedly and add notes; select one and use the bar over it | the shapes cycle (square, rounded, oval, diamond, hexagon); the bar changes the shape and the colour of the selected note; the text stays centred and inside |
 | 49 | Press 7 and click; press 8, press on a pin and drag to another | a pin appears; a hanging thread with a shadow ties the two pins and follows them when they are dragged |
-| 50 | Press 8 again, tie more threads; select one; right click one | heads cycle none, source, destination, both; the bar changes colour and heads; right click removes it; removing a pin removes its threads |
+| 50 | Press 8 again, tie more threads; select one; press Delete | heads cycle none, source, destination, both; the bar changes colour and heads; Delete removes it; removing a pin removes its threads |
 | 51 | In a session with video, draw something and press **Save...**, then PNG and SVG | the files show the video frame with the drawing over it; the SVG opens in a browser and in a vector editor |
 | 52 | Save a board file with a pinned PDF, close the session, start a new one, then **Open...** the file (also as a viewer, if allowed to draw) | notes, threads, pictures and the pinned file come back as yours; others can drag the file out; a board without video gets its background back |
 | 53 | Put a pin on a note, a picture and a sticker; move, turn and scale them; tie a thread to the pins | the pins stay where they were put on each, threads follow; deleting the item takes its pins and threads |
@@ -77,6 +77,7 @@ presenter on Chrome.
 | 63 | Drag a note by its pin onto a bigger note, then move, resize and turn the bigger one; drag the small one by its pin off | the small one is on top and goes, scales and turns with the big one; off it stays where dropped; while dragging by the pin a ring is on the pin and the element it would attach to has a dashed outline |
 | 64 | With two people, put a note on canvas 1, go to canvas 3 with the round buttons at the top and draw; the other stays on 1 | Your canvas 3 has only your drawing; the button of 3 shows 1 person and the other's 1 person; you do not see their cursor until you both are on the same canvas; Clear on 3 leaves canvas 1; saving a board file and opening it restores every canvas |
 | 65 | Click the pin tool, choose a star, put a pin down; press 7 again and put another; select the first and change its shape and colour from the bar | The panel lists five shapes; each pin is drawn in its shape, threads still tie to its centre |
+| 66 | Share a window; a viewer joins; both go through the canvases; on canvas 3 the presenter picks **Video**, on canvas 1 **Cork board** | Canvas 1 shows the video, 2 to 5 whiteboard, blackboard, wall, cork; then canvas 3 shows the video and canvas 1 the cork, on both; drawings stay in place |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

@@ -166,7 +166,9 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   again cycles its options (pen thin/normal/thick = 2/4/8 units, text 18/28/44, each
   sticker, the palette). Options are local style, never synced.
 - **Own items.** Items carry `author`; the author can drag them (pointer tool, or the
-  tool that made them), and right click removes them. Shift+drag scales and Ctrl/Alt+drag
+  tool that made them). Clicking an element selects it (lines, texts and stickers with the pointer
+  or their own tool) and Delete or Backspace removes the selected one; the right button does
+  nothing to elements, because removing what was under it surprised people. Shift+drag scales and Ctrl/Alt+drag
   rotates stickers about their centre and what has a pin (notes, images, links) about its
   pin, which stays put (`rot` degrees, absent when 0; `x`, `y` stay the unturned centre, so the
   true centre is `centre(item)`). The
@@ -252,7 +254,7 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   takes it: `viewer/src/save.ts`). `toPng` rasterises that SVG on a canvas (2000 px wide); if the
   browser refuses the `foreignObject` (it taints the canvas) it is retried without the sheet.
   A *board file* (`saveBoard` / `loadBoard`, JSON, `format: 'inksplat-board'`, `version: 1`) holds the
-  live items, `meta` (the page's: the background), and the pinned files as base64, so it
+  live items, `meta` (the page's: the background of each canvas), and the pinned files as base64, so it
   is self-contained: files that never arrived or were too big only keep their picture. Loading
   adds everything as the loader's own items under new ids (threads are remapped), validated by
   `cleanItem` and the board's limits; it is not an undo step and loading twice makes a copy.

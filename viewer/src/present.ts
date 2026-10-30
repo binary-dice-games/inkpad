@@ -101,8 +101,12 @@ function video(): HTMLVideoElement {
   return $<HTMLVideoElement>('video');
 }
 
-/** Sends the stage the captured size, and tells the encoder how far to reduce it. */
-/** Shows the video or, in a session without video, the sheet with its background. */
+/** The canvas shown here (0 for the first). */
+function canvas(): number {
+  return board?.currentPage() ?? 0;
+}
+
+/** Shows the video or, on a canvas with another background, the sheet with that background. */
 function layoutSheet(): void {
   const v = video();
   if (!host) {
@@ -112,9 +116,11 @@ function layoutSheet(): void {
     { video: v, page: $('page'), box: $('stage') },
     host.stage(),
     boardAspect({ width: v.videoWidth, height: v.videoHeight }, host.stage()),
+    canvas(),
   );
 }
 
+/** Sends the stage the captured size, and tells the encoder how far to reduce it. */
 function frameChanged(): void {
   const v = video();
   layoutSheet();
@@ -143,8 +149,10 @@ function render(): void {
   $('pause').textContent = ui.paused ? 'Resume' : 'Pause';
   $('pause').hidden = !ui.video;
   $('reshare').hidden = !ui.video;
-  $('backgroundRow').hidden = ui.video;
-  $<HTMLSelectElement>('background').value = ui.background;
+  $('backgroundLabel').textContent = `Background of canvas ${canvas() + 1}`;
+  $('backgroundVideo').hidden = !ui.video;
+  $<HTMLOptionElement>('backgroundVideo').disabled = !ui.video;
+  $<HTMLSelectElement>('background').value = ui.backgrounds[canvas()] ?? 'whiteboard';
   layoutSheet();
   adapter?.update();
   $('viewers').replaceChildren(
@@ -225,6 +233,7 @@ function enterApp(): void {
     filePreview,
   });
   board.on('error', (e) => toast(e.message));
+  board.on('page', render);
   host.onChange(render);
   new ResizeObserver(() => {
     layoutSheet();
@@ -422,7 +431,12 @@ function main(): void {
   $('startBoard').addEventListener('click', () => void startSharing(false));
   $<HTMLSelectElement>('background').addEventListener(
     'change',
-    (e) => void host?.command({ cmd: 'background', name: (e.target as HTMLSelectElement).value }),
+    (e) =>
+      void host?.command({
+        cmd: 'background',
+        page: canvas(),
+        name: (e.target as HTMLSelectElement).value,
+      }),
   );
   $('again').addEventListener('click', () => {
     show('start');
@@ -511,7 +525,12 @@ function main(): void {
     stage: () => host?.stage() ?? null,
     video: () => video(),
     toast,
-    background: (name) => void host?.command({ cmd: 'background', name }),
+    backgrounds: (names) =>
+      names.forEach((name, page) => {
+        if (name) {
+          void host?.command({ cmd: 'background', page, name });
+        }
+      }),
   });
   $('copyQr').addEventListener('click', () => {
     qrPng(qrCode)

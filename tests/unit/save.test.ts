@@ -5,6 +5,7 @@ import type { Whiteboard } from '@inksplat/collab-whiteboard';
 import type { Stage } from '@inksplat/defaults';
 import {
   exportBackground,
+  fileBackgrounds,
   fileStamp,
   openBoardFile,
   saveAs,
@@ -17,13 +18,14 @@ const stage = (extra: Partial<Stage> = {}): Stage => ({ ...extra }) as Stage;
 /** A page's side of saving, with a board that records what it was asked. */
 function setup(extra: Partial<Stage> = {}, board: object | null = {}) {
   const toasts: string[] = [];
-  const backgrounds: string[] = [];
+  const backgrounds: unknown[][] = [];
+  const page = { currentPage: () => 0 };
   const host: SaveHost = {
-    board: () => board as Whiteboard | null,
+    board: () => (board ? { ...page, ...board } : null) as Whiteboard | null,
     stage: () => stage(extra),
     video: () => null,
     toast: (t) => toasts.push(t),
-    background: (name) => backgrounds.push(name),
+    backgrounds: (names) => backgrounds.push(names),
   };
   return { host, toasts, backgrounds };
 }
@@ -33,10 +35,11 @@ describe('what is saved of a board', () => {
     expect(fileStamp(new Date(2026, 9, 30, 7, 5))).toBe('2026-10-30-0705');
   });
 
-  it('puts the sheet behind a board without video, and nothing behind video', () => {
+  it('puts the sheet behind a canvas without video, and nothing behind video', () => {
     expect(exportBackground(stage())).toBeUndefined();
     expect(exportBackground(null)).toBeUndefined();
-    const cork = exportBackground(stage({ video: false, background: 'cork' }))!;
+    expect(exportBackground(stage(), 1)!.background).toContain('#f6f7f8'); // canvas 2: whiteboard
+    const cork = exportBackground(stage({ video: false, backgrounds: ['cork'] }))!;
     expect(cork.background).toContain('#bd9467');
     expect(cork['background-blend-mode']).toContain('multiply');
     expect(cork.border).toContain('solid');
@@ -81,7 +84,7 @@ describe('saving', () => {
       },
       saveBoard: async (meta: unknown) => ({ format: 'inksplat-board', meta }),
     };
-    const p = setup({ video: false, background: 'wall' }, board);
+    const p = setup({ video: false, backgrounds: ['wall'] }, board);
     await saveAs('png', p.host);
     await saveAs('svg', p.host);
     await saveAs('board', p.host);
@@ -93,7 +96,7 @@ describe('saving', () => {
     expect(downloads[1]!.blob.type).toBe('image/svg+xml');
     expect(calls).toHaveLength(2);
     expect((calls[0] as { background: object }).background).toBeDefined();
-    // The board file remembers the background, for the session that opens it.
+    // The board file remembers the backgrounds of all canvases, for the session that opens it.
     const saved = JSON.parse(
       await new Promise<string>((resolve) => {
         const reader = new FileReader();
@@ -101,7 +104,10 @@ describe('saving', () => {
         reader.readAsText(downloads[2]!.blob);
       }),
     );
-    expect(saved).toEqual({ format: 'inksplat-board', meta: { background: 'wall' } });
+    expect(saved).toEqual({
+      format: 'inksplat-board',
+      meta: { backgrounds: ['wall', 'blackboard', 'wall', 'cork', 'whiteboard'] },
+    });
     expect(p.toasts).toEqual([]);
   });
 
@@ -129,21 +135,42 @@ describe('opening a board file', () => {
     return Object.assign(file, { text: async () => text });
   };
 
-  it('adds it, says how much, and gives the presenter its background', async () => {
+  it('adds it, says how much, and gives the presenter its backgrounds', async () => {
     let loaded: unknown;
     const p = setup(
       { video: false },
       {
         loadBoard: async (data: unknown) => {
           loaded = data;
-          return { added: 3, skipped: 1, files: 2, meta: { background: 'cork' } };
+          return {
+            added: 3,
+            skipped: 1,
+            files: 2,
+            meta: { backgrounds: ['cork', 'video', 'lava', 'wall', 'wall'] },
+          };
         },
       },
     );
     await openBoardFile(fileOf('{"format":"inksplat-board"}'), p.host);
     expect(loaded).toEqual({ format: 'inksplat-board' });
     expect(p.toasts).toEqual(['Added 3 items, 2 files (1 left out).']);
-    expect(p.backgrounds).toEqual(['cork']);
+    // No video in this session: that canvas, like the unknown one, stays as it is.
+    expect(p.backgrounds).toEqual([['cork', undefined, undefined, 'wall', 'wall']]);
+  });
+
+  it('reads the single background of older files, and keeps unknown ones out', () => {
+    const none = stage({ video: false });
+    expect(fileBackgrounds({ background: 'cork' }, none)).toEqual(Array(5).fill('cork'));
+    expect(fileBackgrounds({ background: 'cork' }, stage())).toBeUndefined(); // the video stays
+    expect(fileBackgrounds({ background: 'lava' }, none)).toBeUndefined();
+    expect(fileBackgrounds({ backgrounds: ['lava'] }, none)).toBeUndefined();
+    expect(fileBackgrounds({ backgrounds: ['video'] }, stage())).toEqual([
+      'video',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+    ]);
   });
 
   it('keeps a background that is not one of ours out, and speaks of one item as one', async () => {

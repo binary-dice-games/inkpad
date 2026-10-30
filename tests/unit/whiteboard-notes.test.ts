@@ -171,11 +171,18 @@ describe('sticky notes on the board', () => {
     }
   });
 
-  it('is removed by its owner with the right button', async () => {
+  it('is removed by selecting it and pressing Delete, not with the right button', async () => {
     const t = await mount();
     try {
       t.wb.addNote({ x: 100, y: 100 }, 'bye');
       pointer(t.board, 'contextmenu', 100, 100);
+      expect(t.wb.items()).toHaveLength(1);
+      keydown('1'); // the pointer tool
+      pointer(t.board, 'pointerdown', 100, 100);
+      pointer(t.board, 'pointerup', 100, 100);
+      // A click writes in the note; once the writing ends the note stays selected.
+      t.root.querySelector('textarea')?.dispatchEvent(new Event('blur'));
+      keydown('Delete');
       expect(t.wb.items()).toHaveLength(0);
     } finally {
       t.wb.destroy();

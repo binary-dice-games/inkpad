@@ -9,14 +9,15 @@ import { createSession } from '@inksplat/collab-session';
 import type { Peer, RendezvousSpec, Session } from '@inksplat/collab-session';
 import { drawingGate } from '@inksplat/collab-whiteboard';
 import {
-  DEFAULT_BACKGROUND,
+  CANVASES,
   PROTOCOL,
   STAGE_CHANNEL,
-  cleanBackground,
+  cleanCanvasBackground,
+  defaultBackgrounds,
   inviteLink,
   toMediaParams,
 } from '@inksplat/defaults';
-import type { Background, Stage } from '@inksplat/defaults';
+import type { CanvasBackground, Stage } from '@inksplat/defaults';
 import type { Settings } from './settings';
 
 /** What the presenter page shows about the share. */
@@ -32,8 +33,8 @@ export interface UiState {
   paused: boolean;
   /** Whether the session has video (false: only the board). */
   video: boolean;
-  /** The background of a session without video. */
-  background: Background;
+  /** What each canvas shows behind the board (index 0 is canvas 1). */
+  backgrounds: CanvasBackground[];
   /** A problem to show (for example `no-tracker`), or null. */
   problem: string | null;
 }
@@ -46,7 +47,7 @@ export const IDLE_UI: Readonly<UiState> = {
   drawing: true,
   paused: false,
   video: true,
-  background: DEFAULT_BACKGROUND,
+  backgrounds: defaultBackgrounds(true),
   problem: null,
 };
 
@@ -59,7 +60,8 @@ export type Command =
   | { cmd: 'remove'; id: string }
   | { cmd: 'clear' }
   | { cmd: 'clearDrawings' }
-  | { cmd: 'background'; name: string }
+  /** Sets what canvas `page` (0 for the first) shows: `video` (with video only) or a background. */
+  | { cmd: 'background'; page: number; name: string }
   | { cmd: 'viewport'; w: number; h: number };
 
 export interface ShareHostOptions {
@@ -88,7 +90,7 @@ export class ShareHost {
   private drawing: boolean;
   private paused = false;
   private readonly hasVideo: boolean;
-  private background: Background = DEFAULT_BACKGROUND;
+  private readonly backgrounds: CanvasBackground[];
   private problem: string | null = null;
   private viewport = { w: DEFAULT_ASPECT_W, h: DEFAULT_ASPECT_H };
   private source: MediaStream | null = null;
@@ -103,6 +105,7 @@ export class ShareHost {
     this.clearDrawings = options.clearDrawings ?? (() => {});
     this.drawing = options.settings.viewersMayDraw;
     this.hasVideo = options.video !== false;
+    this.backgrounds = defaultBackgrounds(this.hasVideo);
     session.mediaParams(toMediaParams(options.settings.video));
     session.channel(STAGE_CHANNEL).on('join', (peer) => this.sendStage(peer.id));
     session.on('peers', () => this.changed());
@@ -170,11 +173,14 @@ export class ShareHost {
         this.session.remove(command.id);
         break;
       case 'background': {
-        const name = cleanBackground(command.name);
+        const name = cleanCanvasBackground(command.name, this.hasVideo);
         if (!name) {
           throw new Error('unknown background');
         }
-        this.background = name;
+        if (!Number.isInteger(command.page) || command.page < 0 || command.page >= CANVASES) {
+          throw new Error('unknown canvas');
+        }
+        this.backgrounds[command.page] = name;
         this.sendStage();
         break;
       }
@@ -198,7 +204,8 @@ export class ShareHost {
       fps: this.settings.video.fps,
       state: this.stopped ? 'ended' : this.paused ? 'paused' : 'live',
       drawing: this.drawing,
-      ...(this.hasVideo ? {} : { video: false as const, background: this.background }),
+      ...(this.hasVideo ? {} : { video: false as const }),
+      backgrounds: [...this.backgrounds],
     };
   }
 
@@ -235,7 +242,7 @@ export class ShareHost {
       drawing: this.drawing,
       paused: this.paused,
       video: this.hasVideo,
-      background: this.background,
+      backgrounds: [...this.backgrounds],
       problem: this.problem,
     };
   }

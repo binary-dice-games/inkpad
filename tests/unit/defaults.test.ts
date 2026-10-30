@@ -8,7 +8,10 @@ import {
   UPLINK_WARNING_KBPS,
   VIDEO_LIMITS,
   BACKGROUNDS,
+  CANVASES,
+  canvasBackground,
   cleanStage,
+  defaultBackgrounds,
   cleanVideoSettings,
   inviteLink,
   parseInvite,
@@ -76,16 +79,44 @@ describe('stage message', () => {
     expect(cleanStage({ ...good, evil: 1 })).toEqual(good);
   });
 
-  it('says a session has no video, and keeps only a known background', () => {
-    expect(cleanStage({ ...good, video: false, background: 'cork' })).toEqual({
+  it('says a session has no video, and keeps only known backgrounds per canvas', () => {
+    expect(
+      cleanStage({ ...good, video: false, backgrounds: ['cork', 'lava', 'video', 'wall'] }),
+    ).toEqual({
       ...good,
       video: false,
-      background: 'cork',
+      // Unknown entries, the video without video and missing canvases take the defaults.
+      backgrounds: ['cork', 'blackboard', 'wall', 'wall', 'whiteboard'],
     });
     expect(cleanStage({ ...good, video: true })).toEqual(good);
     expect(cleanStage({ ...good, video: 'no' })).toEqual(good);
-    expect(cleanStage({ ...good, background: 'lava' })).toEqual(good);
+    expect(cleanStage({ ...good, backgrounds: 'cork' })).toEqual(good);
+    expect(cleanStage({ ...good, backgrounds: ['wall', 'video'] })?.backgrounds).toEqual([
+      'wall',
+      'video',
+      'blackboard',
+      'wall',
+      'cork',
+    ]);
     expect(BACKGROUNDS).toEqual(['whiteboard', 'blackboard', 'wall', 'cork']);
+  });
+
+  it('gives canvas 1 the video when there is one, and the backgrounds to the others', () => {
+    expect(defaultBackgrounds(true)).toEqual(['video', 'whiteboard', 'blackboard', 'wall', 'cork']);
+    expect(defaultBackgrounds(false)).toEqual([
+      'whiteboard',
+      'blackboard',
+      'wall',
+      'cork',
+      'whiteboard',
+    ]);
+    expect(defaultBackgrounds(true)).toHaveLength(CANVASES);
+    const stage = cleanStage(good)!;
+    expect(canvasBackground(stage, 0)).toBe('video');
+    expect(canvasBackground(stage, 4)).toBe('cork');
+    expect(canvasBackground(null, 0)).toBe('video');
+    expect(canvasBackground({ ...stage, video: false }, 0)).toBe('whiteboard');
+    expect(canvasBackground({ ...stage, backgrounds: ['wall'] }, 0)).toBe('wall');
   });
 
   it('cleans the optional title', () => {

@@ -1,11 +1,11 @@
 // MIT License © 2026 Carlos Lopez
 /**
- * @file The board of a session without video: a sheet in the shape of the shared frame, with one
+ * @file The board of a canvas without video: a sheet in the shape of the shared frame, with one
  * of a few backgrounds (whiteboard, blackboard, wall, cork), for the viewer and the presenter
- * page. The backgrounds are drawn with CSS and inline SVG, so there are no image files.
+ * page. Each canvas has its own background (the stage's `backgrounds`). The backgrounds are drawn with CSS and inline SVG, so there are no image files.
  */
 import { letterbox } from '@inksplat/collab-whiteboard';
-import { DEFAULT_BACKGROUND } from '@inksplat/defaults';
+import { canvasBackground } from '@inksplat/defaults';
 import type { Background, Stage } from '@inksplat/defaults';
 
 /** Noise as a tiling SVG image: `rgb` is the colour of the grain, `alpha` how strong it is. */
@@ -106,9 +106,10 @@ export const BACKGROUND_STYLES: Readonly<
 };
 
 /**
- * Shows the stage as a video or as a sheet: with `stage.video === false` the `video` is hidden
- * and `page` is laid out as the largest sheet of the stage's aspect that fits in `box`, with the
- * stage's background; otherwise the sheet is hidden.
+ * Shows the canvas `canvas` (0 for the first) as the video or as a sheet: when its background
+ * ({@link canvasBackground}) is not the video, the `video` is hidden and `page` is laid out as the
+ * largest sheet of the frame's aspect that fits in `box`, with that background; otherwise the
+ * sheet is hidden and the video shows.
  *
  * @param aspect the width / height of the frame, as the board uses it
  */
@@ -116,15 +117,17 @@ export function showSheet(
   elements: { video: HTMLElement; page: HTMLElement; box: HTMLElement },
   stage: Stage | null,
   aspect: number,
+  canvas = 0,
 ): void {
   const { video, page, box } = elements;
-  const sheet = stage?.video === false;
+  const background = canvasBackground(stage, canvas);
+  const sheet = background !== 'video';
   video.hidden = sheet;
   page.hidden = !sheet;
-  if (!sheet) {
+  if (background === 'video') {
     return;
   }
-  const style = BACKGROUND_STYLES[stage?.background ?? DEFAULT_BACKGROUND];
+  const style = BACKGROUND_STYLES[background];
   const r = letterbox(box.clientWidth, box.clientHeight, aspect);
   Object.assign(page.style, {
     left: `${r.x}px`,

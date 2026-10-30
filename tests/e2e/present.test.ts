@@ -74,6 +74,23 @@ describe('static presenter page', () => {
     await expect.poll(() => items(viewer), { timeout: 15000 }).toBe(0);
     await expect.poll(() => items(presenter), { timeout: 15000 }).toBe(0);
 
+    // Canvas 1 shows the video and canvas 2 a whiteboard, until the presenter gives it the video.
+    const canvasButton = (page: typeof viewer, n: number) =>
+      page.locator(`collab-whiteboard .pages button[aria-label^="Canvas ${n},"]`);
+    await canvasButton(viewer, 2).click();
+    await expect.poll(() => viewer.locator('#page').isVisible()).toBe(true);
+    expect(await viewer.locator('#video').isVisible()).toBe(false);
+    await canvasButton(presenter, 2).click();
+    await expect
+      .poll(() => presenter.locator('#backgroundLabel').textContent())
+      .toBe('Background of canvas 2');
+    expect(await presenter.locator('#background').inputValue()).toBe('whiteboard');
+    await presenter.locator('#background').selectOption('video');
+    await expect.poll(() => viewer.locator('#video').isVisible(), { timeout: 15000 }).toBe(true);
+    expect(await viewer.locator('#page').isVisible()).toBe(false);
+    await canvasButton(viewer, 1).click();
+    await canvasButton(presenter, 1).click();
+
     // The user stops sharing in the browser: the session stays, paused, with a way back.
     await presenter.evaluate(() =>
       (window as unknown as { shared: MediaStreamTrack }).shared.dispatchEvent(new Event('ended')),
