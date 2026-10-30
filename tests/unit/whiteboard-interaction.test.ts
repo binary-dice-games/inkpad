@@ -316,7 +316,7 @@ describe('moving, turning, scaling and removing', () => {
       const image = t.node().querySelector('image')!;
       expect(image.getAttribute('href')).toBe(PNG);
       expect(image.getAttribute('height')).toBe('100');
-      expect(image.parentElement?.getAttribute('transform')).toBe('rotate(30 100 100)');
+      expect(image.parentElement?.getAttribute('transform')).toBe('rotate(30 100 52.05)'); // about its pin;
       pointer(t.board, 'pointerdown', 100, 100);
       pointer(t.board, 'pointermove', 90, 100);
       pointer(t.board, 'pointerup', 90, 100);

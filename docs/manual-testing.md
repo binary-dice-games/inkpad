@@ -41,7 +41,7 @@ presenter on Chrome.
 | 27 | Presenter page: Settings, mouse pointer **Hidden**, then share a window and move the mouse over it | Viewers do not see the pointer; "Always shown" brings it back at the next **Share again** |
 | 28 | Fold **Tools** and **Controls** on the presenter page, and **Tools** on the viewer; reload | The toolbar and panel stay out of the way and come back with their buttons; the choice is remembered |
 | 29 | On a viewer and on the presenter page press 2, 2, 2, 2, then 3, 3 and 4, 4, 6 | The line goes thin/normal/thick, text small/medium/large, the sticker and colour change; the toolbar icons show the choice |
-| 30 | Draw a line and a sticker, drag them, right click them; try someone else's | Yours move and disappear; theirs do not. Shift+drag scales and Ctrl+drag turns a sticker |
+| 30 | Draw a line and a sticker, drag them, right click them; try someone else's | Yours move and disappear; theirs do not. Shift+drag scales and Ctrl+drag turns a sticker; a note, picture or link turns about its pin |
 | 31 | Drop a photo from the file manager on the board (viewer and presenter); move, turn, delete it | It appears for everyone, and late joiners see it |
 | 32 | Wheel over a spot of a busy video, draw, zoom out | The zoom is centred on the pointer; drawings stay on the same part of the picture |
 | 33 | Two viewers with different tools and one with an avatar | Others see each tool's cursor shape; the avatar replaces the name |
@@ -75,6 +75,7 @@ presenter on Chrome.
 | 61 | Select a pin attached to a note, then move the note | the bar sits over the pin where it is drawn and follows it |
 | 62 | Make an oval, a diamond and a hexagon note; pull the grip near the bottom right inside each | each grows, stays selected, the grip is on the shape |
 | 63 | Drag a note by its pin onto a bigger note, then move, resize and turn the bigger one; drag the small one by its pin off | the small one is on top and goes, scales and turns with the big one; off it stays where dropped; while dragging by the pin a ring is on the pin and the element it would attach to has a dashed outline |
+| 64 | With two people, put a note on canvas 1, go to canvas 3 with the round buttons at the top and draw; the other stays on 1 | Your canvas 3 has only your drawing; the button of 3 shows 1 person and the other's 1 person; you do not see their cursor until you both are on the same canvas; Clear on 3 leaves canvas 1; saving a board file and opening it restores every canvas |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

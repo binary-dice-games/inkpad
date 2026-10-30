@@ -92,7 +92,8 @@ describe('pins and threads as items', () => {
       color: '#fff',
       rot: 90,
     });
-    expect(turned!.x).toBeGreaterThan(100); // the top went to the right
+    expect(turned!.x).toBeCloseTo(100); // it turns about its pin: the pin stays
+    expect(turned!.y).toBeCloseTo(note!.y);
     expect(at({ kind: 'text', x: 1, y: 1, size: 10, text: 'x', color: '#000000' })).toBeNull();
     expect(pinPoint(null)).toBeNull();
   });
@@ -557,8 +558,9 @@ describe('pins attached to what they are put on', () => {
       expect(t.where(pin).x).toBeCloseTo(360, 0);
       expect(t.where(pin).y).toBeCloseTo(210, 0);
       change(t, note, { size: 180, rot: 90 });
-      expect(t.where(pin).x).toBeCloseTo(320, 0); // turned a quarter about the centre (300, 250)
-      expect(t.where(pin).y).toBeCloseTo(280, 0);
+      // Turned a quarter about its pin (the note's centre goes to (212, 162)).
+      expect(t.where(pin).x).toBeCloseTo(232, 0);
+      expect(t.where(pin).y).toBeCloseTo(192, 0);
       expect(thread).toBeTruthy();
     } finally {
       done(t);

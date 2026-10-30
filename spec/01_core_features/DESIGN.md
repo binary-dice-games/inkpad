@@ -159,13 +159,17 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   board units to the letterboxed frame inside an element.
 - **Clear** affects everyone and is allowed to viewers only while drawing is on.
 
+- **Canvases.** A board has `PAGES` (5) canvases. An item carries `page` (1 to 4; absent for the first), set from `model.page` when it is added, so there is no new op; `render()`, the export, hit tests and `clear` work on `pageItems()`, `saveBoard`/`loadBoard` on every item. Which canvas one is on is local: `setPage()` sends `{t:'pg', n}` (always allowed by `drawingGate`; the host tells a newcomer where the others are with `of`), `cur` and `ink` messages carry `pg`, and a cursor or live stroke from another canvas is not shown. `pageCounts()` feeds the badge on each button. Undo is not per canvas.
+
 - **Numbered tools and options.** The toolbar order gives the shortcuts (1 pointer, 2 pen,
   3 text, 4 sticker, 5 eraser, last the colour). A number selects the tool; pressing it
   again cycles its options (pen thin/normal/thick = 2/4/8 units, text 18/28/44, each
   sticker, the palette). Options are local style, never synced.
 - **Own items.** Items carry `author`; the author can drag them (pointer tool, or the
   tool that made them), and right click removes them. Shift+drag scales and Ctrl/Alt+drag
-  rotates stickers and images about their centre (`rot` degrees, absent when 0). The
+  rotates stickers about their centre and what has a pin (notes, images, links) about its
+  pin, which stays put (`rot` degrees, absent when 0; `x`, `y` stay the unturned centre, so the
+  true centre is `centre(item)`). The
   model still lets any peer change any item (last writer wins); "own" is a UI rule.
 - **Images and files.** `image` items hold a *preview*: a small PNG/JPEG/WebP data URL (at
   most 300 000 characters, 20 per board). Any dropped file becomes one: a picture shows

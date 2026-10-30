@@ -11,10 +11,14 @@ interface ItemBase {
    * its author may unlock it. Only the author changes the lock.
    */
   lock?: Lock;
+  /** The canvas it is on, 1 to {@link PAGES} - 1; absent for the first. */
+  page?: number;
 }
 
 export type Lock = 'owner' | 'all';
 export const LOCKS: readonly Lock[];
+/** How many canvases a board has. */
+export const PAGES: number;
 
 /**
  * Whether `next` (a newer version of `old`, made by the peer in its stamp) may replace it, given the
@@ -350,6 +354,8 @@ export interface WhiteboardOptions {
   strings?: Record<string, string>;
   color?: string;
   readOnly?: boolean;
+  /** Show the buttons that choose the canvas; default true. */
+  pages?: boolean;
   /** This person's avatar (an image data URL), shown on their cursor instead of their name. */
   avatar?: string;
   /** Show the speaking queue; default true. */
@@ -424,6 +430,12 @@ export class Whiteboard {
   clear(): void;
   /** Removes only the drawings (lines, texts, stickers) for everyone; elements stay. Returns how many. */
   clearDrawings(): number;
+  /** The canvas shown here (0 to {@link PAGES} - 1). */
+  currentPage(): number;
+  /** Shows another canvas, only for this person; the others are told where they are. */
+  setPage(n: number): void;
+  /** People (this one included) on each canvas. */
+  pageCounts(): number[];
   snapshot(): Snapshot;
   /** Merges a snapshot (it does not replace what is here) and tells the others. */
   load(snapshot: unknown): void;
@@ -456,6 +468,7 @@ export class Whiteboard {
   on(event: 'change', cb: (e: { source: 'local' | 'remote' | 'load' }) => void): () => void;
   on(event: 'tool', cb: (name: Tool) => void): () => void;
   on(event: 'error', cb: (e: WhiteboardError) => void): () => void;
+  on(event: 'page', cb: (e: { page: number }) => void): () => void;
   on(event: 'queue', cb: (e: { ids: string[] }) => void): () => void;
   destroy(): void;
 }

@@ -51,6 +51,8 @@ export const NOTE_SHAPES = Object.freeze(['square', 'rounded', 'oval', 'diamond'
 export const ARROW_HEADS = Object.freeze(['none', 'start', 'end', 'both']);
 /** How an element is locked: absent (anybody may change it), `owner` (only its author), `all` (nobody, but its author may unlock it). */
 export const LOCKS = Object.freeze(['owner', 'all']);
+/** How many canvases a board has; an item belongs to one (`page`, 0 to 4, absent for the first). */
+export const PAGES = 5;
 const MIME = /^[a-z0-9][a-z0-9.+-]{0,60}\/[a-z0-9][a-z0-9.+-]{0,80}$/;
 const turned = (r) => (finite(r, -360, 360) && r !== 0 ? { rot: r } : {});
 const finite = (n, lo = -1e6, hi = 1e6) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
@@ -122,6 +124,9 @@ export function cleanItem(item) {
   base.kind = item.kind;
   if (LOCKS.includes(item.lock)) {
     base.lock = item.lock;
+  }
+  if (Number.isInteger(item.page) && item.page > 0 && item.page < PAGES) {
+    base.page = item.page;
   }
   if (item.kind === 'ink') {
     const p = item.points;
@@ -533,6 +538,7 @@ export class WhiteboardModel {
     this.peerId = peerId;
     this.clock = 0;
     this.counter = 0;
+    this.page = 0; // the canvas new items go on
     this.items = new Map();
     this.clearStamp = [0, ''];
     this.undoStack = [];
@@ -617,7 +623,7 @@ export class WhiteboardModel {
     }
     this.counter += 1;
     const id = `${this.peerId}.${this.counter}`;
-    return this.put(null, { ...fields, id, author: this.peerId });
+    return this.put(null, { page: this.page, ...fields, id, author: this.peerId });
   }
 
   /** Changes an item (any author's): `fields` replace its own. */
@@ -813,6 +819,28 @@ function pinMetrics(item, h) {
 
 const PIN_RADIUS = 9;
 
+/** How far below its centre the pin of a note, picture or link is (before it is turned); 0 for what has no pin. */
+function pinOffset(item) {
+  if (item.kind !== 'image' && item.kind !== 'link' && item.kind !== 'note') {
+    return 0;
+  }
+  return pinMetrics(item, item.size * (item.kind === 'link' ? 0.5 : item.ratio)).y - item.y;
+}
+
+/** Where the centre of an item really is: what is pinned turns about its pin, not about its centre. */
+function centre(item) {
+  const k = pinOffset(item);
+  const a = ((item.rot ?? 0) * Math.PI) / 180;
+  return { x: item.x + k * Math.sin(a), y: item.y + k * (1 - Math.cos(a)) };
+}
+
+/** The stored x and y of an item (as sized in `item`) whose centre is `c` once it is turned by `rot` about its pin. */
+function fromCentre(item, c, rot) {
+  const k = pinOffset(item);
+  const a = (rot * Math.PI) / 180;
+  return { x: c.x - k * Math.sin(a), y: c.y - k * (1 - Math.cos(a)) };
+}
+
 /** How far along the diagonal to the corner a shape reaches, by shape (so a grip can sit inside it). */
 const GRIP_REACH = { square: 1, rounded: 0.92, oval: 0.7071, diamond: 0.5, hexagon: 0.735 };
 
@@ -854,7 +882,8 @@ function hostFrame(item) {
   if (!item) {
     return null;
   }
-  const flat = { x: item.x, y: item.y, w: item.size, rot: item.rot ?? 0 };
+  const c = centre(item);
+  const flat = { x: c.x, y: c.y, w: item.size, rot: item.rot ?? 0 };
   if (item.kind === 'note' || item.kind === 'image') {
     return { ...flat, h: item.size * item.ratio };
   }
@@ -903,7 +932,9 @@ function followers(live, before, after, out = new Map(), seen = new Set()) {
   for (const c of live) {
     if (c.on === after.id && (c.kind === 'note' || c.kind === 'image' || c.kind === 'link')) {
       const at = frameAt(frame, c.u, c.v);
-      const moved = { ...c, x: round1(at.x), y: round1(at.y), rot: degrees((after.rot ?? 0) + (c.dr ?? 0)) };
+      const rot = degrees((after.rot ?? 0) + (c.dr ?? 0));
+      const to = fromCentre(c, at, rot);
+      const moved = { ...c, x: round1(to.x), y: round1(to.y), rot };
       out.set(c.id, moved);
       followers(live, c, moved, out, seen);
     }
@@ -930,12 +961,8 @@ export function pinPoint(item, get = () => null) {
   if (item.kind !== 'image' && item.kind !== 'link' && item.kind !== 'note') {
     return null;
   }
-  const h = item.size * (item.kind === 'link' ? 0.5 : item.ratio);
-  const m = pinMetrics(item, h);
-  const a = ((item.rot ?? 0) * Math.PI) / 180;
-  const dx = m.x - item.x;
-  const dy = m.y - item.y;
-  return { x: item.x + dx * Math.cos(a) - dy * Math.sin(a), y: item.y + dx * Math.sin(a) + dy * Math.cos(a) };
+  // The pin is the pivot: turning the element does not move it.
+  return { x: item.x, y: item.y + pinOffset(item) };
 }
 
 /**
@@ -1030,6 +1057,9 @@ const degrees = (a) => Math.round((((a + 180) % 360) + 360) % 360 * 10 - 1800) /
 
 /** Labels a host can translate (`strings` option). */
 const STRINGS = {
+  canvas: 'Canvas',
+  canvases: 'Canvases',
+  peopleHere: 'here',
   pointer: 'Pointer: use the page below (Esc)',
   pen: 'Pen',
   text: 'Text note',
@@ -1135,6 +1165,14 @@ svg.board:not(.pen):not(.eraser) .item.own { cursor: move; }
 .toolbar button[data-key]::after { content: attr(data-key); position: absolute; right: 3px; bottom: 1px; font: 9px/1 system-ui, sans-serif; opacity: .6; pointer-events: none; }
 .hint { position: absolute; padding: 3px 8px; border-radius: 6px; background: var(--wb-fg); color: var(--wb-bg); font-size: 12px; white-space: nowrap; pointer-events: none; }
 .hint[hidden] { display: none; }
+.pages { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; padding: 4px 10px; border-radius: 999px; background: var(--wb-bg); color: var(--wb-fg); box-shadow: 0 1px 6px rgba(0,0,0,.35); pointer-events: auto; }
+.pages[hidden] { display: none; }
+.pages .cell { position: relative; display: grid; }
+.pages button { all: unset; box-sizing: border-box; width: 26px; height: 26px; border-radius: 50%; border: 2px solid currentColor; display: grid; place-items: center; font-size: 12px; font-weight: 700; cursor: pointer; opacity: .65; }
+.pages button:hover { opacity: 1; }
+.pages button[aria-current="true"] { background: var(--wb-accent); border-color: var(--wb-accent); color: #fff; opacity: 1; }
+.pages button:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: 2px; }
+.pages .n { position: absolute; right: -7px; bottom: -7px; min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border-radius: 7px; pointer-events: none; background: var(--wb-fg); color: var(--wb-bg); font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; }
 .queue { position: absolute; left: 8px; bottom: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: min(260px, 70%); pointer-events: none; }
 .queue[hidden] { display: none; }
 .queue .entry { display: flex; align-items: center; gap: 6px; max-width: 100%; box-sizing: border-box; padding: 3px 10px 3px 4px; border-radius: 999px; font-size: 12px;
@@ -1261,6 +1299,9 @@ export class Whiteboard {
     this.nodes = new Map(); // item id -> SVG node
     this.liveInk = new Map(); // `${peer}:${id}` -> {node, points, seq}
     this.cursors = new Map(); // peer id -> {node, x, y, timer}
+    this.page = 0; // the canvas shown here; each person chooses their own
+    this.pages = new Map(); // peer id -> the canvas they are on (absent: the first)
+    this.showPages = options.pages !== false;
     this.cleanups = [];
     this.lastCursorSent = 0;
     this.lastPoint = null;
@@ -1469,7 +1510,7 @@ export class Whiteboard {
    * moves. `except` is an item to ignore (the pin being moved). Without one, the fields that detach.
    */
   attachment(p, except) {
-    const live = this.model.live();
+    const live = this.pageItems();
     for (let i = live.length - 1; i >= 0; --i) {
       const frame = live[i].id === except ? null : hostFrame(live[i]);
       const at = frame ? frameOf(frame, p) : null;
@@ -1498,7 +1539,7 @@ export class Whiteboard {
     const reach = 15 / scale;
     let best = null;
     let bestD = reach;
-    for (const item of this.model.live()) {
+    for (const item of this.pageItems()) {
       const at = item.id === except ? null : pinPoint(item, this.lookup);
       const d = at ? Math.hypot(at.x - p.x, at.y - p.y) : Infinity;
       if (d <= bestD) {
@@ -1612,9 +1653,32 @@ export class Whiteboard {
 
   /** Clears the whiteboard for everyone. */
   clear() {
-    if (!this.readOnlyFlag) {
-      this.local(() => this.model.clear());
+    if (this.readOnlyFlag) {
+      return;
     }
+    if (this.model.live().every((i) => (i.page ?? 0) === this.page)) {
+      this.local(() => this.model.clear());
+      return;
+    }
+    // The other canvases keep what they have: the items of this one go one by one.
+    this.removeAll(this.pageItems());
+  }
+
+  /**
+   * @private Deletes the given items (quietly: not undo steps) and tells the others.
+   * @returns {number} how many
+   */
+  removeAll(items) {
+    const ops = items.map((old) => this.model.put(old, { id: old.id, author: old.author, deleted: true }, { record: false }));
+    for (const op of ops) {
+      this.send({ t: 'op', op });
+    }
+    if (ops.length > 0) {
+      this.finishText(false);
+      this.render();
+      this.emit('change', { source: 'local' });
+    }
+    return ops.length;
   }
 
   /**
@@ -1626,19 +1690,7 @@ export class Whiteboard {
     if (this.readOnlyFlag) {
       return 0;
     }
-    const ops = this.model
-      .live()
-      .filter((i) => i.kind === 'ink' || i.kind === 'text' || i.kind === 'sticker')
-      .map((old) => this.model.put(old, { id: old.id, author: old.author, deleted: true }, { record: false }));
-    for (const op of ops) {
-      this.send({ t: 'op', op });
-    }
-    if (ops.length > 0) {
-      this.finishText(false);
-      this.render();
-      this.emit('change', { source: 'local' });
-    }
-    return ops.length;
+    return this.removeAll(this.pageItems().filter((i) => i.kind === 'ink' || i.kind === 'text' || i.kind === 'sticker'));
   }
 
   snapshot() {
@@ -1657,7 +1709,53 @@ export class Whiteboard {
     }
   }
 
-  /** The live items, oldest first (for hosts: counts, notes). */
+  /** The canvas shown here (0 to {@link PAGES} - 1). */
+  currentPage() {
+    return this.page;
+  }
+
+  /**
+   * Shows another canvas, only here: the others stay where they are, and are told so they can count
+   * who is on each. A text being written is finished first.
+   * @param {number} n 0 to PAGES - 1; anything else is ignored
+   */
+  setPage(n) {
+    if (!Number.isInteger(n) || n < 0 || n >= PAGES || n === this.page) {
+      return;
+    }
+    this.finishText();
+    this.deselect();
+    this.page = n;
+    this.model.page = n;
+    for (const key of [...this.liveInk.keys()]) {
+      const [author, id] = key.split(/:(.+)/);
+      this.dropLive(author, id);
+    }
+    this.syncCursors();
+    this.send({ t: 'pg', n });
+    this.render();
+    this.renderPages();
+    this.sendCursorAgain();
+    this.emit('page', { page: n });
+  }
+
+  /** The number of people on each canvas (this person included), as an array of {@link PAGES} numbers. */
+  pageCounts() {
+    const counts = new Array(PAGES).fill(0);
+    const me = this.session.me.id;
+    const here = new Set([me, ...this.session.peers().map((p) => p.id)]);
+    for (const id of here) {
+      counts[id === me ? this.page : (this.pages.get(id) ?? 0)] += 1;
+    }
+    return counts;
+  }
+
+  /** @private The items on the canvas shown here, oldest first. */
+  pageItems() {
+    return this.model.live().filter((i) => (i.page ?? 0) === this.page);
+  }
+
+  /** The live items, oldest first (for hosts: counts, notes), on every canvas. */
   items() {
     return this.model.live();
   }
@@ -1685,7 +1783,7 @@ export class Whiteboard {
    * @returns {string}
    */
   toSvg(box, options = {}) {
-    const items = this.model.live();
+    const items = this.pageItems();
     const b = box ?? this.exportArea();
     const svg = svgEl('svg', { viewBox: `${b.x} ${b.y} ${b.width} ${b.height}`, width: b.width, height: b.height }); // the serializer adds the namespace
     const defs = svgEl('defs');
@@ -1912,7 +2010,7 @@ export class Whiteboard {
 
   /** The drawings' bounds in content units ({x, y, width, height}), or null when there are none. */
   contentBounds() {
-    const items = this.model.live();
+    const items = this.pageItems();
     return items.length ? this.bounds(items) : null;
   }
 
@@ -2004,6 +2102,8 @@ export class Whiteboard {
         this.render();
         this.emit('change', { source: 'remote', added: this.model.items.size - before });
       }
+    } else if (m.t === 'pg') {
+      this.remotePage(from, m);
     } else if (m.t === 'cur') {
       this.remoteCursor(from, m);
     } else if (m.t === 'ink') {
@@ -2048,6 +2148,12 @@ export class Whiteboard {
       }
     }
     this.pruneQueue(here);
+    for (const id of [...this.pages.keys()]) {
+      if (!here.has(id)) {
+        this.pages.delete(id);
+      }
+    }
+    this.renderPages();
     for (const [id, c] of this.cursors) {
       if (!here.has(id)) {
         clearTimeout(c.timer);
@@ -2093,7 +2199,8 @@ export class Whiteboard {
     this.hintBox = htmlEl('div', { class: 'hint', hidden: true, role: 'status' });
     this.selbar = htmlEl('div', { class: 'selbar', role: 'toolbar', 'aria-label': 'Selected item', hidden: true });
     this.queueBox = htmlEl('div', { class: 'queue', role: 'group', 'aria-label': this.strings.queue, hidden: !this.turns });
-    this.root.append(this.board, this.dragLayer, this.cursorLayer, this.toolbarBox, this.popover, this.selbar, this.hintBox, this.queueBox);
+    this.pagesBox = htmlEl('div', { class: 'pages', role: 'group', 'aria-label': this.strings.canvases, hidden: !this.showPages });
+    this.root.append(this.board, this.dragLayer, this.cursorLayer, this.toolbarBox, this.popover, this.selbar, this.hintBox, this.queueBox, this.pagesBox);
     this.container.append(this.host);
     this.defs.append(this.shadowFilter());
     for (const [name, svg] of this.stickers) {
@@ -2101,6 +2208,36 @@ export class Whiteboard {
     }
     this.renderToolbar();
     this.renderQueue();
+    this.renderPages();
+  }
+
+  /** @private The buttons that choose the canvas, each with the number of people on it. */
+  renderPages() {
+    if (!this.pagesBox || !this.showPages) {
+      return;
+    }
+    const counts = this.pageCounts();
+    const key = `${this.page}|${counts.join(',')}`;
+    if (key === this.pagesKey) {
+      return;
+    }
+    this.pagesKey = key;
+    const s = this.strings;
+    this.pagesBox.replaceChildren(
+      ...counts.map((count, n) => {
+        const b = htmlEl('button', { type: 'button', 'aria-current': String(n === this.page), title: `${s.canvas} ${n + 1}${count ? ` \u00b7 ${count} ${s.peopleHere}` : ''}`, 'aria-label': `${s.canvas} ${n + 1}, ${count} ${s.peopleHere}` });
+        b.append(String(n + 1));
+        b.addEventListener('click', () => this.setPage(n));
+        const cell = htmlEl('span', { class: 'cell' });
+        cell.append(b);
+        if (count > 0) {
+          const badge = htmlEl('span', { class: 'n', 'aria-hidden': 'true' });
+          badge.textContent = String(count);
+          cell.append(badge);
+        }
+        return cell;
+      }),
+    );
   }
 
   /** @private The soft shadow of the pinned pictures. */
@@ -2323,7 +2460,7 @@ export class Whiteboard {
     if (this.destroyed) {
       return;
     }
-    const all = this.model.live();
+    const all = this.pageItems();
     const things = all.filter((i) => i.kind !== 'arrow' && i.kind !== 'pin');
     const byId = new Map(things.map((i) => [i.id, i]));
     const ordered = [];
@@ -2412,7 +2549,7 @@ export class Whiteboard {
    * drag moves the picture like any other element and Shift+drag copies it out.
    */
   syncProxies() {
-    const want = new Map(this.model.live().filter((i) => i.kind === 'image').map((i) => [i.id, i]));
+    const want = new Map(this.pageItems().filter((i) => i.kind === 'image').map((i) => [i.id, i]));
     for (const [id, entry] of this.proxies) {
       if (!want.has(id)) {
         entry.el.remove();
@@ -2446,7 +2583,7 @@ export class Whiteboard {
       }
       const w = (item.size + 12) * scale;
       const h = (item.size * item.ratio + 12) * scale;
-      const p = this.toBox(item.x, item.y);
+      const p = this.toBox(centre(item).x, centre(item).y);
       entry.el.style.width = `${w}px`;
       entry.el.style.height = `${h}px`;
       entry.el.style.transform = `translate(${p.x - w / 2}px, ${p.y - h / 2}px) rotate(${item.rot ?? 0}deg)`;
@@ -2551,7 +2688,7 @@ export class Whiteboard {
   itemNode(item, resolve = (id) => this.model.get(id)) {
     const own = item.author === this.model.peerId ? ' own' : '';
     const g = svgEl('g', { class: `item ${item.kind}-item${own}${item.id === this.selected ? ' selected' : ''}${this.editing?.item?.id === item.id && this.editing.note ? ' editing' : ''}`, 'data-id': item.id });
-    const turn = item.rot ? { transform: `rotate(${item.rot} ${item.x} ${item.y})` } : {};
+    const turn = item.rot ? { transform: `rotate(${item.rot} ${item.x} ${item.y + pinOffset(item)})` } : {};
     if (item.kind === 'ink') {
       const d = inkPath(item.points);
       g.append(
@@ -2677,11 +2814,11 @@ export class Whiteboard {
         add(i.x, i.y, 0);
         add(i.x + Math.max(...lines.map((l) => l.length)) * i.size * 0.6, i.y + lines.length * i.size * 1.2, 0);
       } else if (i.kind === 'image') {
-        add(i.x, i.y, (i.size * Math.max(1, i.ratio)) / 2);
+        add(centre(i).x, centre(i).y, (i.size * Math.max(1, i.ratio)) / 2);
       } else if (i.kind === 'link') {
-        add(i.x, i.y, i.size / 2);
+        add(centre(i).x, centre(i).y, i.size / 2);
       } else if (i.kind === 'note') {
-        add(i.x, i.y, (i.size * Math.max(1, i.ratio)) / 2);
+        add(centre(i).x, centre(i).y, (i.size * Math.max(1, i.ratio)) / 2);
       } else if (i.kind === 'pin') {
         const at = pinPoint(i, this.lookup);
         add(at.x, at.y, PIN_RADIUS + 2);
@@ -2717,6 +2854,15 @@ export class Whiteboard {
     if (!finite(m.x) || !finite(m.y)) {
       return;
     }
+    if (Number.isInteger(m.pg) && m.pg >= 0 && m.pg < PAGES && (this.pages.get(from) ?? 0) !== m.pg) {
+      this.remotePage(from, { n: m.pg });
+    }
+    if ((this.pages.get(from) ?? 0) !== this.page) {
+      if (c) {
+        c.node.hidden = true;
+      }
+      return;
+    }
     const peer = this.session.peers().find((p) => p.id === from);
     if (!c) {
       const node = htmlEl('div', { class: 'cursor' });
@@ -2735,6 +2881,37 @@ export class Whiteboard {
     this.moveCursor(c);
     clearTimeout(c.timer);
     c.timer = setTimeout(() => (c.node.hidden = true), from === this.queue[0] ? 30000 : 5000);
+  }
+
+  /** @private Where a peer is: the canvas they chose (the host may say so for the others, to a newcomer). */
+  remotePage(from, m) {
+    let id = from;
+    if (m.of !== undefined) {
+      const hostId = this.session.role === 'host' ? this.session.me.id : this.session.host?.()?.id;
+      if (from !== hostId || !ID.test(m.of ?? '')) {
+        return;
+      }
+      id = m.of;
+    }
+    if (id === this.session.me.id || !Number.isInteger(m.n) || m.n < 0 || m.n >= PAGES) {
+      return;
+    }
+    if (m.n === 0) {
+      this.pages.delete(id);
+    } else {
+      this.pages.set(id, m.n);
+    }
+    this.syncCursors();
+    this.renderPages();
+  }
+
+  /** @private Only the cursors of whoever is on this canvas show. */
+  syncCursors() {
+    for (const [id, c] of this.cursors) {
+      if ((this.pages.get(id) ?? 0) !== this.page) {
+        c.node.hidden = true;
+      }
+    }
   }
 
   /** @private The cursor's shape is its owner's tool. */
@@ -2791,6 +2968,9 @@ export class Whiteboard {
     if (this.avatar) {
       this.send({ t: 'avatar', data: this.avatar }, host ? { to } : {});
     }
+    if (this.page > 0) {
+      this.send({ t: 'pg', n: this.page }, host ? { to } : {});
+    }
     if (host) {
       for (const [id, data] of this.avatars) {
         if (id !== to) {
@@ -2798,6 +2978,11 @@ export class Whiteboard {
         }
       }
       this.send({ t: 'queue', ids: this.queue }, { to });
+      for (const [id, n] of this.pages) {
+        if (id !== to) {
+          this.send({ t: 'pg', of: id, n }, { to });
+        }
+      }
       for (const item of this.model.live()) {
         const blob = item.kind === 'image' && item.file ? this.files.get(item.id) : null;
         if (blob) {
@@ -3008,6 +3193,9 @@ export class Whiteboard {
     if (!COLOR.test(m.color ?? '') || !finite(m.width, 0.5, 64) || this.model.items.has(m.id)) {
       return;
     }
+    if ((m.pg ?? 0) !== this.page) {
+      return; // drawn on another canvas
+    }
     const key = `${from}:${m.id}`;
     let ink = this.liveInk.get(key);
     if (!ink) {
@@ -3105,14 +3293,14 @@ export class Whiteboard {
   /** @private The cursor with the tool in use (again when the tool changes). */
   sendCursorAgain() {
     if (this.lastPoint) {
-      this.send({ t: 'cur', ...this.lastPoint, tool: this.tool }, { fast: true });
+      this.send({ t: 'cur', ...this.lastPoint, tool: this.tool, pg: this.page }, { fast: true });
     }
   }
 
   /** @private Over the toolbar, the chooser or the queue, the page's own gestures stay. */
   onControls(ev) {
     const path = ev.composedPath();
-    return path.includes(this.toolbarBox) || path.includes(this.popover) || path.includes(this.selbar) || path.includes(this.queueBox);
+    return path.includes(this.toolbarBox) || path.includes(this.popover) || path.includes(this.selbar) || path.includes(this.queueBox) || path.includes(this.pagesBox);
   }
 
   /** @private */
@@ -3532,7 +3720,7 @@ export class Whiteboard {
 
   /** @private The element under `drop` that `item` would be attached to if dropped there, or null (never one that sits on `item`). */
   hostUnder(item, drop) {
-    const live = this.model.live();
+    const live = this.pageItems();
     const held = followers(live, item, item);
     for (let i = live.length - 1; i >= 0; --i) {
       const frame = live[i].id === item.id || held.has(live[i].id) ? null : hostFrame(live[i]);
@@ -3561,15 +3749,16 @@ export class Whiteboard {
     if (!frame) {
       return item.on ? none : {};
     }
-    const at = frameCoords(frame, geometry);
+    const at = frameCoords(frame, centre(geometry));
     return { on: host.id, u: at.u, v: at.v, dr: degrees((geometry.rot ?? 0) - (host.rot ?? 0)) || undefined };
   }
 
   /** @private The pointer position in a note's own frame (origin at its centre, turned back). */
   inNote(item, p) {
     const a = ((item.rot ?? 0) * Math.PI) / 180;
-    const dx = p.x - item.x;
-    const dy = p.y - item.y;
+    const c = centre(item);
+    const dx = p.x - c.x;
+    const dy = p.y - c.y;
     return { x: dx * Math.cos(a) + dy * Math.sin(a), y: -dx * Math.sin(a) + dy * Math.cos(a) };
   }
 
@@ -3607,12 +3796,10 @@ export class Whiteboard {
       const h = picture ? w * it.ratio : Math.min(600, Math.max(0.3 * w, high));
       const cx = w / 2 - it.size / 2;
       const cy = h / 2 - (it.size * it.ratio) / 2;
-      d.fields = {
-        size: round1(w),
-        ratio: picture ? it.ratio : Math.round(Math.min(3, Math.max(0.3, h / w)) * 1000) / 1000,
-        x: round1(it.x + cx * Math.cos(a) - cy * Math.sin(a)),
-        y: round1(it.y + cx * Math.sin(a) + cy * Math.cos(a)),
-      };
+      const c = centre(it);
+      const ratio = picture ? it.ratio : Math.round(Math.min(3, Math.max(0.3, h / w)) * 1000) / 1000;
+      const to = fromCentre({ ...it, size: w, ratio }, { x: c.x + cx * Math.cos(a) - cy * Math.sin(a), y: c.y + cx * Math.sin(a) + cy * Math.cos(a) }, it.rot ?? 0);
+      d.fields = { size: round1(w), ratio, x: round1(to.x), y: round1(to.y) };
       d.preview = true;
       this.showPreview(it, d.fields);
       this.followThreads({ ...it, ...d.fields });
@@ -3624,12 +3811,14 @@ export class Whiteboard {
     if (scaling || turning) {
       const fields = {};
       if (scaling) {
-        const grown = (it.size * Math.max(1, Math.hypot(p.x - it.x, p.y - it.y))) / Math.max(1, Math.hypot(d.from.x - it.x, d.from.y - it.y));
+        const c = centre(it);
+        const grown = (it.size * Math.max(1, Math.hypot(p.x - c.x, p.y - c.y))) / Math.max(1, Math.hypot(d.from.x - c.x, d.from.y - c.y));
         const [lo, hi] = { image: [8, 2000], link: [40, 1000], note: [60, 600] }[it.kind] ?? [4, 400];
         fields.size = round1(Math.min(hi, Math.max(lo, grown)));
       }
       if (turning) {
-        const a = Math.atan2(p.y - it.y, p.x - it.x) - Math.atan2(d.from.y - it.y, d.from.x - it.x);
+        const pivot = pinPoint(it) ?? it; // what is pinned turns about its pin
+        const a = Math.atan2(p.y - pivot.y, p.x - pivot.x) - Math.atan2(d.from.y - pivot.y, d.from.x - pivot.x);
         fields.rot = degrees((it.rot ?? 0) + (a * 180) / Math.PI);
       }
       d.fields = fields;
@@ -3706,7 +3895,7 @@ export class Whiteboard {
     const from = Math.max(0, d.sent - 2); // overlap one point so segments join
     const pts = d.points.slice(from, from + 400).map(round1);
     d.sent = from + pts.length;
-    this.send({ t: 'ink', id: d.id, seq: d.seq++, pts, color: this.style.color, width: this.style.width }, { fast: true });
+    this.send({ t: 'ink', id: d.id, seq: d.seq++, pts, color: this.style.color, width: this.style.width, pg: this.page }, { fast: true });
   }
 
   /** @private */
@@ -3929,7 +4118,8 @@ export class Whiteboard {
     if (e.note) {
       const it = e.preview ?? this.model.get(e.item.id) ?? e.item;
       const scale = Math.hypot(this.matrix.a, this.matrix.b) || 1;
-      const c = this.toBox(it.x, it.y);
+      const here = centre(it);
+      const c = this.toBox(here.x, here.y);
       const inset = SHAPE_INSET[it.shape ?? 'square'];
       const w = it.size * inset * scale;
       const h = it.size * it.ratio * inset * scale;
@@ -4206,6 +4396,10 @@ export function drawingGate(drawing, { channel = 'wb', opsPerSecond = 50, now = 
     }
     if (t === 'turn') {
       return message.op === 'join' || message.op === 'leave';
+    }
+    // Which canvas somebody is on is theirs to say, turn or not.
+    if (t === 'pg') {
+      return message.of === undefined && Number.isInteger(message.n) && message.n >= 0 && message.n < PAGES;
     }
     if (t === 'avatar') {
       return message.of === undefined && (message.data === '' || cleanImageData(message.data, LIMITS.avatarChars) !== null);

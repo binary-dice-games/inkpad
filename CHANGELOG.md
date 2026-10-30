@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Five canvases per board: round buttons at the top centre switch between them, each person on the one they choose; every button shows how many people are on it, and only the cursors and live drawing of those on your canvas show. **Clear** and **Clear drawings** affect the canvas shown; board files keep every canvas, PNG and SVG save the one shown.
 - A note, picture or link dragged by its pin and dropped on another element is attached to it, like a pin: it is drawn on top of it and moves, turns and scales with it (chains of them follow); dragging it away by its pin, or onto nothing, detaches it. Locked elements stay where they are.
 - The Delete (or Backspace) key removes the selected element, if it is not locked against you.
 - Anybody can now change, move and delete any element of the board (it used to be only its author). A **lock** button in the bar over a selected element, for its owner, locks it: first for the others (only the owner can change it), then for everybody (nobody, until the owner unlocks it). A locked element shows a small padlock.
@@ -55,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Notes, pictures and links turn about their pin (Ctrl+drag, or attached to a turning element), not their centre; the pin and its threads stay put.
 - Dragging an element by its pin outlines the pin (a ring that goes with it), not the element, and outlines with a dashed line the element it would be attached to if dropped there.
 - Pictures and pinned files move with a plain drag, whoever pinned them, and are copied out of the board with Shift+drag (as pins use drag to move and Shift+drag for a thread). They are resized from a corner grip instead of with Shift.
 - The colour shortcut is now key 9 (6 is the sticky note, 7 the pin, 8 the thread).

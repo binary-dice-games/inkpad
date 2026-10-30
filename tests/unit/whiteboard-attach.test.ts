@@ -245,12 +245,14 @@ describe('an element dragged by its pin onto another', () => {
       expect(t.get(b)).toMatchObject({ x: 420, y: 370 });
       expect(t.get(a)).toMatchObject({ x: 440, y: 428 });
       expect(t.get(c)).toMatchObject({ x: 450, y: 468 });
-      // B is turned a quarter (Ctrl+drag about its centre): what is on it goes round with it.
-      t.drag(b, [520, 370], [420, 470], { ctrlKey: true });
+      // B is turned a quarter (Ctrl+drag about its pin, at (420, 272)): what is on it goes round with it.
+      t.drag(b, [520, 272], [420, 372], { ctrlKey: true });
       expect(t.get(b).rot).toBeCloseTo(90, 0);
       expect(t.get(a).rot).toBeCloseTo(90, 0);
-      expect(t.get(a).x).toBeCloseTo(420 - 58, 0); // (20, 58) from B's centre turned 90 degrees: (-58, 20)
-      expect(t.get(a).y).toBeCloseTo(370 + 20, 0);
+      // B's centre went to (322, 272); A, (20, 58) from it, turned 90 degrees: (-58, 20) from it, and
+      // A's own pin is 48.4 above its centre, so it is stored that much to the side and below.
+      expect(t.get(a).x).toBeCloseTo(312.45, 0);
+      expect(t.get(a).y).toBeCloseTo(340.45, 0);
       expect(t.get(c).rot).toBeCloseTo(90, 0);
     } finally {
       t.close();
