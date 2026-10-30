@@ -1,3 +1,5 @@
+<img src="resources/inksplat.png" alt="inksplat" height="200"/>
+
 # inkpad
 
 inkpad turns a shared tab, window or screen into a shared whiteboard. The
@@ -62,6 +64,7 @@ Needs Node.js 20+; the browser tests need Chrome. Details in
 | `cmake/` | CMake modules (Node discovery, `inkpad_add_test`) |
 | `spec/` | Design and plan documents, one folder per project |
 | `docs/` | User and developer documentation |
+| `resources/` | Project assets: the logo (`inksplat.png`) |
 
 ## Further Documentation
 
