@@ -14,7 +14,9 @@
  * board (a preview on the board, the file itself sent to everyone to drag out as a copy).
  * Elements are removed by selecting them and pressing Delete or Backspace (the right button does
  * nothing to them). New notes and pins are half the size nymph makes them, text sizes three
- * quarters, and the bar over a selected element is kept inside the board.
+ * quarters, and the bar over a selected element is kept inside the board. A note can be dragged
+ * out to its size with the note tool, and a thread pressed on or let go over an element gets a new
+ * pin there.
  *
  *   import { createWhiteboard } from './collab-whiteboard.js';
  *   const wb = createWhiteboard(container, { session, adapter });
@@ -1021,6 +1023,13 @@ const DRAWN = new Set(['ink', 'text', 'sticker']);
 const ELEMENTS = new Set(['note', 'image', 'link']);
 const NOTE_HANG = 1.6; // a hanging baseline sits this far below the top of a text box line (at the usual size)
 
+/** The stored size and ratio of a note `width` by `height` units, kept within a note's limits. */
+function noteBounds(width, height) {
+  const size = Math.round(Math.min(600, Math.max(60, Math.abs(width) || 0)));
+  const ratio = Math.round(Math.min(3, Math.max(0.3, (Math.abs(height) || 0) / size)) * 10000) / 10000;
+  return { size, ratio };
+}
+
 /** The width a note's text may take, in units. */
 const noteTextWidth = (item) => item.size * SHAPE_INSET[item.shape ?? 'square'] - 2 * NOTE_PAD;
 /** The top of a note's text (from the top of the note): centred in the shape, never above the top padding. */
@@ -1521,13 +1530,16 @@ export class Whiteboard {
   /**
    * Pins a sticky note at (x, y) (content units) and returns its id; its paper is a pale version of
    * the current colour. Only its author edits, moves or deletes it; others can copy its text.
+   * @param {{ width: number, height: number }} [size] its width and height (kept within a note's
+   *   limits); then it is put straight, not turned. Without one it is the usual size, a little turned.
    * @returns {string | null} null when the board is read only
    */
-  addNote(at = { x: 500, y: 300 }, text = '') {
+  addNote(at = { x: 500, y: 300 }, text = '', size = undefined) {
     if (this.readOnlyFlag) {
       return null;
     }
-    const op = this.local(() => this.model.add({ kind: 'note', x: round1(at.x), y: round1(at.y), size: NOTE_SIZE, ratio: 1, text: String(text).slice(0, LIMITS.text), color: pastel(this.style.color), ...(this.style.shape === 'square' ? {} : { shape: this.style.shape }), ...turned(this.tilt()) }));
+    const dims = size ? noteBounds(size.width, size.height) : { size: NOTE_SIZE, ratio: 1 };
+    const op = this.local(() => this.model.add({ kind: 'note', x: round1(at.x), y: round1(at.y), ...dims, text: String(text).slice(0, LIMITS.text), color: pastel(this.style.color), ...(this.style.shape === 'square' ? {} : { shape: this.style.shape }), ...(size ? {} : turned(this.tilt())) }));
     return op ? op.item.id : null;
   }
 
@@ -3529,13 +3541,18 @@ export class Whiteboard {
     } else if (this.tool === 'text') {
       this.pendingText = p;
     } else if (this.tool === 'note') {
-      this.pendingNote = p;
+      this.pendingNote = { from: p, x0: ev.clientX, y0: ev.clientY, rect: null };
     } else if (this.tool === 'pin') {
       this.addPin(p);
     } else if (this.tool === 'arrow') {
       const source = this.pinAt(p);
+      const host = source ? null : this.attachment(p, null).on;
       if (source) {
         this.beginThread(source.id, ev, null);
+      } else if (host) {
+        // Pressed on an element away from its pins: the thread starts from a pin put there, made
+        // only once the thread is tied (let go anywhere else, and there is no pin).
+        this.beginThread(null, ev, null, { at: p, host });
       }
     } else if (this.tool === 'sticker') {
       this.local(() => this.model.add({ kind: 'sticker', x: round1(p.x), y: round1(p.y), size: 32, name: this.style.sticker }));
@@ -3564,6 +3581,44 @@ export class Whiteboard {
       this.dragThread(ev);
     } else if (this.dragging) {
       this.drag(ev);
+    } else if (this.pendingNote) {
+      this.dragNote(ev);
+    }
+  }
+
+  /**
+   * @private The bounds of the note being put down by dragging, from where the press was to the
+   * pointer (the note grows from that corner), or null while it is still a click.
+   */
+  noteDrag(ev) {
+    const n = this.pendingNote;
+    if (Math.hypot(ev.clientX - n.x0, ev.clientY - n.y0) < 6) {
+      return null;
+    }
+    const p = this.eventPoint(ev);
+    const { size, ratio } = noteBounds(p.x - n.from.x, p.y - n.from.y);
+    const w = size;
+    const h = size * ratio;
+    const x = p.x >= n.from.x ? n.from.x : n.from.x - w;
+    const y = p.y >= n.from.y ? n.from.y : n.from.y - h;
+    return { x, y, w, h };
+  }
+
+  /** @private While a note is dragged out: a dashed outline of where it will be. */
+  dragNote(ev) {
+    const n = this.pendingNote;
+    const b = this.noteDrag(ev);
+    if (!b) {
+      n.rect?.remove();
+      n.rect = null;
+      return;
+    }
+    if (!n.rect) {
+      n.rect = svgEl('rect', { class: 'note-outline', fill: pastel(this.style.color), 'fill-opacity': 0.5, stroke: 'var(--wb-accent, #3e63dd)', 'stroke-width': 1.5, 'stroke-dasharray': '6 4', 'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none' });
+      this.liveGroup.append(n.rect);
+    }
+    for (const [k, v] of Object.entries({ x: b.x, y: b.y, width: b.w, height: b.h })) {
+      n.rect.setAttribute(k, String(v));
     }
   }
 
@@ -3992,10 +4047,25 @@ export class Whiteboard {
       this.threading = null;
       t.node.remove();
       t.ring.remove();
-      const target = cancelled ? null : this.pinAt(this.eventPoint(ev), t.from);
+      t.dot?.remove();
+      const end = this.eventPoint(ev);
+      const target = cancelled ? null : this.threadTarget(end, t);
+      const host = cancelled || target ? null : this.threadHost(end, t);
+      // The pin the thread starts from: the one pressed on, or a new one where the element was pressed.
+      const from = () => t.from ?? this.addPin(t.origin.at);
       if (target) {
-        this.addArrow(t.from, target.id);
-      } else if (!cancelled && Math.hypot(ev.clientX - t.x0, ev.clientY - t.y0) < 4) {
+        const source = from();
+        if (source) {
+          this.addArrow(source, target.id);
+        }
+      } else if (host) {
+        // Let go over an element: a pin is put there, on it, and the thread is tied to that pin.
+        const source = from();
+        const pin = source ? this.addPin(end) : null;
+        if (pin) {
+          this.addArrow(source, pin);
+        }
+      } else if (t.from && !cancelled && Math.hypot(ev.clientX - t.x0, ev.clientY - t.y0) < 4) {
         // Pressed and let go on the pin: it is selected, if it is yours and can be changed.
         const source = this.model.get(t.from);
         if (source && SELECTABLE.has(source.kind)) {
@@ -4053,10 +4123,16 @@ export class Whiteboard {
         this.editing.preview = null; // the note is where it was put: the text box follows it there
         this.placeTextarea();
       }
-    } else if (this.pendingNote && !cancelled) {
-      const at = this.pendingNote;
+    } else if (this.pendingNote) {
+      const n = this.pendingNote;
+      const b = cancelled ? null : this.noteDrag(ev);
       this.pendingNote = null;
-      const id = this.addNote(at);
+      n.rect?.remove();
+      if (cancelled) {
+        return;
+      }
+      // A click puts a note of the usual size there; a drag puts one over the dragged bounds.
+      const id = b ? this.addNote({ x: b.x + b.w / 2, y: b.y + b.h / 2 }, '', { width: b.w, height: b.h }) : this.addNote(n.from);
       this.setTool('pointer');
       if (id) {
         this.select(id); // its bar is there to change it as it is written
@@ -4071,14 +4147,19 @@ export class Whiteboard {
 
   /**
    * @private Starts a thread from the pin of `source`. `restore` is the tool to go back to when it
-   * is let go (a thread pulled from a pin with another tool in hand), or null.
+   * is let go (a thread pulled from a pin with another tool in hand), or null. With `origin` (a
+   * point `at` on the element `host`) and no source, it starts from a pin not put yet, shown there.
    */
-  beginThread(source, ev, restore) {
+  beginThread(source, ev, restore, origin = null) {
     this.popover.hidden = true;
     this.board.setPointerCapture?.(ev.pointerId);
     const node = svgEl('path', { fill: 'none', stroke: this.style.color, 'stroke-width': 2.6, 'stroke-linecap': 'round', opacity: 0.8 });
     const ring = svgEl('circle', { r: PIN_RADIUS + 5, fill: 'none', stroke: 'var(--wb-accent, #3e63dd)', 'stroke-width': 2, 'pointer-events': 'none' });
-    this.threading = { from: source, node, ring, restore, x0: ev.clientX, y0: ev.clientY };
+    this.threading = { from: source, origin, node, ring, restore, x0: ev.clientX, y0: ev.clientY };
+    if (origin) {
+      this.threading.dot = svgEl('circle', { class: 'pending-pin', cx: origin.at.x, cy: origin.at.y, r: PIN_RADIUS, fill: this.style.color, stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8, opacity: 0.8, 'pointer-events': 'none' });
+      this.liveGroup.append(this.threading.dot);
+    }
     this.liveGroup.append(node, ring);
     this.dragThread(ev);
   }
@@ -4106,17 +4187,52 @@ export class Whiteboard {
   /** @private While a thread is being pulled: it hangs from the source pin to the pointer, snapping to a pin in reach. */
   dragThread(ev) {
     const t = this.threading;
-    const from = pinPoint(this.model.get(t.from), this.lookup);
+    const from = t.origin ? t.origin.at : pinPoint(this.model.get(t.from), this.lookup);
     if (!from) {
       return;
     }
     const p = this.eventPoint(ev);
-    const target = this.pinAt(p, t.from);
+    const target = this.threadTarget(p, t);
     const end = target ? pinPoint(target, this.lookup) : p;
     t.node.setAttribute('d', threadCurve(from, end, 0.5).d);
     t.ring.setAttribute('cx', end.x);
     t.ring.setAttribute('cy', end.y);
-    t.ring.style.display = target ? '' : 'none';
+    // The ring shows where it will be tied: a pin in reach, or a new pin on the element under it.
+    t.ring.style.display = target || this.threadHost(p, t) ? '' : 'none';
+  }
+
+  /** @private The element the thread being pulled `t` starts on (its source, or what its pin is on), or null. */
+  threadElement(t) {
+    if (t.origin) {
+      return t.origin.host;
+    }
+    const source = this.model.get(t.from);
+    return source?.kind === 'pin' ? (source.on ?? null) : (source?.id ?? null);
+  }
+
+  /**
+   * @private The pin in reach of `p` that the thread being pulled `t` would be tied to. A thread
+   * from a pin not put yet is not tied to its own element, nor to a pin on it.
+   */
+  threadTarget(p, t) {
+    const target = this.pinAt(p, t.from);
+    if (target && t.origin && (target.id === t.origin.host || (target.kind === 'pin' && target.on === t.origin.host))) {
+      return null;
+    }
+    return target;
+  }
+
+  /**
+   * @private The element (a note, picture, link or sticker) under `p` that the thread being pulled
+   * `t` would get a new pin on when let go there; null over the board, or over the element the
+   * thread starts on (a thread from an element to itself).
+   */
+  threadHost(p, t) {
+    const host = this.attachment(p, null).on;
+    if (!host || host === this.threadElement(t)) {
+      return null;
+    }
+    return host;
   }
 
   /** @private Marks the items under the eraser; they go on pointer up. */

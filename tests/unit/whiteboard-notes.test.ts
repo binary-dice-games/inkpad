@@ -129,6 +129,61 @@ describe('sticky notes on the board', () => {
     }
   });
 
+  it('is dragged out to the bounds wanted, from the corner where the press was', async () => {
+    const t = await mount();
+    try {
+      t.wb.setTool('note');
+      pointer(t.board, 'pointerdown', 100, 100);
+      pointer(t.board, 'pointermove', 250, 160);
+      const outline = t.root.querySelector('.live rect.note-outline');
+      expect(outline?.getAttribute('width')).toBe('150'); // where the note will be, as it is dragged
+      expect(outline?.getAttribute('height')).toBe('60');
+      pointer(t.board, 'pointerup', 300, 200);
+      expect(t.root.querySelector('.live rect.note-outline')).toBeNull();
+      expect((t.wb as unknown as Inside).tool).toBe('pointer');
+      const n = t.wb.items()[0] as NoteItem;
+      expect(n).toMatchObject({ kind: 'note', x: 200, y: 150, size: 200, ratio: 0.5 });
+      expect(n.rot).toBeUndefined(); // straight, the way it was drawn
+      expect(t.root.querySelector('textarea.sticky')).not.toBeNull(); // and written at once
+    } finally {
+      t.wb.destroy();
+      t.room.close();
+    }
+  });
+
+  it('is at least the smallest note when dragged out too small, in any direction', async () => {
+    const t = await mount();
+    try {
+      // Up and to the left: the note grows from the press that way.
+      t.wb.setTool('note');
+      pointer(t.board, 'pointerdown', 500, 400);
+      pointer(t.board, 'pointermove', 490, 395);
+      pointer(t.board, 'pointerup', 490, 395);
+      const m = t.wb.items()[0] as NoteItem;
+      expect(m).toMatchObject({ size: 60, ratio: 0.3 });
+      expect(m.x).toBeCloseTo(470);
+      expect(m.y).toBeCloseTo(391);
+    } finally {
+      t.wb.destroy();
+      t.room.close();
+    }
+  });
+
+  it('is given the bounds asked for, within the limits of a note', async () => {
+    const t = await mount();
+    try {
+      t.wb.addNote({ x: 300, y: 200 }, 'big', { width: 900, height: 300 });
+      t.wb.addNote({ x: 300, y: 200 }, 'tall', { width: 100, height: 400 });
+      expect(t.wb.items()).toMatchObject([
+        { size: 600, ratio: 0.5 },
+        { size: 100, ratio: 3 },
+      ]);
+    } finally {
+      t.wb.destroy();
+      t.room.close();
+    }
+  });
+
   it('is edited by a click, and Escape drops the change', async () => {
     const t = await mount();
     try {
