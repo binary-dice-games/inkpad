@@ -355,7 +355,14 @@ export class Whiteboard {
   readonly element: HTMLElement;
   readOnly: boolean;
   setTool(name: Tool): void;
-  setStyle(style: { color?: string; width?: number; size?: number; sticker?: string }): void;
+  setStyle(style: {
+    color?: string;
+    width?: number;
+    size?: number;
+    sticker?: string;
+    shape?: NoteShape;
+    heads?: ArrowHeads;
+  }): void;
   setAdapter(adapter: Adapter): void;
   /**
    * The shortcut of the nth tool (1 is the first; the colour is last): selects it, and pressing

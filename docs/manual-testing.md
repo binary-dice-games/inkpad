@@ -67,6 +67,7 @@ presenter on Chrome.
 | 53 | Put a pin on a note, a picture and a sticker; move, turn and scale them; tie a thread to the pins | the pins stay where they were put on each, threads follow; deleting the item takes its pins and threads |
 | 54 | With the pointer, note and text tools in turn Shift+press on a pin and drag to another | a thread is tied, the tool you had is selected again on release; a plain drag moves the pin instead; a click on a pin with threads selects the pin |
 | 55 | Draw lines and text, pin a note and a file; press **Clear drawings**, then **Clear all** | only the drawings go the first time, everything the second, for every viewer |
+| 56 | Click the line, text, sticker, note, thread and colour tools in the toolbar | each opens a panel with all its options (line widths, text sizes, stickers, shapes, heads, colours); choosing one closes it; the pointer, eraser and pin only select |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

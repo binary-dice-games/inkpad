@@ -1427,7 +1427,7 @@ export class Whiteboard {
     this.adapter.resetView?.();
   }
 
-  /** The style of new items: {color, width, size, sticker}. */
+  /** The style of new items: {color, width, size, sticker, shape, heads}. */
   setStyle(style) {
     if (style.color && COLOR.test(style.color)) {
       this.style.color = style.color;
@@ -1439,6 +1439,12 @@ export class Whiteboard {
     }
     if (style.sticker && this.stickers.has(style.sticker)) {
       this.style.sticker = style.sticker;
+    }
+    if (NOTE_SHAPES.includes(style.shape)) {
+      this.style.shape = style.shape;
+    }
+    if (ARROW_HEADS.includes(style.heads)) {
+      this.style.heads = style.heads;
     }
     this.renderToolbar();
   }
@@ -1993,15 +1999,12 @@ export class Whiteboard {
           pressed: this.tool === t,
           disabled: this.readOnlyFlag && t !== 'pointer',
           run: () => {
-            if (this.tool === t && t === 'sticker') {
-              this.togglePopover('sticker');
-            } else if (this.tool === t) {
-              this.cycle(t);
-            } else {
+            // A tool with options opens their panel (the number key goes through them); the others just select.
+            if (this.tool !== t) {
               this.setTool(t);
-              if (t === 'sticker') {
-                this.togglePopover('sticker');
-              }
+            }
+            if (this.optionsOf(t).length > 0) {
+              this.togglePopover(t);
             }
           },
         }),
@@ -2046,35 +2049,58 @@ export class Whiteboard {
     return ICONS[t];
   }
 
-  /** @private The colour or sticker chooser beside the toolbar. */
+  /**
+   * @private The options of a tool, for its panel: {label, icon (SVG inner), pressed, run}. Only
+   * tools that have some are listed (the pen, text, stickers, notes and threads) and the colour.
+   */
+  optionsOf(kind) {
+    const s = this.strings;
+    const style = this.style;
+    if (kind === 'color') {
+      return PALETTE.map((c, i) => ({ label: `${s.color}: ${COLOR_NAMES[i]}`, swatch: c, pressed: c === style.color, run: () => this.setStyle({ color: c }) }));
+    }
+    if (kind === 'pen') {
+      return WIDTHS.map((w, i) => ({ label: `${s.pen}: ${WIDTH_NAMES[i]}`, icon: `<path d="M4 12h16" stroke="currentColor" stroke-width="${[1.5, 3, 5.5][i]}" stroke-linecap="round"/>`, pressed: nearest(WIDTHS, style.width) === i, run: () => this.setStyle({ width: w }) }));
+    }
+    if (kind === 'text') {
+      return SIZES.map((size, i) => ({ label: `${s.text}: ${SIZE_NAMES[i]}`, icon: `<text x="12" y="${12 + [12, 16, 21][i] * 0.35}" font-size="${[12, 16, 21][i]}" font-weight="700" text-anchor="middle" fill="currentColor" font-family="system-ui, sans-serif">A</text>`, pressed: nearest(SIZES, style.size) === i, run: () => this.setStyle({ size }) }));
+    }
+    if (kind === 'sticker') {
+      return [...this.stickers.keys()].map((name) => ({ label: name, icon: `<use href="#sticker-${name}"/>`, pressed: name === style.sticker, run: () => this.setStyle({ sticker: name }) }));
+    }
+    if (kind === 'note') {
+      return NOTE_SHAPES.map((shape) => ({ label: `${s.shapeLabel}: ${s.shapeNames[shape]}`, icon: shapeElement(shape, 3, 4, 18, 16, { fill: pastel(style.color), stroke: 'currentColor', 'stroke-width': 1.8 }).outerHTML, pressed: style.shape === shape, run: () => this.setStyle({ shape }) }));
+    }
+    if (kind === 'arrow') {
+      return ARROW_HEADS.map((heads) => {
+        const saved = style.heads;
+        style.heads = heads;
+        const icon = this.toolIcon('arrow');
+        style.heads = saved;
+        return { label: s.headNames[heads], icon, pressed: saved === heads, run: () => this.setStyle({ heads }) };
+      });
+    }
+    return [];
+  }
+
+  /** @private The panel with the options of a tool (or the colours) beside the toolbar; again closes it. */
   togglePopover(kind) {
     if (!this.popover.hidden && this.popover.dataset.kind === kind) {
       this.popover.hidden = true;
       return;
     }
     this.popover.dataset.kind = kind;
-    const items = [];
-    if (kind === 'color') {
-      for (const c of PALETTE) {
-        const b = htmlEl('button', { type: 'button', 'aria-label': c, 'aria-pressed': String(c === this.style.color) }, `<span class="swatch" style="background:${c}"></span>`);
-        b.addEventListener('click', () => {
-          this.setStyle({ color: c });
-          this.popover.hidden = true;
-        });
-        items.push(b);
-      }
-    } else {
-      for (const name of this.stickers.keys()) {
-        const b = htmlEl('button', { type: 'button', 'aria-label': name, title: name, 'aria-pressed': String(name === this.style.sticker) }, `<svg viewBox="0 0 24 24" width="24" height="24"><use href="#sticker-${name}"/></svg>`);
-        b.addEventListener('click', () => {
-          this.setStyle({ sticker: name });
-          this.popover.hidden = true;
-        });
-        items.push(b);
-      }
-    }
+    const items = this.optionsOf(kind).map((o) => {
+      const inner = o.swatch ? `<span class="swatch" style="background:${o.swatch}"></span>` : `<svg viewBox="0 0 24 24" width="24" height="24">${o.icon}</svg>`;
+      const b = htmlEl('button', { type: 'button', 'aria-label': o.label, title: o.label, 'aria-pressed': String(o.pressed) }, inner);
+      b.addEventListener('click', () => {
+        o.run();
+        this.popover.hidden = true;
+      });
+      return b;
+    });
     this.popover.replaceChildren(...items);
-    const at = kind === 'color' ? this.toolbarBox.querySelector('[aria-label="' + this.strings.color + '"]') : this.toolbarBox.children[this.tools.indexOf('sticker')];
+    const at = kind === 'color' ? this.toolbarBox.querySelector('[aria-label="' + this.strings.color + '"]') : this.toolbarBox.children[this.tools.indexOf(kind)];
     this.popover.style.top = `${this.toolbarBox.offsetTop + (at?.offsetTop ?? 0)}px`;
     this.popover.hidden = false;
   }
@@ -3069,7 +3095,9 @@ export class Whiteboard {
     this.board.setPointerCapture?.(ev.pointerId);
     const p = this.eventPoint(ev);
     if (grab) {
-      this.dragging = { item: mine, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0, corner: mine.kind === 'note' && this.onCorner(mine, p) };
+      // A pin on an item is moved from where it is drawn, not from where it was first put.
+      const grabbed = mine.kind === 'pin' && mine.on ? { ...mine, ...pinPoint(mine, this.lookup) } : mine;
+      this.dragging = { item: grabbed, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0, corner: mine.kind === 'note' && this.onCorner(mine, p) };
     } else if (this.tool === 'pen') {
       this.inkSeq += 1;
       this.drawing = { id: `${this.model.peerId}.${this.model.counter + 1}`, points: [p.x, p.y], sent: 0, seq: 0 };

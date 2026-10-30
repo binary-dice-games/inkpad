@@ -667,6 +667,32 @@ describe('pins attached to what they are put on', () => {
     }
   });
 
+  it('is dragged from where it is drawn when its note has been moved', async () => {
+    const t = await mount();
+    try {
+      const note = t.wb.addNote({ x: 200, y: 200 })!;
+      const pin = t.wb.addPin({ x: 230, y: 180 })!;
+      const other = t.wb.addPin({ x: 600, y: 400 })!;
+      const thread = t.wb.addArrow(pin, other)!;
+      change(t, note, { x: 400, y: 300 }); // the pin is now drawn at (430, 280)
+      t.pick.find = () => t.root.querySelector('.pin-item');
+      const drawn = () => t.root.querySelector('.arrow-item path.paper')!.getAttribute('d')!;
+      press(t, 'pointerdown', 430, 280);
+      press(t, 'pointermove', 460, 300);
+      // While it is dragged the thread starts under the pointer's pin, not at the old place.
+      expect(drawn()).toMatch(/^M460 300Q/);
+      press(t, 'pointerup', 460, 300);
+      // Let go on the note: still attached, 30 right and 20 down of where it was.
+      expect(t.wb.items().find((i) => i.id === pin)).toMatchObject({ on: note });
+      expect(t.where(pin).x).toBeCloseTo(460, 0);
+      expect(t.where(pin).y).toBeCloseTo(300, 0);
+      expect(drawn()).toMatch(/^M460 300Q/);
+      expect(thread).toBeTruthy();
+    } finally {
+      done(t);
+    }
+  });
+
   it('keeps its place on its note through a saved board', async () => {
     const t = await mount();
     try {
@@ -693,6 +719,78 @@ describe('pins attached to what they are put on', () => {
       }
     } finally {
       done(t);
+    }
+  });
+});
+
+describe('the options of a tool', () => {
+  async function mount() {
+    const room = new TestRoom();
+    const host = await room.start();
+    const wb = createWhiteboard(box(800, 450), { session: host, adapter: identity });
+    const root = wb.element.shadowRoot!;
+    const tool = (key: string) =>
+      root.querySelector<HTMLButtonElement>(`.toolbar button[data-key="${key}"]`)!;
+    const panel = () =>
+      root.querySelector<HTMLElement>('.pop')!.hidden
+        ? []
+        : [...root.querySelectorAll<HTMLButtonElement>('.pop button')];
+    return { room, wb, root, tool, panel, inside: wb as unknown as Inside };
+  }
+
+  it('open a panel with all of them when the tool is clicked, and a choice closes it', async () => {
+    const t = await mount();
+    try {
+      // key: tool, how many options, the option to choose, what it changes
+      const cases: [string, number, number, () => unknown, unknown][] = [
+        ['2', 3, 2, () => (t.inside.style as unknown as { width: number }).width, 8],
+        ['3', 3, 0, () => (t.inside.style as unknown as { size: number }).size, 18],
+        ['6', 5, 3, () => t.inside.style.shape, 'diamond'],
+        ['8', 4, 1, () => t.inside.style.heads, 'start'],
+      ];
+      for (const [key, count, choose, read, expected] of cases) {
+        t.tool(key).click();
+        expect(t.panel(), key).toHaveLength(count);
+        expect(t.panel().filter((b) => b.getAttribute('aria-pressed') === 'true')).toHaveLength(1);
+        t.panel()[choose]!.click();
+        expect(read(), key).toBe(expected);
+        expect(t.panel(), key).toHaveLength(0); // closed by the choice
+        // The tool is the one in hand, and clicking it again opens and closes the panel.
+        t.tool(key).click();
+        expect(t.panel()).toHaveLength(count);
+        t.tool(key).click();
+        expect(t.panel()).toHaveLength(0);
+      }
+      // The stickers and the colours already had one.
+      t.tool('4').click();
+      expect(t.panel().length).toBeGreaterThan(4);
+      t.panel()[1]!.click();
+      t.tool('9').click();
+      expect(t.panel()).toHaveLength(8);
+      t.panel()[1]!.click();
+      expect(t.inside.style.color).toBe('#f5a524');
+      // The pointer, the eraser and the pin have nothing to choose: they only select.
+      for (const key of ['1', '5', '7']) {
+        t.tool(key).click();
+        expect(t.panel(), key).toHaveLength(0);
+      }
+      expect(t.inside.tool).toBe('pin');
+    } finally {
+      t.wb.destroy();
+      t.room.close();
+    }
+  });
+
+  it('show the choice on the note panel with the colour of the paper', async () => {
+    const t = await mount();
+    try {
+      t.tool('6').click();
+      expect(t.panel()[0]!.querySelector('rect, ellipse, polygon')!.getAttribute('fill')).toMatch(
+        /^#/,
+      );
+    } finally {
+      t.wb.destroy();
+      t.room.close();
     }
   });
 });

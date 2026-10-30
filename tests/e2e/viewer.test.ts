@@ -149,9 +149,10 @@ describe('viewer app', () => {
       )
       .toBe('true');
     // The 16:9 video fills the middle band of the tall screen (about y 313 to 531).
-    await touch('touchStart', 80, 400);
+    // (The pen's options panel is open beside the toolbar: draw away from it.)
+    await touch('touchStart', 200, 450);
     for (let i = 1; i <= 8; i++) {
-      await touch('touchMove', 80 + i * 25, 400 + i * 8);
+      await touch('touchMove', 200 + i * 15, 450 + i * 6);
     }
     await touch('touchEnd', 0, 0);
     await expect.poll(() => items(presenter), { timeout: 15000 }).toBe(1);
