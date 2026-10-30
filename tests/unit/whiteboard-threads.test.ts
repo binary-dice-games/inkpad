@@ -625,6 +625,30 @@ describe('pins attached to what they are put on', () => {
     }
   });
 
+  it('outlines what it would be attached to while it is dragged', async () => {
+    const t = await mount();
+    try {
+      const note = t.wb.addNote({ x: 200, y: 200 })!;
+      t.wb.addPin({ x: 600, y: 400 });
+      const node = () => t.root.querySelector(`.items > [data-id="${note}"]`)!;
+      const outlined = () => t.root.querySelector('.drop-target');
+      t.pick.find = () => t.root.querySelector('.pin-item');
+      press(t, 'pointerdown', 600, 400);
+      press(t, 'pointermove', 650, 420); // over nothing
+      expect(outlined()).toBeNull();
+      press(t, 'pointermove', 180, 230); // over the note
+      expect(node().classList.contains('drop-target')).toBe(true);
+      press(t, 'pointermove', 700, 100); // and off it again
+      expect(outlined()).toBeNull();
+      press(t, 'pointermove', 180, 230);
+      press(t, 'pointerup', 180, 230);
+      expect(outlined()).toBeNull();
+      expect(t.root.querySelector('.pin-ring')).toBeNull(); // the ring is for elements dragged by their pin
+    } finally {
+      done(t);
+    }
+  });
+
   it('pulls a thread when pressed on with Shift and dragged, whatever tool is in hand, and gives the tool back', async () => {
     const t = await mount();
     try {

@@ -64,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The project is now called inksplat, with a new logo: page titles, invite links (`#inksplat=`), saved files (`.inksplat.json`), npm packages (`@inksplat/...`), CMake names (`INKSPLAT_...`, `inksplat_add_test`) and the site address (`/inksplat/`).
 - Notes, pictures and links turn about their pin (Ctrl+drag, or attached to a turning element), not their centre; the pin and its threads stay put.
 - Dragging an element by its pin outlines the pin (a ring that goes with it), not the element, and outlines with a dashed line the element it would be attached to if dropped there.
+- Dragging a bare pin also outlines with a dashed line the element (note, picture, link or sticker) it would be attached to if dropped there; stickers get a dashed outline too.
 - Pictures and pinned files move with a plain drag, whoever pinned them, and are copied out of the board with Shift+drag (as pins use drag to move and Shift+drag for a thread). They are resized from a corner grip instead of with Shift.
 - The colour shortcut is now key 9 (6 is the sticky note, 7 the pin, 8 the thread).
 - Pinned pictures and files are slightly tilted at random, as if put up by hand.

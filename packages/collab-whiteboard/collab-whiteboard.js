@@ -1225,6 +1225,7 @@ svg.board.arrow, svg.board.pin { cursor: crosshair; }
 .ink-item.selected, .text-item.selected, .sticker-item.selected { filter: drop-shadow(0 0 2px var(--wb-accent)) drop-shadow(0 0 2px var(--wb-accent)); }
 .item.by-pin .paper { stroke: rgba(0,0,0,0.25); stroke-width: 0.75; }
 .item.drop-target .paper { stroke: var(--wb-accent); stroke-width: 2.5; stroke-dasharray: 7 4; }
+.sticker-item.drop-target use { outline: 2.5px dashed var(--wb-accent); outline-offset: 3px; }
 .pin-ring { stroke: var(--wb-accent, #3e63dd); stroke-width: 2.5; }
 .item.editing text { visibility: hidden; }
 .selbar { position: absolute; display: flex; align-items: center; gap: 3px; padding: 4px; border-radius: 8px; transform: translate(-50%, -100%);
@@ -3709,17 +3710,23 @@ export class Whiteboard {
   }
 
   /**
-   * @private While an element is dragged by its pin: the ring is around the pin, and the element it
-   * would be attached to if it were dropped now (if any) is outlined.
+   * @private While an element is dragged by its pin, or a bare pin is dragged: the element it would
+   * be attached to if it were dropped now (if any) is outlined, and for an element the ring is
+   * around its pin.
    */
   showPinDrag(d, dx, dy, p) {
-    if (!d.byPin) {
+    let target = null;
+    if (d.byPin) {
+      const at = pinPoint(d.item, this.lookup);
+      d.ring.setAttribute('cx', at.x + dx);
+      d.ring.setAttribute('cy', at.y + dy);
+      target = this.hostUnder(d.item, p);
+    } else if (d.item.kind === 'pin') {
+      // Where the pin would be dropped, as `up` attaches it.
+      target = this.model.get(this.attachment({ x: d.item.x + dx, y: d.item.y + dy }, d.item.id).on);
+    } else {
       return;
     }
-    const at = pinPoint(d.item, this.lookup);
-    d.ring.setAttribute('cx', at.x + dx);
-    d.ring.setAttribute('cy', at.y + dy);
-    const target = this.hostUnder(d.item, p);
     if (target?.id !== d.target) {
       this.nodes.get(d.target)?.node.classList.remove('drop-target');
       this.nodes.get(target?.id)?.node.classList.add('drop-target');
@@ -3732,8 +3739,8 @@ export class Whiteboard {
     if (d.byPin) {
       d.ring.remove();
       this.nodes.get(d.item.id)?.node.classList.remove('by-pin');
-      this.nodes.get(d.target)?.node.classList.remove('drop-target');
     }
+    this.nodes.get(d.target)?.node.classList.remove('drop-target');
   }
 
   /**
