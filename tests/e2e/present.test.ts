@@ -814,9 +814,60 @@ describe('static presenter page', () => {
       () => (window as unknown as { asked: { video: { cursor?: string } } }).asked,
     );
     expect(asked.video.cursor).toBe('never');
-    // Stored: a reload shows them again.
+    // Stored: a reload shows them again (the page asks first: it ends the session).
+    presenter.once('dialog', (d) => void d.accept());
     await presenter.reload();
     await expect.poll(() => presenter.locator('#summary').textContent()).toMatch(/Pat.*hidden/);
+  });
+
+  it('asks before closing, keeps a backup of the board and offers to resume it', async () => {
+    const presenter = await presenterPage();
+    await site.startBoard(presenter);
+    await draw(presenter, [200, 200]);
+    await draw(presenter, [200, 320]);
+    expect(await items(presenter)).toBe(2);
+    const backedUp = () =>
+      presenter.evaluate(async () => {
+        try {
+          const dir = await navigator.storage.getDirectory();
+          const file = await (await dir.getFileHandle('board-backup.inksplat.json')).getFile();
+          return (JSON.parse(await file.text()) as { items: unknown[] }).items.length;
+        } catch {
+          return 0;
+        }
+      });
+    await expect.poll(backedUp, { timeout: 10000 }).toBe(2);
+
+    // Leaving the page ends the session: the browser asks first, and staying keeps it.
+    let asked = '';
+    presenter.once('dialog', (d) => {
+      asked = d.type();
+      void d.dismiss();
+    });
+    await presenter.evaluate(() => void setTimeout(() => location.reload()));
+    await expect.poll(() => asked).toBe('beforeunload');
+    expect(await presenter.locator('#app').isVisible()).toBe(true);
+    presenter.once('dialog', (d) => void d.accept());
+    await presenter.reload();
+
+    // The next session offers the backup; Resume brings the board back.
+    await presenter.locator('#startBoard').click();
+    await presenter.locator('#resume').waitFor({ state: 'visible', timeout: 30000 });
+    expect(await presenter.locator('#resumeText').textContent()).toMatch(/2 items/);
+    await presenter.keyboard.press('Escape'); // it must be answered
+    expect(await presenter.locator('#resume').isVisible()).toBe(true);
+    await presenter.locator('#resumeYes').click();
+    await expect.poll(() => items(presenter), { timeout: 10000 }).toBe(2);
+
+    // Ending keeps the backup; Start new on the next session empties it.
+    presenter.once('dialog', (d) => void d.accept());
+    await presenter.locator('#end').click();
+    await presenter.locator('#again').click();
+    await presenter.locator('#startBoard').click();
+    await presenter.locator('#resume').waitFor({ state: 'visible', timeout: 30000 });
+    await presenter.locator('#resumeNo').click();
+    expect(await items(presenter)).toBe(0);
+    await expect.poll(backedUp, { timeout: 10000 }).toBe(0);
   });
 
   it('applies video settings to a running share', async () => {
@@ -845,6 +896,7 @@ describe('static presenter page', () => {
     await expect.poll(() => presenter.locator('#panel').isVisible()).toBe(false);
 
     // Remembered across a reload (the next session starts folded).
+    presenter.once('dialog', (d) => void d.accept());
     await presenter.reload();
     await presenter.locator('#startShare').click();
     await presenter.locator('#app').waitFor({ state: 'visible', timeout: 30000 });

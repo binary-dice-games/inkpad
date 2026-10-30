@@ -95,7 +95,28 @@ screen, or share a window or tab instead.
    Shows the warnings of section 3.
 3. **Ended**: "Session over" with **Start again**.
 
-Closing the page ends the session (viewers see `host-gone`).
+Closing the page ends the session (viewers see `host-gone`), so while a session runs the page
+asks first (`beforeunload`: the browser's own "Leave site?" prompt, for closing the tab or the
+window, reloading or navigating away). **End session** asks too.
+
+### Backup of the board
+
+So that a closed tab, a crash or a reload does not lose the work, the presenter page keeps the
+board in a backup file (`viewer/src/backup.ts`): the same board file as **Save... > Board file**
+(`boardFile` in `viewer/src/save.ts`: items, pinned files, backgrounds), written about a second
+after every change of the board or the stage (`BackupWriter`: at most one write at a time,
+changes in between go in the next), and flushed when the page is hidden or closed. It lives in
+the browser's storage for the site, not in Downloads: a file in the origin private file system
+(`board-backup.inksplat.json`), or an IndexedDB record where the browser cannot write OPFS files;
+with neither there is no backup. An empty board removes the backup. **End session** keeps it.
+
+When a session starts and a backup holds items, a dialog asks: **Resume** adds it to the new
+board (as **Open...** does, `openBoardFile`: everything becomes the presenter's), **Start new**
+leaves the board empty (the backup is then replaced), and **Download backup** saves it as a file
+first. Escape does not close it. Writing starts only once it is answered, so the old backup is
+not overwritten before. There is one backup per browser profile and site: two presenter tabs at
+once overwrite each other's (the last change wins). Viewers keep no backup: the board lives on
+the presenter's side, and a viewer that leaves loses nothing.
 
 `present.html?tr=wss://...` (repeatable) replaces the public trackers, and the viewer
 link then carries them (the same `tr` rule as `spec/01_core_features/DESIGN.md`).

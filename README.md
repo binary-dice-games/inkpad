@@ -40,6 +40,8 @@ a copy out of (Shift+drag it out; a plain drag moves it); **QR code** in the con
 **Save...** and **Open...** (viewer bar, presenter controls) save the board as a PNG picture, an SVG drawing, or a board
 file (`.inksplat.json`: items plus the files pinned on them) that **Open...** adds to a new session to carry on;
 everything opened becomes the opener's own, so it can be moved and changed there.
+The presenter page asks before closing or reloading (that ends the session) and keeps a backup of the board in the
+browser, written a second after every change; the next session offers to **Resume** it or **Start new**.
 
 ## Build and test
 
