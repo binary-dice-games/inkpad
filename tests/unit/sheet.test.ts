@@ -33,6 +33,15 @@ describe('the sheet of a session without video', () => {
     }
   });
 
+  it('gives the wall and the cork a lit rough surface, and the cork a frame', () => {
+    for (const name of ['wall', 'cork'] as const) {
+      const style = BACKGROUND_STYLES[name];
+      expect(style.blend).toContain('multiply');
+      expect(style.shadow).toContain('inset');
+    }
+    expect(BACKGROUND_STYLES.cork.border).toContain('solid');
+  });
+
   it('shows the video while there is one', () => {
     const p = parts();
     showSheet(p, stage(), 2);
@@ -56,6 +65,6 @@ describe('the sheet of a session without video', () => {
     showSheet(p, stage({ video: false }), 2);
     expect(p.page.style.border).toContain('rgb(185, 190, 198)');
     showSheet(p, stage({ video: false, background: 'cork' }), 2);
-    expect(p.page.style.border).toContain('rgb(138, 96, 56)');
+    expect(p.page.style.border).toContain('rgb(139, 94, 52)');
   });
 });

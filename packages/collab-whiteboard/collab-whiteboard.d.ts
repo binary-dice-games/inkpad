@@ -50,6 +50,18 @@ export interface ImageItem extends ItemBase {
   rot?: number;
 }
 
+/** A web link pinned on the board as a card; clicking it opens `url` in a new tab. */
+export interface LinkItem extends ItemBase {
+  kind: 'link';
+  x: number;
+  y: number;
+  /** Width of the card. */
+  size: number;
+  /** An http or https address. */
+  url: string;
+  rot?: number;
+}
+
 /** A file shared on the board. */
 export interface FileInfo {
   name: string;
@@ -61,7 +73,7 @@ export interface Tombstone extends ItemBase {
   deleted: true;
 }
 
-export type Item = InkItem | TextItem | StickerItem | ImageItem;
+export type Item = InkItem | TextItem | StickerItem | ImageItem | LinkItem;
 export type StoredItem = Item | Tombstone;
 
 export type Operation = { t: 'put'; item: StoredItem } | { t: 'clear'; stamp: Stamp };
@@ -94,6 +106,9 @@ export function cleanItem(item: unknown): StoredItem | null;
 
 /** The file description if valid (the name is made safe as a file name), else null. */
 export function cleanFileInfo(info: unknown): FileInfo | null;
+
+/** The address if it is a short http or https link, else null. */
+export function cleanUrl(value: unknown): string | null;
 
 /** What {@link prepareFile} makes of a file. */
 export interface PreparedFile {
@@ -246,6 +261,10 @@ export interface WhiteboardOptions {
   prepareFile?: typeof prepareFile;
   /** Previews of PDF and Office files (they are not part of this package). */
   filePreview?: FilePreview;
+  /** Random numbers in [0, 1) for the tilt of what is pinned (tests). */
+  random?: () => number;
+  /** Opens a link card's page (default: a new tab, `noopener`). */
+  openUrl?: (url: string) => void;
 }
 
 export class Whiteboard {
@@ -266,6 +285,11 @@ export class Whiteboard {
    * the item, or null if refused; throws a WhiteboardError for an empty or too large file.
    */
   addFile(file: File, at?: { x: number; y: number }): Promise<string | null>;
+  /**
+   * Pins a web link (a card that opens the page when clicked); null when read only.
+   * @throws {WhiteboardError} when `url` is not an http or https address
+   */
+  addLink(url: string, at?: { x: number; y: number }): string | null;
   /** The file of an image item (its picture if no file was shared); null while it arrives. */
   fileOf(id: string): { blob: Blob; name: string; mime: string } | null;
   /** Saves the file of an image item in the browser's downloads. */

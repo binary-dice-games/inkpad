@@ -25,9 +25,56 @@ function grain(
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
 
+/** A tiling SVG image from `body` (SVG elements, with their filters in `defs`). */
+function tile(defs: string, body: string, size: number): string {
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>` +
+    `<defs>${defs}</defs>${body}</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+/**
+ * Relief of a rough surface: fractal noise lit from the upper left, as light and shade to
+ * multiply over a colour (`frequency` is the size of the grain, `depth` how rough it is).
+ */
+function relief(frequency: number, depth: number, seed: number, size = 300): string {
+  const defs =
+    `<filter id='r' x='0' y='0' width='100%' height='100%'>` +
+    `<feTurbulence type='fractalNoise' baseFrequency='${frequency}' numOctaves='4' seed='${seed}' stitchTiles='stitch' result='t'/>` +
+    `<feDiffuseLighting in='t' lighting-color='#ffffff' surfaceScale='${depth}' diffuseConstant='1.15'>` +
+    `<feDistantLight azimuth='225' elevation='58'/></feDiffuseLighting></filter>`;
+  return tile(defs, `<rect width='100%' height='100%' filter='url(#r)'/>`, size);
+}
+
+/**
+ * Specks scattered over a surface: noise cut at a threshold, so only its peaks remain, in the
+ * colour `rgb`. A lower `cut` (0 to 1) leaves more of them.
+ */
+function specks(
+  rgb: [number, number, number],
+  frequency: number,
+  cut: number,
+  opacity: number,
+  seed: number,
+  size = 300,
+): string {
+  const [r, g, b] = rgb.map((c) => c / 255);
+  const steps = Array.from({ length: 12 }, (_, i) => (i / 11 >= cut ? opacity : 0)).join(' ');
+  const defs =
+    `<filter id='s' x='0' y='0' width='100%' height='100%'>` +
+    `<feTurbulence type='fractalNoise' baseFrequency='${frequency}' numOctaves='2' seed='${seed}' stitchTiles='stitch'/>` +
+    `<feColorMatrix values='0 0 0 0 ${r} 0 0 0 0 ${g} 0 0 0 0 ${b} 1 0 0 0 0'/>` +
+    `<feComponentTransfer><feFuncA type='discrete' tableValues='${steps}'/></feComponentTransfer>` +
+    `</filter>`;
+  return tile(defs, `<rect width='100%' height='100%' filter='url(#s)'/>`, size);
+}
+
 /** The CSS of each background (`background` and the frame around the sheet). */
 export const BACKGROUND_STYLES: Readonly<
-  Record<Background, { background: string; border: string; label: string }>
+  Record<
+    Background,
+    { background: string; border: string; label: string; blend?: string; shadow?: string }
+  >
 > = {
   whiteboard: {
     label: 'Whiteboard',
@@ -40,14 +87,21 @@ export const BACKGROUND_STYLES: Readonly<
     border: '14px solid #7a5230',
   },
   wall: {
+    // Painted plaster: a rough surface lit from one side, soft patches of paint, light falling off
+    // towards the corners.
     label: 'Wall',
-    background: `${grain([90, 70, 50], 0.25, 0.04, 400)}, ${grain([110, 90, 70], 0.3, 0.7)}, #d8cdbb`,
+    background: `radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0) 45%, rgba(90,70,50,0.28) 130%), ${grain([150, 130, 100], 0.22, 0.006, 500)}, ${relief(0.55, 1.8, 7)}, #f1e7d3`,
+    blend: 'normal, normal, multiply, normal',
     border: '0 none',
+    shadow: 'inset 0 0 60px rgba(60,40,20,0.35)',
   },
   cork: {
+    // Cork: a granular surface in light and dark brown, a few lighter and darker flecks, and a wooden frame.
     label: 'Cork board',
-    background: `${grain([70, 40, 15], 0.55, 0.45)}, ${grain([230, 190, 130], 0.35, 0.08, 300)}, #c49a64`,
-    border: '14px solid #8a6038',
+    background: `${specks([70, 42, 20], 0.22, 0.72, 0.75, 11)}, ${specks([214, 176, 126], 0.16, 0.8, 0.5, 5)}, ${grain([100, 70, 40], 0.55, 0.01, 500)}, ${relief(0.3, 2.2, 3)}, #bd9467`,
+    blend: 'normal, normal, normal, multiply, normal',
+    border: '16px solid #8b5e34',
+    shadow: 'inset 0 0 22px rgba(40,20,0,0.55)',
   },
 };
 
@@ -78,6 +132,8 @@ export function showSheet(
     width: `${r.width}px`,
     height: `${r.height}px`,
     background: style.background,
+    backgroundBlendMode: style.blend ?? '',
+    boxShadow: style.shadow ?? '',
     border: style.border,
     boxSizing: 'border-box',
   });

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Web links on the board: paste a link (Ctrl+V) or drag one from a page onto it to pin a card with its address; clicking the card opens the page in a new tab.
 - White in the colour list (the eighth colour).
 - PDF and Office files dropped on the board show their content on the card: the first page of a PDF, the saved thumbnail or the first paragraphs of a Word, Excel, PowerPoint or OpenDocument file (older .doc, .xls and .ppt files show only the card).
 - **QR code** button in the presenter controls: shows the viewer link as a QR code to scan with a phone or tablet camera, and copies it as an image.
@@ -37,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adapted from nymph.
 
 - Privacy policy page on the viewer site.
+
+### Changed
+
+- Pinned pictures and files are slightly tilted at random, as if put up by hand.
+- Wall and cork backgrounds look like painted plaster and cork, with a lit, rough surface and a wooden frame on the cork.
 
 ### Fixed
 

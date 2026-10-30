@@ -54,6 +54,9 @@ presenter on Chrome.
 | 40 | Drop a PDF, a .docx, a .pptx and an .xlsx on the board | The cards show the first page of the PDF and the thumbnail or the first lines of the others; an old .doc shows only the card |
 | 41 | Presenter controls: **QR code**; scan it with an iPad or phone camera | The device opens the viewer link and joins; **Copy image** pastes a QR image into a chat or document |
 | 42 | Press 6 repeatedly and draw with white on the blackboard and on the whiteboard | The eighth colour is white; it is visible on the blackboard, and white text has a dark outline on light backgrounds |
+| 43 | Pin a file and a picture on the board | each sits a few degrees tilted (at most 7), a different angle each time |
+| 44 | Copy a web address and press Ctrl+V on the board, or drag one from another tab | a card with the site name and path appears; on a viewer, clicking it opens the page in a new tab; hovering shows the full address |
+| 45 | Choose the wall and cork backgrounds | plaster with soft shading and a rough surface; cork with grain and a wooden frame |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

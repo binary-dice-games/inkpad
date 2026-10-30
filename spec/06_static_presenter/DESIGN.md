@@ -116,7 +116,7 @@ false})`, no `setMedia`, and the `stage` message says `video: false` plus a `bac
 (`whiteboard`, `blackboard`, `wall`, `cork`; the presenter picks it, viewers cannot). Both pages
 then hide the `<video>` and show a sheet of the stage's aspect (16:9 unless a capture said
 otherwise), letterboxed in the window, with that background (`viewer/src/sheet.ts`: CSS gradients
-and inline SVG noise, no image files). The `<video>` and the sheet sit in one `#zoom` element,
+and inline SVG noise and lighting filters, no image files; the wall and cork multiply a lit rough surface over their colour). The `<video>` and the sheet sit in one `#zoom` element,
 which is what the wheel zooms, so the drawings stay on the sheet. Pause, Share again and the
 video limits do not apply; adding video to a running board is not supported.
 

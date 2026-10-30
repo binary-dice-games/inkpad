@@ -106,8 +106,8 @@ describe('static presenter page', () => {
       page.locator('#page').evaluate((e) => getComputedStyle(e).borderTopColor);
     await expect.poll(() => frame(viewer)).toBe('rgb(185, 190, 198)');
     await presenter.locator('#background').selectOption('cork');
-    await expect.poll(() => frame(viewer), { timeout: 15000 }).toBe('rgb(138, 96, 56)');
-    await expect.poll(() => frame(presenter)).toBe('rgb(138, 96, 56)');
+    await expect.poll(() => frame(viewer), { timeout: 15000 }).toBe('rgb(139, 94, 52)');
+    await expect.poll(() => frame(presenter)).toBe('rgb(139, 94, 52)');
 
     // Files dropped on the presenter's board: a text file, a real picture, a binary one.
     await presenter.evaluate(async () => {
@@ -256,6 +256,41 @@ describe('static presenter page', () => {
       });
     expect(await dark(0)).toBeGreaterThan(3000); // the black bar of the page
     expect(await dark(1)).toBeGreaterThan(100); // the first lines of the document
+  });
+
+  it('pins a link that a viewer opens in a new tab', async () => {
+    const presenter = await presenterPage();
+    const link = await site.startBoard(presenter);
+    const viewer = await joinViewer(link);
+    await viewer.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+    await expect.poll(() => viewer.locator('#page').isVisible(), { timeout: 15000 }).toBe(true);
+
+    // A web address dragged onto the presenter's board becomes a card (here, a page of the test site).
+    const target = `${new URL(link).origin}/`;
+    await presenter.evaluate((url) => {
+      const dt = new DataTransfer();
+      dt.setData('text/uri-list', url);
+      document.getElementById('stage')!.dispatchEvent(
+        new DragEvent('drop', {
+          dataTransfer: dt,
+          bubbles: true,
+          cancelable: true,
+          clientX: 300,
+          clientY: 200,
+        }),
+      );
+    }, target);
+    const card = viewer.locator('collab-whiteboard .link-item');
+    await expect.poll(() => card.count(), { timeout: 30000 }).toBe(1);
+    expect(await card.locator('title').textContent()).toBe(target);
+    expect(await card.locator('text').first().textContent()).toContain('127.0.0.1');
+
+    // Clicking it, as a viewer, opens the page in another tab.
+    const popup = viewer.context().waitForEvent('page');
+    await card.locator('rect').nth(1).click();
+    const opened = await popup;
+    expect(opened.url()).toBe(target);
+    await opened.close();
   });
 
   it('hides the pointer when asked, and remembers the settings', async () => {

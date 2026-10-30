@@ -43,7 +43,7 @@ export class WhiteboardError extends Error {}
 const ID = /^[A-Za-z0-9_.-]{1,64}$/;
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const STICKER = /^[a-z0-9-]{1,32}$/;
-const KINDS = new Set(['ink', 'text', 'sticker', 'image']);
+const KINDS = new Set(['ink', 'text', 'sticker', 'image', 'link']);
 const IMAGE_DATA = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
 const TOOL_NAMES = new Set(['pointer', 'pen', 'text', 'sticker', 'eraser']);
 const MIME = /^[a-z0-9][a-z0-9.+-]{0,60}\/[a-z0-9][a-z0-9.+-]{0,80}$/;
@@ -95,6 +95,13 @@ export function cleanItem(item) {
     const file = cleanFileInfo(item.file);
     return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, data: item.data, ...(file ? { file } : {}), ...turned(item.rot) };
   }
+  if (item.kind === 'link') {
+    const url = cleanUrl(item.url);
+    if (!url || !finite(item.x) || !finite(item.y) || !finite(item.size, 40, 1000)) {
+      return null;
+    }
+    return { ...base, x: item.x, y: item.y, size: item.size, url, ...turned(item.rot) };
+  }
   if (!finite(item.x) || !finite(item.y) || !finite(item.size, 4, 400)) {
     return null;
   }
@@ -108,6 +115,19 @@ export function cleanItem(item) {
     return null;
   }
   return { ...base, x: item.x, y: item.y, size: item.size, name: item.name, ...turned(item.rot) };
+}
+
+/** The web address if it is a short http or https link, else null (so a peer cannot pin a script or a local file). */
+export function cleanUrl(value) {
+  if (typeof value !== 'string' || value.length > 2000 || /[\u0000-\u0020]/.test(value.trim())) {
+    return null;
+  }
+  try {
+    const u = new URL(value.trim());
+    return (u.protocol === 'https:' || u.protocol === 'http:') && u.hostname && u.href.length <= 2000 ? u.href : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -692,6 +712,13 @@ const pinColor = (id) => PALETTE[[...id].reduce((n, c) => n + c.charCodeAt(0), 0
 
 const nearest = (list, v) => list.reduce((best, x, i) => (Math.abs(x - v) < Math.abs(list[best] - v) ? i : best), 0);
 const readableOn = (hex) => ((parseInt(hex.slice(1, 3), 16) * 299 + parseInt(hex.slice(3, 5), 16) * 587 + parseInt(hex.slice(5, 7), 16) * 114) / 1000 > 150 ? '#1c2024' : '#ffffff');
+const decodeSafe = (s) => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
 const degrees = (a) => Math.round((((a + 180) % 360) + 360) % 360 * 10 - 1800) / 10;
 
 /** Labels a host can translate (`strings` option). */
@@ -739,6 +766,7 @@ svg.board { position: absolute; inset: 0; width: 100%; height: 100%; overflow: v
 svg.board.active { pointer-events: auto; touch-action: none; }
 svg.board .item { pointer-events: visiblePainted; touch-action: none; }
 svg.board .item .hit { pointer-events: stroke; }
+svg.board .link-item { cursor: pointer; }
 svg.board.pen { cursor: crosshair; } svg.board.text { cursor: text; } svg.board.sticker { cursor: copy; }
 svg.board.eraser { cursor: cell; }
 svg.board:not(.pen):not(.eraser) .item.own { cursor: move; }
@@ -906,6 +934,8 @@ export class Whiteboard {
     this.turns = options.turns !== false;
     this.prepare = options.prepareFile ?? prepareFile;
     this.filePreview = options.filePreview ?? null;
+    this.random = options.random ?? Math.random;
+    this.openUrl = options.openUrl ?? ((url) => window.open(url, '_blank', 'noopener,noreferrer'));
     this.files = new Map(); // item id -> Blob of the file shared with the item
     this.proxies = new Map(); // item id -> {el, img}: what a copy is dragged from
     if (getComputedStyle(container).position === 'static') {
@@ -1023,7 +1053,7 @@ export class Whiteboard {
     }
     const p = await this.prepare(file, { room: LIMITS.filesTotal - this.fileTotal(), preview: this.filePreview });
     const size = p.card ? 170 : Math.max(40, Math.min(300, p.width));
-    const op = this.local(() => this.model.add({ kind: 'image', x: round1(at.x), y: round1(at.y), size, ratio: Math.round((p.height / p.width) * 10000) / 10000, data: p.data, ...(p.file ? { file: p.file } : {}) }));
+    const op = this.local(() => this.model.add({ kind: 'image', x: round1(at.x), y: round1(at.y), size, ratio: Math.round((p.height / p.width) * 10000) / 10000, data: p.data, ...(p.file ? { file: p.file } : {}), ...turned(this.tilt()) }));
     if (!op) {
       return null;
     }
@@ -1034,6 +1064,29 @@ export class Whiteboard {
       this.flash(`${p.name}: shared as a picture only (too big to send)`);
     }
     return op.item.id;
+  }
+
+  /**
+   * Pins a web link on the board at (x, y) (content units): a card with its address that opens the
+   * page in a new tab when clicked.
+   * @returns {string | null} the id of the item, null if it was refused (read only)
+   * @throws {WhiteboardError} when `url` is not a http or https address
+   */
+  addLink(url, at = { x: 500, y: 300 }) {
+    const clean = cleanUrl(url);
+    if (!clean) {
+      throw new WhiteboardError('That is not a web address (http or https).');
+    }
+    if (this.readOnlyFlag) {
+      return null;
+    }
+    const op = this.local(() => this.model.add({ kind: 'link', x: round1(at.x), y: round1(at.y), size: 200, url: clean, ...turned(this.tilt()) }));
+    return op ? op.item.id : null;
+  }
+
+  /** @private A small random turn (up to 7 degrees either way) for what is pinned, as if by hand. */
+  tilt() {
+    return Math.round((this.random() * 2 - 1) * 70) / 10;
   }
 
   /** The file of an image item as {blob, name, mime}: the shared file, else its picture; null while it arrives. */
@@ -1662,6 +1715,26 @@ export class Whiteboard {
     }
   }
 
+  /** @private A print pinned on the board around `content`: border, pin, and a shadow that stays put when turned. */
+  printNode(item, h, turn, content) {
+    const pad = Math.min(8, Math.max(3, item.size * 0.03));
+    const left = item.x - item.size / 2;
+    const top = item.y - h / 2;
+    const r = Math.min(8, Math.max(4, item.size * 0.035));
+    const py = top - pad + r * 1.15;
+    const print = svgEl('g', { ...turn });
+    print.append(
+      svgEl('rect', { x: left - pad, y: top - pad, width: item.size + 2 * pad, height: h + 2 * pad, fill: '#ffffff', stroke: 'rgba(0,0,0,0.25)', 'stroke-width': 0.75 }),
+      ...content,
+      svgEl('ellipse', { cx: item.x + r * 0.45, cy: py + r * 0.7, rx: r * 0.95, ry: r * 0.6, fill: 'rgba(0,0,0,0.3)' }),
+      svgEl('circle', { cx: item.x, cy: py, r, fill: pinColor(item.id), stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8 }),
+      svgEl('circle', { cx: item.x - r * 0.3, cy: py - r * 0.32, r: r * 0.3, fill: 'rgba(255,255,255,0.6)' }),
+    );
+    const shadow = svgEl('g', { filter: 'url(#wb-shadow)' });
+    shadow.append(print);
+    return shadow;
+  }
+
   /** @private One item's SVG. Text goes in as textContent only. */
   itemNode(item) {
     const own = item.author === this.model.peerId ? ' own' : '';
@@ -1687,22 +1760,43 @@ export class Whiteboard {
     } else if (item.kind === 'image') {
       // A print pinned on the board: a white border, a shadow that stays put when it is turned, a pin.
       const h = item.size * item.ratio;
-      const pad = Math.min(8, Math.max(3, item.size * 0.03));
       const left = item.x - item.size / 2;
       const top = item.y - h / 2;
-      const r = Math.min(8, Math.max(4, item.size * 0.035));
-      const py = top - pad + r * 1.15;
-      const print = svgEl('g', { ...turn });
-      print.append(
-        svgEl('rect', { x: left - pad, y: top - pad, width: item.size + 2 * pad, height: h + 2 * pad, fill: '#ffffff', stroke: 'rgba(0,0,0,0.25)', 'stroke-width': 0.75 }),
-        svgEl('image', { href: item.data, x: left, y: top, width: item.size, height: h, preserveAspectRatio: 'none' }),
-        svgEl('ellipse', { cx: item.x + r * 0.45, cy: py + r * 0.7, rx: r * 0.95, ry: r * 0.6, fill: 'rgba(0,0,0,0.3)' }),
-        svgEl('circle', { cx: item.x, cy: py, r, fill: pinColor(item.id), stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8 }),
-        svgEl('circle', { cx: item.x - r * 0.3, cy: py - r * 0.32, r: r * 0.3, fill: 'rgba(255,255,255,0.6)' }),
-      );
-      const shadow = svgEl('g', { filter: 'url(#wb-shadow)' });
-      shadow.append(print);
-      g.append(shadow);
+      g.append(this.printNode(item, h, turn, [svgEl('image', { href: item.data, x: left, y: top, width: item.size, height: h, preserveAspectRatio: 'none' })]));
+    } else if (item.kind === 'link') {
+      // A card of the page's address, drawn here from the link itself (not from a picture the sender made).
+      const u = new URL(item.url);
+      const w = item.size;
+      const h = w * 0.5;
+      const left = item.x - w / 2;
+      const top = item.y - h / 2;
+      let hue = 0;
+      for (const ch of u.hostname) {
+        hue = (hue * 31 + ch.charCodeAt(0)) % 360;
+      }
+      const fit = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}\u2026` : text);
+      const label = (str, x, y, size, fill, weight) => {
+        const t = svgEl('text', { x, y, 'font-size': size, fill, 'font-weight': weight, 'font-family': 'system-ui, -apple-system, "Segoe UI", sans-serif' });
+        t.style.stroke = 'none'; // not the halo of text notes
+        t.textContent = str;
+        return t;
+      };
+      const path = decodeSafe(u.pathname + u.search) || '/';
+      const title = svgEl('title');
+      title.textContent = item.url;
+      const gx = left + w * 0.09;
+      const gy = top + h * 0.17;
+      const parts = [
+        svgEl('rect', { x: left, y: top, width: w, height: h * 0.34, fill: `hsl(${hue} 55% 42%)` }),
+        svgEl('circle', { cx: gx, cy: gy, r: h * 0.11, fill: 'none', stroke: '#ffffff', 'stroke-width': w * 0.01 }),
+        svgEl('ellipse', { cx: gx, cy: gy, rx: h * 0.05, ry: h * 0.11, fill: 'none', stroke: '#ffffff', 'stroke-width': w * 0.008 }),
+        svgEl('path', { d: `M${gx - h * 0.11} ${gy}h${h * 0.22}`, fill: 'none', stroke: '#ffffff', 'stroke-width': w * 0.008 }),
+        label(fit(u.hostname.replace(/^www\./, ''), 26), left + w * 0.2, top + h * 0.215, w * 0.062, '#ffffff', 700),
+        label(fit(path, 34), left + w * 0.06, top + h * 0.6, w * 0.054, '#2b2f36', 400),
+        label(u.protocol === 'http:' ? 'http \u00b7 not encrypted' : 'Click to open', left + w * 0.06, top + h * 0.88, w * 0.045, '#60646c', 400),
+        title,
+      ];
+      g.append(this.printNode(item, h, turn, parts));
     } else {
       const known = this.stickers.has(item.name);
       if (!known && !this.defs.querySelector(`#sticker-${item.name}`)) {
@@ -1736,6 +1830,8 @@ export class Whiteboard {
         add(i.x + Math.max(...lines.map((l) => l.length)) * i.size * 0.6, i.y + lines.length * i.size * 1.2, 0);
       } else if (i.kind === 'image') {
         add(i.x, i.y, (i.size * Math.max(1, i.ratio)) / 2);
+      } else if (i.kind === 'link') {
+        add(i.x, i.y, i.size / 2);
       } else {
         add(i.x, i.y, i.size / 2);
       }
@@ -2099,6 +2195,8 @@ export class Whiteboard {
     listen(this.board, 'pointercancel', (ev) => this.up(ev, true));
     listen(window, 'keydown', (ev) => this.key(ev), { capture: true });
     listen(this.board, 'contextmenu', (ev) => this.menu(ev));
+    listen(this.board, 'click', (ev) => this.openLink(ev));
+    listen(window, 'paste', (ev) => this.pasted(ev));
     listen(this.board, 'dblclick', (ev) => {
       const hit = this.itemAt(ev);
       if (hit?.kind === 'image') {
@@ -2113,7 +2211,7 @@ export class Whiteboard {
     listen(this.container, 'pointerup', (ev) => this.panEnd(ev));
     listen(this.container, 'pointercancel', (ev) => this.panEnd(ev));
     // Images dropped on the board.
-    listen(this.container, 'dragover', (ev) => this.hasFiles(ev) && ev.preventDefault());
+    listen(this.container, 'dragover', (ev) => (this.hasFiles(ev) || this.hasLink(ev)) && ev.preventDefault());
     listen(this.container, 'drop', (ev) => this.dropped(ev));
   }
 
@@ -2186,8 +2284,64 @@ export class Whiteboard {
     return !this.readOnlyFlag && [...(ev.dataTransfer?.types ?? [])].includes('Files');
   }
 
-  /** @private Files dropped on the board are pinned where they landed. */
+  /** @private Whether a drag carries a web address (a link dragged from a page or the address bar). */
+  hasLink(ev) {
+    const types = [...(ev.dataTransfer?.types ?? [])];
+    return !this.readOnlyFlag && !types.includes('Files') && (types.includes('text/uri-list') || types.includes('text/x-moz-url'));
+  }
+
+  /** @private The web address on a drag or paste, or null. */
+  linkIn(data) {
+    const text = (data?.getData('text/uri-list') || data?.getData('text/plain') || '').split(/\r?\n/).find((l) => l.trim() && !l.startsWith('#')) ?? '';
+    return cleanUrl(text);
+  }
+
+  /** @private A web address pasted (not into a note) is pinned as a link card. */
+  pasted(ev) {
+    const t = ev.target;
+    if (this.readOnlyFlag || t?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t?.tagName ?? '')) {
+      return;
+    }
+    const url = this.linkIn(ev.clipboardData);
+    if (url) {
+      ev.preventDefault();
+      this.pinLink(url, this.lastPoint ?? undefined);
+    }
+  }
+
+  /** @private Pins a link, reporting a refusal (a full board) as an error event. */
+  pinLink(url, at) {
+    try {
+      this.addLink(url, at);
+    } catch (e) {
+      if (!(e instanceof WhiteboardError)) {
+        throw e;
+      }
+      this.emit('error', e);
+    }
+  }
+
+  /** @private A click on a link card (with the pointer tool, and not at the end of a drag) opens the page in a new tab. */
+  openLink(ev) {
+    if (this.noClick || this.tool !== 'pointer') {
+      return;
+    }
+    const hit = this.itemAt(ev);
+    if (hit?.kind === 'link') {
+      this.openUrl(hit.url);
+    }
+  }
+
+  /** @private Files dropped on the board are pinned where they landed, a dropped web address as a link. */
   async dropped(ev) {
+    if (this.hasLink(ev)) {
+      const url = this.linkIn(ev.dataTransfer);
+      if (url) {
+        ev.preventDefault();
+        this.pinLink(url, this.eventPoint(ev));
+      }
+      return;
+    }
     if (!this.hasFiles(ev)) {
       return;
     }
@@ -2234,7 +2388,7 @@ export class Whiteboard {
     const hit = this.itemAt(ev);
     const mine = hit && hit.author === this.model.peerId ? hit : null;
     // Your own items move with the pointer tool, and with the tool that makes them.
-    const grab = mine && (this.tool === 'pointer' || (this.tool === 'text' && mine.kind === 'text') || (this.tool === 'sticker' && (mine.kind === 'sticker' || mine.kind === 'image')));
+    const grab = mine && (this.tool === 'pointer' || (this.tool === 'text' && mine.kind === 'text') || (this.tool === 'sticker' && (mine.kind === 'sticker' || mine.kind === 'image' || mine.kind === 'link')));
     if (this.tool === 'pointer' && !grab) {
       return;
     }
@@ -2297,14 +2451,15 @@ export class Whiteboard {
       return;
     }
     d.moved = true;
-    const flat = it.kind === 'sticker' || it.kind === 'image';
+    const flat = it.kind === 'sticker' || it.kind === 'image' || it.kind === 'link';
     const scaling = flat && ev.shiftKey;
     const turning = flat && (ev.ctrlKey || ev.metaKey || ev.altKey);
     if (scaling || turning) {
       const fields = {};
       if (scaling) {
         const grown = (it.size * Math.max(1, Math.hypot(p.x - it.x, p.y - it.y))) / Math.max(1, Math.hypot(d.from.x - it.x, d.from.y - it.y));
-        fields.size = round1(Math.min(it.kind === 'image' ? 2000 : 400, Math.max(it.kind === 'image' ? 8 : 4, grown)));
+        const [lo, hi] = { image: [8, 2000], link: [40, 1000] }[it.kind] ?? [4, 400];
+        fields.size = round1(Math.min(hi, Math.max(lo, grown)));
       }
       if (turning) {
         const a = Math.atan2(p.y - it.y, p.x - it.x) - Math.atan2(d.from.y - it.y, d.from.x - it.x);
@@ -2369,6 +2524,12 @@ export class Whiteboard {
       this.nodes.get(it.id)?.node.removeAttribute('transform');
       if (d.preview) {
         this.showPreview(it, {});
+      }
+      if (d.moved) {
+        this.noClick = true;
+        setTimeout(() => {
+          this.noClick = false;
+        }, 50);
       }
       if (d.moved && !cancelled) {
         if (d.fields) {

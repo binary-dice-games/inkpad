@@ -188,6 +188,13 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   double click saves it. Your own prints are moved, not copied. The prints are drawn with a
   border, a drop shadow (a filter on an unrotated wrapper so the light stays put) and a pin.
   Past the size limit a picture is still shared, as a preview only; any other file is refused.
+- **Tilt and links.** What is pinned (`image` and `link` items) gets a random `rot` of at most 7
+  degrees when added. A `link` item is `{x, y, size, url, rot?}` with an http(s) address only
+  (`cleanUrl`); it carries no picture: every client draws the card (site name, path, tooltip with
+  the whole address) from `url`, so a peer cannot show one address and open another. No page is
+  fetched (a browser page cannot read other sites, and sessions have no server), so the card is
+  not a screenshot. A click with the pointer tool, not at the end of a drag, opens `url` in a new
+  tab with `noopener`. Links come from paste, a dropped `text/uri-list`, or `addLink()`.
 - **Zoom.** Lives in the frame adapter, not in the items: `zoomAt`/`panBy` change a view
   (scale 1-8, always covering the box) that is folded into `transform()` and `clip()`, and
   applied as a CSS transform to the `content` element (the video). Drawings and picture
