@@ -2099,17 +2099,17 @@ export class Whiteboard {
     if (t === 'arrow') {
       // The thread of the icon, and a filled head at an end, turned along the curve there.
       const h = this.style.heads;
-      const A = { x: 5, y: 17 };
-      const C = { x: 12, y: 23 };
-      const B = { x: 19, y: 6 };
+      const A = { x: 4, y: 17 };
+      const C = { x: 12, y: 17 };
+      const B = { x: 20, y: 7 };
       const dot = (p) => `<circle cx="${p.x}" cy="${p.y}" r="2" fill="currentColor"/>`;
       const head = (tip, from) => {
         const len = Math.hypot(tip.x - from.x, tip.y - from.y);
         const ux = (tip.x - from.x) / len;
         const uy = (tip.y - from.y) / len;
-        const bx = tip.x - ux * 7;
-        const by = tip.y - uy * 7;
-        const pts = [tip, { x: bx - uy * 3.6, y: by + ux * 3.6 }, { x: bx + uy * 3.6, y: by - ux * 3.6 }];
+        const bx = tip.x - ux * 6;
+        const by = tip.y - uy * 6;
+        const pts = [tip, { x: bx - uy * 3, y: by + ux * 3 }, { x: bx + uy * 3, y: by - ux * 3 }];
         return `<polygon points="${pts.map((p) => `${round1(p.x)},${round1(p.y)}`).join(' ')}" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>`;
       };
       return `<path d="M${A.x} ${A.y}Q${C.x} ${C.y} ${B.x} ${B.y}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>${h === 'start' || h === 'both' ? head(A, C) : dot(A)}${h === 'end' || h === 'both' ? head(B, C) : dot(B)}`;
@@ -2171,6 +2171,7 @@ export class Whiteboard {
       return b;
     });
     this.popover.replaceChildren(...items);
+    this.popover.style.gridTemplateColumns = `repeat(${items.length <= 5 ? items.length : 4}, 34px)`;
     const at = kind === 'color' ? this.toolbarBox.querySelector('[aria-label="' + this.strings.color + '"]') : this.toolbarBox.children[this.tools.indexOf(kind)];
     this.popover.style.top = `${this.toolbarBox.offsetTop + (at?.offsetTop ?? 0)}px`;
     this.popover.hidden = false;
@@ -3462,6 +3463,10 @@ export class Whiteboard {
    * pins attached to it, and the threads tied to it or to those pins.
    */
   followThreads(item) {
+    if (this.editing?.note && this.editing.item.id === item.id) {
+      this.editing.preview = item; // the text box follows the note
+      this.placeTextarea();
+    }
     const resolve = (id) => (id === item.id ? item : this.model.get(id));
     const live = this.model.live();
     const moved = new Set([item.id, ...live.filter((i) => i.kind === 'pin' && i.on === item.id).map((i) => i.id)]);
@@ -3567,6 +3572,10 @@ export class Whiteboard {
         this.editText(it);
       } else if (!d.moved && it.kind === 'note' && !cancelled && this.canEdit(it)) {
         this.editNote(it);
+      }
+      if (this.editing?.note && this.editing.item.id === it.id) {
+        this.editing.preview = null; // the note is where it was put: the text box follows it there
+        this.placeTextarea();
       }
     } else if (this.pendingNote && !cancelled) {
       const at = this.pendingNote;
@@ -3697,7 +3706,7 @@ export class Whiteboard {
   /** @private Centres the text of the note being written, the way the drawn note does. */
   padNote() {
     const e = this.editing;
-    const it = e?.note ? (this.model.get(e.item.id) ?? e.item) : null;
+    const it = e?.note ? (e.preview ?? this.model.get(e.item.id) ?? e.item) : null;
     if (!it) {
       return;
     }
@@ -3711,7 +3720,7 @@ export class Whiteboard {
   placeTextarea() {
     const e = this.editing;
     if (e.note) {
-      const it = this.model.get(e.item.id) ?? e.item;
+      const it = e.preview ?? this.model.get(e.item.id) ?? e.item;
       const scale = Math.hypot(this.matrix.a, this.matrix.b) || 1;
       const c = this.toBox(it.x, it.y);
       const inset = SHAPE_INSET[it.shape ?? 'square'];

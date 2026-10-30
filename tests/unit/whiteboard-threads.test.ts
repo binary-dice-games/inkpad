@@ -850,6 +850,26 @@ describe('the options of a tool', () => {
     }
   });
 
+  it('have as many slots as options, up to four a row', async () => {
+    const t = await mount();
+    try {
+      const columns = (key: string) => {
+        t.tool(key).click();
+        const n = t.panel().length;
+        const cols = t.root.querySelector<HTMLElement>('.pop')!.style.gridTemplateColumns;
+        t.tool(key).click();
+        return [n, cols];
+      };
+      expect(columns('2')).toEqual([3, 'repeat(3, 34px)']); // line widths
+      expect(columns('8')).toEqual([4, 'repeat(4, 34px)']); // thread heads
+      expect(columns('6')).toEqual([5, 'repeat(5, 34px)']); // note shapes
+      expect(columns('9')).toEqual([8, 'repeat(4, 34px)']); // colours: two rows
+    } finally {
+      t.wb.destroy();
+      t.room.close();
+    }
+  });
+
   it('show the choice on the note panel with the colour of the paper', async () => {
     const t = await mount();
     try {

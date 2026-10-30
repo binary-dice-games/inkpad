@@ -61,6 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The text box of a note being written follows the note when it is moved, resized or turned.
+- An options panel has only as many slots as options (it always showed four).
+- The thread-head icons use a gentler curve so the head at the start points the right way.
 - The bar over a pin attached to another element is drawn over the pin, where it is, not where it was first put.
 - The thread-heads icons in the toolbar and its options panel are drawn as filled heads along the curve.
 - Dragging a pin that is attached to a note that has been moved no longer starts its thread from the note's old place.

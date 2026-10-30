@@ -255,3 +255,52 @@ describe('sticky notes on the board', () => {
     }
   });
 });
+
+describe('the text box of a note being written', () => {
+  it('follows the note when it is moved, resized or turned', async () => {
+    const room = new TestRoom();
+    const host = await room.start();
+    const wb = createWhiteboard(box(800, 450), {
+      session: host,
+      adapter: identity,
+      random: () => 0.5,
+    });
+    const root = wb.element.shadowRoot!;
+    const board = root.querySelector('svg')!;
+    Object.defineProperty(root, 'elementsFromPoint', {
+      value: () => [root.querySelector('.item')].filter(Boolean),
+    });
+    try {
+      wb.addNote({ x: 200, y: 200 }, 'writing');
+      pointer(board, 'pointerdown', 200, 200);
+      pointer(board, 'pointerup', 200, 200);
+      const ta = root.querySelector<HTMLTextAreaElement>('textarea.sticky')!;
+      const at = () => ({
+        left: Math.round(parseFloat(ta.style.left)),
+        top: Math.round(parseFloat(ta.style.top)),
+        width: Math.round(parseFloat(ta.style.width)),
+        height: Math.round(parseFloat(ta.style.height)),
+      });
+      expect(at()).toEqual({ left: 110, top: 110, width: 180, height: 180 });
+
+      // Dragged: the box goes along while the button is down, and stays where the note lands.
+      pointer(board, 'pointerdown', 200, 200);
+      pointer(board, 'pointermove', 260, 240);
+      expect(at()).toMatchObject({ left: 170, top: 150 });
+      pointer(board, 'pointerup', 260, 240);
+      expect(at()).toMatchObject({ left: 170, top: 150 });
+      expect(root.querySelector('textarea.sticky')).toBe(ta); // the same box, kept: what was typed stays
+
+      // Resized from the corner (at 350, 330): the box has the new size.
+      pointer(board, 'pointerdown', 345, 325);
+      pointer(board, 'pointermove', 395, 365);
+      expect(at()).toMatchObject({ left: 170, top: 150, width: 225, height: 215 });
+      pointer(board, 'pointerup', 395, 365);
+      expect(at()).toMatchObject({ width: 225, height: 215 });
+      expect(wb.items()[0]).toMatchObject({ size: 225 });
+    } finally {
+      wb.destroy();
+      room.close();
+    }
+  });
+});
