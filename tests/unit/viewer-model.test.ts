@@ -50,6 +50,10 @@ describe('placeholder', () => {
     expect(placeholder(stage(), false)).toMatch(/Waiting/);
     expect(placeholder(stage({ video: false }), false)).toBeNull(); // a board has no video to wait for
     expect(placeholder(stage(), true)).toBeNull();
+    // A canvas with a background instead of the video has nothing to wait for either.
+    expect(placeholder(stage(), false, 1)).toBeNull();
+    expect(placeholder(stage({ state: 'paused' }), true, 1)).toBeNull();
+    expect(placeholder(stage({ backgrounds: ['wall', 'video'] }), false, 1)).toMatch(/Waiting/);
   });
 
   it('says when the presenter paused or ended, whatever the video shows', () => {

@@ -112,13 +112,27 @@ is refused with a message.
 ### A board without video
 
 **Start a board without video** starts the same session with no capture: `ShareHost.start({video:
-false})`, no `setMedia`, and the `stage` message says `video: false` plus a `background`
-(`whiteboard`, `blackboard`, `wall`, `cork`; the presenter picks it, viewers cannot). Both pages
-then hide the `<video>` and show a sheet of the stage's aspect (16:9 unless a capture said
+false})`, no `setMedia`, and the `stage` message says `video: false`. Both pages then hide the
+`<video>` and show a sheet of the stage's aspect (16:9 unless a capture said
 otherwise), letterboxed in the window, with that background (`viewer/src/sheet.ts`: CSS gradients
 and inline SVG noise and lighting filters, no image files; the wall and cork multiply a lit rough surface over their colour). The `<video>` and the sheet sit in one `#zoom` element,
 which is what the wheel zooms, so the drawings stay on the sheet. Pause, Share again and the
 video limits do not apply; adding video to a running board is not supported.
+
+### Backgrounds per canvas
+
+Every canvas (spec/01_core_features/DESIGN.md, Canvases) has its own background, so the
+`stage` message carries `backgrounds`, one entry per canvas: `video` (only in a session with
+video) or `whiteboard`, `blackboard`, `wall`, `cork`. The presenter picks the one of the canvas
+they are on (`{cmd: 'background', page, name}`); viewers cannot. By default
+(`defaultBackgrounds`) canvas 1 shows the video when there is one and the others the four
+backgrounds in order (without video, the four in order from canvas 1, starting again on canvas
+5). Each page shows the `<video>` or the sheet for the canvas it is on (`canvasBackground`),
+and lays it out again when the person changes canvas; the sheet has the frame's aspect, so the
+drawings keep their place whichever background a canvas shows. The video is sent whatever
+canvas people are on. Board files keep `backgrounds` in their `meta`; opening one sets them
+(the `video` only where the session has video; older files with a single `background` set every
+canvas of a board without video).
 
 ### Link lifetime
 

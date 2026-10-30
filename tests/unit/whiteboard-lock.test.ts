@@ -169,8 +169,7 @@ describe('locking and text size on the board', () => {
       fire('pointerup', 260, 260);
       expect(t.wb.items()[0]).toMatchObject({ x: 200, y: 200 });
       expect(t.root.querySelector('textarea')).toBeNull(); // no editing either
-      const menu = new MouseEvent('contextmenu', { cancelable: true, bubbles: true });
-      board.dispatchEvent(menu);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
       expect(t.wb.items()).toHaveLength(1);
       expect(t.root.textContent).toContain('That element is locked');
       expect(errors).toEqual([]);

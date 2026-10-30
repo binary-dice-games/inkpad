@@ -5,8 +5,13 @@
  * Both pages share it; each gives the board, the stage and a way to tell the person what happened.
  */
 import type { Whiteboard } from '@inkpad/collab-whiteboard';
-import { DEFAULT_BACKGROUND, cleanBackground } from '@inkpad/defaults';
-import type { Background, Stage } from '@inkpad/defaults';
+import {
+  CANVASES,
+  canvasBackground,
+  cleanBackground,
+  cleanCanvasBackground,
+} from '@inkpad/defaults';
+import type { CanvasBackground, Stage } from '@inkpad/defaults';
 import { BACKGROUND_STYLES } from './sheet';
 
 /** What a page gives the save dialog. */
@@ -16,19 +21,29 @@ export interface SaveHost {
   /** The video element whose frame goes behind the drawing, if the session has video. */
   video(): HTMLVideoElement | null;
   toast(text: string): void;
-  /** Called with the background named in a board file that is opened (the presenter's page only). */
-  background?(name: Background): void;
+  /**
+   * Called with the backgrounds of the canvases named in a board file that is opened (the
+   * presenter's page only); `undefined` entries leave that canvas as it is.
+   */
+  backgrounds?(names: (CanvasBackground | undefined)[]): void;
 }
 
 /** The largest board file that is read (the files in it are at most 25 MB, as base64). */
 export const MAX_BOARD_FILE = 48 * 1024 * 1024;
 
-/** The CSS of the sheet's background for a saved picture, or undefined when the session has video. */
-export function exportBackground(stage: Stage | null): Record<string, string> | undefined {
-  if (stage?.video !== false) {
+/**
+ * The CSS of the sheet's background of canvas `canvas` for a saved picture, or undefined when
+ * that canvas shows the video.
+ */
+export function exportBackground(
+  stage: Stage | null,
+  canvas = 0,
+): Record<string, string> | undefined {
+  const background = canvasBackground(stage, canvas);
+  if (background === 'video') {
     return undefined;
   }
-  const style = BACKGROUND_STYLES[stage.background ?? DEFAULT_BACKGROUND];
+  const style = BACKGROUND_STYLES[background];
   return {
     background: style.background,
     ...(style.blend ? { 'background-blend-mode': style.blend } : {}),
@@ -79,9 +94,11 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
     return;
   }
   const stage = host.stage();
+  const canvas = board.currentPage();
+  const background = exportBackground(stage, canvas);
   const options = {
-    background: exportBackground(stage),
-    backdrop: stage?.video === false ? undefined : (videoFrame(host.video()) ?? undefined),
+    background,
+    backdrop: background ? undefined : (videoFrame(host.video()) ?? undefined),
   };
   const name = `inkpad-board-${fileStamp()}`;
   try {
@@ -93,9 +110,8 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
         `${name}.svg`,
       );
     } else {
-      const saved = await board.saveBoard(
-        stage?.video === false ? { background: stage.background ?? DEFAULT_BACKGROUND } : {},
-      );
+      const backgrounds = Array.from({ length: CANVASES }, (_, i) => canvasBackground(stage, i));
+      const saved = await board.saveBoard({ backgrounds });
       download(
         new Blob([JSON.stringify(saved)], { type: 'application/json' }),
         `${name}.inkpad.json`,
@@ -104,6 +120,26 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
   } catch (e) {
     host.toast(e instanceof Error ? e.message : 'The board could not be saved.');
   }
+}
+
+/**
+ * The canvas backgrounds a board file names, for the session in `stage`: its `backgrounds` (the
+ * video only where this session has video), or the single `background` of older files (every
+ * canvas, in a session without video). Undefined when it names none.
+ */
+export function fileBackgrounds(
+  meta: Record<string, unknown>,
+  stage: Stage | null,
+): (CanvasBackground | undefined)[] | undefined {
+  const video = stage?.video !== false;
+  if (Array.isArray(meta.backgrounds)) {
+    const list = Array.from({ length: CANVASES }, (_, i) =>
+      cleanCanvasBackground((meta.backgrounds as unknown[])[i], video),
+    );
+    return list.some((b) => b !== undefined) ? list : undefined;
+  }
+  const single = cleanBackground(meta.background);
+  return single && !video ? Array.from({ length: CANVASES }, () => single) : undefined;
 }
 
 /** Adds the board in `file` to the current one, and says what came of it. */
@@ -125,9 +161,9 @@ export async function openBoardFile(file: File, host: SaveHost): Promise<void> {
       throw new Error('That is not an inkpad board file.');
     }
     const r = await board.loadBoard(data);
-    const background = cleanBackground(r.meta.background);
-    if (background) {
-      host.background?.(background);
+    const backgrounds = fileBackgrounds(r.meta, host.stage());
+    if (backgrounds) {
+      host.backgrounds?.(backgrounds);
     }
     const files = r.files > 0 ? `, ${r.files} file${r.files === 1 ? '' : 's'}` : '';
     const skipped = r.skipped > 0 ? ` (${r.skipped} left out)` : '';

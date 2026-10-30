@@ -142,19 +142,59 @@ export interface Stage {
   drawing: boolean;
   /** `false` for a session without video (only the board); absent otherwise. */
   video?: false;
-  /** What the board looks like when there is no video; absent: the default. */
-  background?: Background;
+  /**
+   * What each canvas shows behind the board, one entry per canvas (index 0 is canvas 1); absent:
+   * {@link defaultBackgrounds}. `video` appears only in a session with video.
+   */
+  backgrounds?: CanvasBackground[];
   title?: string;
 }
 
-/** The backgrounds of a session without video. */
+/** The backgrounds drawn behind a canvas instead of the video. */
 export const BACKGROUNDS = ['whiteboard', 'blackboard', 'wall', 'cork'] as const;
 export type Background = (typeof BACKGROUNDS)[number];
 export const DEFAULT_BACKGROUND: Background = 'whiteboard';
 
+/** What a canvas shows behind the board: the shared video, or one of {@link BACKGROUNDS}. */
+export type CanvasBackground = Background | 'video';
+
+/** How many canvases a board has (the whiteboard's `PAGES`). */
+export const CANVASES = 5;
+
 /** The background if `value` is one of {@link BACKGROUNDS}, else undefined. */
 export function cleanBackground(value: unknown): Background | undefined {
   return BACKGROUNDS.find((b) => b === value);
+}
+
+/**
+ * The canvas background if `value` is `video` (only when `video` is allowed) or one of
+ * {@link BACKGROUNDS}, else undefined.
+ */
+export function cleanCanvasBackground(
+  value: unknown,
+  video: boolean,
+): CanvasBackground | undefined {
+  return video && value === 'video' ? 'video' : cleanBackground(value);
+}
+
+/**
+ * The backgrounds of the canvases when nobody has chosen: with video, canvas 1 shows the video
+ * and the others the backgrounds in order; without, the backgrounds in order, starting again
+ * when they run out.
+ */
+export function defaultBackgrounds(video: boolean): CanvasBackground[] {
+  const order: CanvasBackground[] = video ? ['video', ...BACKGROUNDS] : [...BACKGROUNDS];
+  return Array.from({ length: CANVASES }, (_, i) => order[i % order.length]!);
+}
+
+/**
+ * What canvas `page` (0 for the first) shows behind the board in `stage`; before any stage, the
+ * defaults of a session with video.
+ */
+export function canvasBackground(stage: Stage | null, page: number): CanvasBackground {
+  const video = stage?.video !== false;
+  const chosen = cleanCanvasBackground(stage?.backgrounds?.[page], video);
+  return chosen ?? defaultBackgrounds(video)[page] ?? (video ? 'video' : DEFAULT_BACKGROUND);
 }
 
 export const STAGE_CHANNEL = 'stage';
@@ -194,9 +234,12 @@ export function cleanStage(message: unknown): Stage | null {
   if (m.video === false) {
     stage.video = false;
   }
-  const background = cleanBackground(m.background);
-  if (background) {
-    stage.background = background;
+  if (Array.isArray(m.backgrounds)) {
+    const video = stage.video !== false;
+    const fallback = defaultBackgrounds(video);
+    stage.backgrounds = fallback.map(
+      (d, i) => cleanCanvasBackground((m.backgrounds as unknown[])[i], video) ?? d,
+    );
   }
   if (typeof m.title === 'string' && m.title.length > 0) {
     // eslint-disable-next-line no-control-regex

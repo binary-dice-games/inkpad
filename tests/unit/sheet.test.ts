@@ -25,7 +25,7 @@ function parts() {
   return { box, video, page };
 }
 
-describe('the sheet of a session without video', () => {
+describe('the sheet of a canvas without video', () => {
   it('has a style for every background', () => {
     for (const name of BACKGROUNDS) {
       expect(BACKGROUND_STYLES[name].background).toContain('#');
@@ -42,18 +42,28 @@ describe('the sheet of a session without video', () => {
     expect(BACKGROUND_STYLES.cork.border).toContain('solid');
   });
 
-  it('shows the video while there is one', () => {
+  it('shows the video on the canvases that show it (canvas 1 unless chosen otherwise)', () => {
     const p = parts();
     showSheet(p, stage(), 2);
     expect(p.video.hidden).toBe(false);
     expect(p.page.hidden).toBe(true);
     showSheet(p, null, 2);
     expect(p.page.hidden).toBe(true);
+    // Canvas 2 shows the whiteboard by default, over the video's own aspect.
+    showSheet(p, stage(), 2, 1);
+    expect(p.video.hidden).toBe(true);
+    expect(p.page.hidden).toBe(false);
+    expect(p.page.style.border).toContain('rgb(185, 190, 198)');
+    showSheet(p, stage({ backgrounds: ['cork', 'video'] }), 2, 1);
+    expect(p.video.hidden).toBe(false);
+    expect(p.page.hidden).toBe(true);
+    showSheet(p, stage({ backgrounds: ['cork', 'video'] }), 2, 0);
+    expect(p.page.style.border).toContain('rgb(139, 94, 52)');
   });
 
   it('shows a letterboxed sheet with the background instead of the video', () => {
     const p = parts();
-    showSheet(p, stage({ video: false, background: 'blackboard' }), 2);
+    showSheet(p, stage({ video: false, backgrounds: ['blackboard'] }), 2);
     expect(p.video.hidden).toBe(true);
     expect(p.page.hidden).toBe(false);
     expect(p.page.style.width).toBe('800px');
@@ -64,7 +74,7 @@ describe('the sheet of a session without video', () => {
     // No background said: the default, a whiteboard in its frame.
     showSheet(p, stage({ video: false }), 2);
     expect(p.page.style.border).toContain('rgb(185, 190, 198)');
-    showSheet(p, stage({ video: false, background: 'cork' }), 2);
+    showSheet(p, stage({ video: false, backgrounds: ['wall', 'wall', 'cork'] }), 2, 2);
     expect(p.page.style.border).toContain('rgb(139, 94, 52)');
   });
 });

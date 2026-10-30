@@ -94,13 +94,19 @@ function video(): HTMLVideoElement {
   return $<HTMLVideoElement>('video');
 }
 
-/** Shows the video or, in a session without video, the sheet with its background. */
+/** The canvas shown here (0 for the first). */
+function canvas(): number {
+  return board?.currentPage() ?? 0;
+}
+
+/** Shows the video or, on a canvas with another background, the sheet with that background. */
 function layoutSheet(): void {
   const v = video();
   showSheet(
     { video: v, page: $('page'), box: $('stage') },
     stage,
     boardAspect({ width: v.videoWidth, height: v.videoHeight }, stage),
+    canvas(),
   );
 }
 
@@ -108,7 +114,7 @@ function refreshStage(): void {
   hasVideo = video().videoWidth > 0;
   layoutSheet();
   adapter?.update();
-  $('notice').textContent = placeholder(stage, hasVideo) ?? '';
+  $('notice').textContent = placeholder(stage, hasVideo, canvas()) ?? '';
   if (board) {
     const allowed = mayDraw(stage);
     if (board.readOnly === allowed) {
@@ -162,6 +168,7 @@ function enterApp(): void {
     filePreview,
   });
   board.on('error', (e) => toast(e.message));
+  board.on('page', refreshStage);
   for (const event of ['loadedmetadata', 'resize', 'playing']) {
     v.addEventListener(event, refreshStage);
   }
@@ -239,7 +246,7 @@ async function join(name: string, color: string): Promise<void> {
     if (next && from === hostId()) {
       stage = next;
       if (next.state === 'ended') {
-        $('notice').textContent = placeholder(next, hasVideo) ?? '';
+        $('notice').textContent = placeholder(next, hasVideo, canvas()) ?? '';
       }
       refreshStage();
     }
