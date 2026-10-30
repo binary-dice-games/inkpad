@@ -294,6 +294,38 @@ describe('the pin and thread tools', () => {
     }
   });
 
+  it('puts a pin on the element it is let go over, and ties itself to that pin', async () => {
+    const t = await mount();
+    try {
+      const a = t.wb.addPin({ x: 100, y: 100 })!;
+      const note = t.wb.addNote({ x: 400, y: 300 })!;
+      t.wb.setTool('arrow');
+      pointer(t.board, 'pointerdown', 100, 100);
+      t.over(note);
+      pointer(t.board, 'pointermove', 410, 320);
+      const ring = t.root.querySelector<SVGElement>('.live circle')!;
+      expect(ring.style.display).toBe(''); // where it will be tied
+      pointer(t.board, 'pointerup', 410, 320);
+      const pin = t.wb.items().find((i) => i.kind === 'pin' && i.id !== a)!;
+      expect(pin).toMatchObject({ x: 410, y: 320, on: note });
+      const threads = t.wb.items().filter((i): i is ArrowItem => i.kind === 'arrow');
+      expect(threads.map((x) => [x.from, x.to])).toEqual([[a, pin.id]]);
+
+      // Not from an element to itself: let go on the note it is pulled from, nothing happens.
+      const count = t.wb.items().length;
+      const own = pinPoint(t.wb.items().find((i) => i.id === note))!;
+      pointer(t.board, 'pointerdown', own.x, own.y);
+      pointer(t.board, 'pointermove', 380, 330);
+      pointer(t.board, 'pointerup', 380, 330);
+      pointer(t.board, 'pointerdown', 410, 320); // nor from the new pin to its own note
+      pointer(t.board, 'pointermove', 390, 300);
+      pointer(t.board, 'pointerup', 390, 300);
+      expect(t.wb.items()).toHaveLength(count);
+    } finally {
+      done(t);
+    }
+  });
+
   it('refuses a thread to something without a pin, and everything on a read-only board', async () => {
     const t = await mount();
     try {

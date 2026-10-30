@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A sticky note can be dragged out to the size wanted with the note tool (a click still puts one of the usual size).
+
+- A thread let go over a note, picture, link or sticker (not on a pin) puts a pin there and is tied to it.
+
 - The presenter page asks for confirmation before it is closed, reloaded or left while a session runs, and keeps a backup of the board in the browser after every change. When a new session starts and there is a backup, it asks whether to resume it or start new (and can download it first).
 
 - A redesigned home page with the inksplat logo, a **Start presenting** button, the main features and how it works, and an **About** box with the version, licences and credits. The pages have the inksplat icon.

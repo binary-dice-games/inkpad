@@ -405,8 +405,14 @@ export class Whiteboard {
   /**
    * Pins a sticky note (paper: a pale version of the current colour) and returns its id; null when
    * read only. Only its author edits, moves, resizes or deletes it; others double click to copy it.
+   * With `size` (board units, kept within a note's limits) it has that width and height and is not
+   * turned; `at` is its centre.
    */
-  addNote(at?: { x: number; y: number }, text?: string): string | null;
+  addNote(
+    at?: { x: number; y: number },
+    text?: string,
+    size?: { width: number; height: number },
+  ): string | null;
   /** Pins a bare pin in the current colour; null when read only. */
   addPin(at?: { x: number; y: number }): string | null;
   /** Ties a thread between the pins of two items; null when read only or an item has no pin. */
