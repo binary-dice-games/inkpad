@@ -216,6 +216,14 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   detaches it. If the item goes, its pins go (their author takes them down quietly, then the threads
   tied to them). Drawing order: items by stamp, then threads, then pins, so a moved note never covers
   its pins.
+- **Elements on elements.** A note, picture or link may carry `on`, `u`, `v` (where its centre is on
+  the element it is attached to, as fractions of that element's width and height, in its turned
+  frame) and `dr` (how much more turned than it). Dragging one by its pin (`pinAt` hit on its own
+  pin) and dropping it over another element's box attaches it (never to what is on it); dragging
+  by its body only updates its place on its element. When an element changes, what is on it
+  (`followers`, recursively) is moved with it in the same gesture, skipping what is locked against the
+  person; during the drag the preview redraws them. The drawing order puts an element after the one it is
+  on, then threads, then pins. The resize grip (`gripOf`) is inside each shape, per `GRIP_REACH`.
 - **Pulling a thread from a pin.** With Shift, a capture-phase `pointerdown` on the container finds the pin
   (`pinAt`, by geometry, so it wins over whatever else is under the pointer), switches to the
   thread tool for the gesture and stops the event; on release the previous tool returns, and

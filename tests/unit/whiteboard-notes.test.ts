@@ -161,9 +161,9 @@ describe('sticky notes on the board', () => {
       pointer(t.board, 'pointermove', 255, 245);
       pointer(t.board, 'pointerup', 255, 245);
       const n = t.wb.items()[0] as NoteItem;
-      expect(n).toMatchObject({ size: 215, ratio: 0.907 });
-      expect(n.x - 215 / 2).toBeCloseTo(40, 0); // the top left corner stays at (40, 50)
-      expect(n.y - 195 / 2).toBeCloseTo(50, 0);
+      expect(n).toMatchObject({ size: 224, ratio: 0.911 }); // the grip follows the pointer
+      expect(n.x - 224 / 2).toBeCloseTo(40, 0); // the top left corner stays at (40, 50)
+      expect(n.y - 204 / 2).toBeCloseTo(50, 0);
       expect(t.root.querySelector('textarea')).toBeNull();
     } finally {
       t.wb.destroy();
@@ -294,10 +294,10 @@ describe('the text box of a note being written', () => {
       // Resized from the corner (at 350, 330): the box has the new size.
       pointer(board, 'pointerdown', 345, 325);
       pointer(board, 'pointermove', 395, 365);
-      expect(at()).toMatchObject({ left: 170, top: 150, width: 225, height: 215 });
+      expect(at()).toMatchObject({ left: 170, top: 150, width: 234, height: 224 });
       pointer(board, 'pointerup', 395, 365);
-      expect(at()).toMatchObject({ width: 225, height: 215 });
-      expect(wb.items()[0]).toMatchObject({ size: 225 });
+      expect(at()).toMatchObject({ width: 234, height: 224 });
+      expect(wb.items()[0]).toMatchObject({ size: 234 });
     } finally {
       wb.destroy();
       room.close();

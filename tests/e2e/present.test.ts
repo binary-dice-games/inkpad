@@ -144,7 +144,7 @@ describe('static presenter page', () => {
       .locator('collab-whiteboard .item.image-item image')
       .evaluateAll((nodes) => nodes.map((n) => n.getAttribute('href')?.slice(0, 22)));
     expect(hrefs.every((h) => h?.startsWith('data:image/'))).toBe(true);
-    expect(await viewer.locator('collab-whiteboard .item.image-item circle').count()).toBe(6);
+    expect(await viewer.locator('collab-whiteboard .item.image-item .pin circle').count()).toBe(6);
     expect(await viewer.locator('collab-whiteboard .item.image-item g[filter]').count()).toBe(3);
 
     // The viewer drags a copy of the text file out: once it has arrived, the drag carries it.
@@ -361,7 +361,7 @@ describe('static presenter page', () => {
     const pins = await presenter.evaluate(() => {
       const root = document.querySelector('collab-whiteboard')!.shadowRoot!;
       return [...root.querySelectorAll('.item')].map((g) => {
-        const pin = g.querySelector('.pin circle, circle.paper')!;
+        const pin = g.querySelector('g.pin > circle, circle.paper')!;
         const r = pin.getBoundingClientRect();
         return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
       });
@@ -681,6 +681,89 @@ describe('static presenter page', () => {
       [now.x + 2, now.y + 2],
     );
     expect(plain).not.toBe('proxy');
+  });
+
+  it('resizes an oval note from a grip inside it, and attaches an element dragged by its pin to another', async () => {
+    const presenter = await presenterPage();
+    await site.startBoard(presenter);
+    const box = (await presenter.locator('#stage').boundingBox())!;
+    const at = (fx: number, fy: number) => ({
+      x: box.x + box.width * fx,
+      y: box.y + box.height * fy,
+    });
+    const rect = (selector: string) =>
+      presenter.evaluate((sel) => {
+        const r = document
+          .querySelector('collab-whiteboard')!
+          .shadowRoot!.querySelector(sel)!
+          .getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, h: r.height };
+      }, selector);
+
+    // An oval note (key 6 pressed three times: square, rounded, oval).
+    for (let i = 0; i < 3; i++) {
+      await presenter.keyboard.press('6');
+    }
+    const first = at(0.3, 0.45);
+    await presenter.mouse.click(first.x, first.y);
+    await presenter.keyboard.press('Control+Enter');
+    const before = await rect('.note-item:nth-child(1) ellipse.paper');
+    // Its grip is inside the ellipse, and pulling it makes the note bigger.
+    const grip = await rect('.note-item .grip circle');
+    expect(grip.x + grip.w / 2).toBeLessThan(before.x + before.w); // not at the corner of the box
+    expect(grip.y + grip.h / 2).toBeLessThan(before.y + before.h);
+    await presenter.mouse.move(grip.x + grip.w / 2, grip.y + grip.h / 2);
+    await presenter.mouse.down();
+    await presenter.mouse.move(grip.x + grip.w / 2 + 60, grip.y + grip.h / 2 + 40, { steps: 5 });
+    await presenter.mouse.up();
+    const after = await rect('.note-item:nth-child(1) ellipse.paper');
+    expect(after.w).toBeGreaterThan(before.w + 40);
+    // The note is still selected (the click did not fall outside the shape).
+    expect(await presenter.locator('collab-whiteboard .selbar').isVisible()).toBe(true);
+
+    // A second, small note; dragged by its pin onto the first, it is attached and goes with it.
+    await presenter.keyboard.press('6');
+    const second = at(0.6, 0.2);
+    await presenter.mouse.click(second.x, second.y);
+    await presenter.keyboard.press('Control+Enter');
+    await presenter.keyboard.press('1');
+    const notes = presenter.locator('collab-whiteboard .note-item');
+    expect(await notes.count()).toBe(2);
+    const pinOf = (index: number) =>
+      presenter.evaluate((i) => {
+        const notes = document
+          .querySelector('collab-whiteboard')!
+          .shadowRoot!.querySelectorAll('.note-item');
+        const r = notes[i]!.querySelector('.pin circle')!.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      }, index);
+    await presenter.keyboard.press('Escape'); // nothing selected: no bar over the pin
+    const pin = await pinOf(1);
+    const target = await rect('.note-item:nth-child(1) ellipse.paper');
+    await presenter.mouse.move(pin.x, pin.y);
+    await presenter.mouse.down();
+    await presenter.mouse.move(target.x + target.w / 2, target.y + target.h / 2, { steps: 8 });
+    await presenter.mouse.up();
+    // The attached note is drawn after (on top of) the one it is on.
+    const order = await presenter.evaluate(() =>
+      [
+        ...document
+          .querySelector('collab-whiteboard')!
+          .shadowRoot!.querySelectorAll('.items > .item'),
+      ].map((n) => n.getAttribute('data-id')),
+    );
+    expect(order).toHaveLength(2);
+    const small = await rect('.note-item:nth-child(2) .paper');
+    const there = { x: small.x, y: small.y };
+    // Moving the big one moves the small one with it.
+    const big = await rect('.note-item:nth-child(1) ellipse.paper');
+    await presenter.mouse.move(big.x + big.w * 0.2, big.y + big.h * 0.5);
+    await presenter.mouse.down();
+    await presenter.mouse.move(big.x + big.w * 0.2 + 70, big.y + big.h * 0.5 + 30, { steps: 5 });
+    await presenter.mouse.up();
+    await expect
+      .poll(async () => (await rect('.note-item:nth-child(2) .paper')).x - there.x)
+      .toBeCloseTo(70, -1);
   });
 
   it('hides the pointer when asked, and remembers the settings', async () => {

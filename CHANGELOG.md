@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A note, picture or link dragged by its pin and dropped on another element is attached to it, like a pin: it is drawn on top of it and moves, turns and scales with it (chains of them follow); dragging it away by its pin, or onto nothing, detaches it. Locked elements stay where they are.
 - The Delete (or Backspace) key removes the selected element, if it is not locked against you.
 - Anybody can now change, move and delete any element of the board (it used to be only its author). A **lock** button in the bar over a selected element, for its owner, locks it: first for the others (only the owner can change it), then for everybody (nobody, until the owner unlocks it). A locked element shows a small padlock.
 - Sticky notes have the three text sizes of the text tool in their bar, and a button to copy their text; a new note is selected as it is written.
@@ -61,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The grip that resizes a note or picture is drawn inside its shape (it was at the corner of the box, outside ovals, diamonds and hexagons, so clicking it deselected the note) and is easier to hit.
 - The text box of a note being written follows the note when it is moved, resized or turned.
 - An options panel has only as many slots as options (it always showed four).
 - The thread-head icons use a gentler curve so the head at the start points the right way.

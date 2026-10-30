@@ -195,7 +195,7 @@ describe('files pinned on the board', () => {
       const item = p.benBoard.element.shadowRoot!.querySelector('.item.image-item')!;
       expect(item.querySelector('g[filter="url(#wb-shadow)"]')).not.toBeNull();
       expect(item.querySelector('rect')?.getAttribute('fill')).toBe('#ffffff');
-      expect(item.querySelectorAll('circle')).toHaveLength(2); // the pin and its highlight
+      expect(item.querySelectorAll('.pin circle')).toHaveLength(2); // the pin and its highlight
       expect(item.querySelector('ellipse')).not.toBeNull(); // the shadow of the pin
       expect(p.benBoard.element.shadowRoot!.querySelector('filter#wb-shadow')).not.toBeNull();
       expect(p.benBoard.toSvg()).toContain('wb-shadow');
@@ -438,8 +438,8 @@ describe('moving and copying out pictures and files', () => {
       t.fire('pointerup', 450, 300);
       const image = t.wb.items()[0] as { x: number; y: number; size: number; ratio: number };
       expect(image.ratio).toBe(0.5);
-      expect(image.size).toBeCloseTo(200, 0); // from the left edge at 250 to the pointer at 450
-      expect(image.x - image.size / 2).toBeCloseTo(250, 0);
+      expect(image.size).toBeCloseTo(209, 0); // the grip follows the pointer at 450
+      expect(image.x - image.size / 2).toBeCloseTo(250, 0); // the left edge stays
       expect(image.y - (image.size * image.ratio) / 2).toBeCloseTo(235, 0);
     } finally {
       t.wb.destroy();

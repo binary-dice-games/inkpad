@@ -84,6 +84,18 @@ export function mayChange(old, next) {
   return owner && (old.lock === 'owner' || sameBody(old, next));
 }
 
+/**
+ * The attachment fields of a note, picture or link that sits on another element: `on` (the id of
+ * that element), `u` and `v` (where the element's centre is on it, as fractions of its width and
+ * height from its centre) and `dr` (how much more turned than it the element is). Empty if none.
+ */
+function attachedTo(item) {
+  if (!ID.test(item.on ?? '') || !finite(item.u, -20, 20) || !finite(item.v, -20, 20)) {
+    return {};
+  }
+  return { on: item.on, u: item.u, v: item.v, ...(finite(item.dr, -360, 360) && item.dr !== 0 ? { dr: item.dr } : {}) };
+}
+
 /** Orders stamps: the clock, then the peer id. */
 function compareStamps(a, b) {
   if (a[0] !== b[0]) {
@@ -126,7 +138,7 @@ export function cleanItem(item) {
       return null;
     }
     const file = cleanFileInfo(item.file);
-    return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, data: item.data, ...(file ? { file } : {}), ...turned(item.rot) };
+    return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, data: item.data, ...(file ? { file } : {}), ...turned(item.rot), ...attachedTo(item) };
   }
   if (item.kind === 'note') {
     if (!finite(item.x) || !finite(item.y) || !finite(item.size, 60, 600) || !finite(item.ratio, 0.3, 3) || typeof item.text !== 'string' || item.text.length > LIMITS.text || !COLOR.test(item.color ?? '')) {
@@ -134,7 +146,7 @@ export function cleanItem(item) {
     }
     const shape = NOTE_SHAPES.includes(item.shape) && item.shape !== 'square' ? { shape: item.shape } : {};
     const font = finite(item.fs, 8, 64) && item.fs !== NOTE_TEXT ? { fs: item.fs } : {};
-    return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, text: item.text, color: item.color, ...shape, ...font, ...turned(item.rot) };
+    return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, text: item.text, color: item.color, ...shape, ...font, ...turned(item.rot), ...attachedTo(item) };
   }
   if (item.kind === 'pin') {
     const on = ID.test(item.on ?? '') && finite(item.u, -3, 3) && finite(item.v, -3, 3) ? { on: item.on, u: item.u, v: item.v } : {};
@@ -151,7 +163,7 @@ export function cleanItem(item) {
     if (!url || !finite(item.x) || !finite(item.y) || !finite(item.size, 40, 1000)) {
       return null;
     }
-    return { ...base, x: item.x, y: item.y, size: item.size, url, ...turned(item.rot) };
+    return { ...base, x: item.x, y: item.y, size: item.size, url, ...turned(item.rot), ...attachedTo(item) };
   }
   if (!finite(item.x) || !finite(item.y) || !finite(item.size, 4, 400)) {
     return null;
@@ -801,6 +813,28 @@ function pinMetrics(item, h) {
 
 const PIN_RADIUS = 9;
 
+/** How far along the diagonal to the corner a shape reaches, by shape (so a grip can sit inside it). */
+const GRIP_REACH = { square: 1, rounded: 0.92, oval: 0.7071, diamond: 0.5, hexagon: 0.735 };
+
+/** The grip that resizes a note or picture, from its centre in its own frame: inside the shape, near its bottom right. */
+function gripOf(item) {
+  const s = GRIP_REACH[item.shape ?? 'square'] ?? 1;
+  return { x: (s * item.size) / 2 - 9, y: (s * item.size * item.ratio) / 2 - 9, s };
+}
+
+/** The little handle drawn at the grip, with a pale disc so it shows on any paper. */
+function gripNode(item) {
+  const g = gripOf(item);
+  const x = item.x + g.x;
+  const y = item.y + g.y;
+  const node = svgEl('g', { class: 'grip' });
+  node.append(
+    svgEl('circle', { cx: x, cy: y, r: 8, fill: 'rgba(255,255,255,0.45)' }),
+    svgEl('path', { d: `M${x - 5} ${y + 5}L${x + 5} ${y - 5}M${x} ${y + 5}L${x + 5} ${y}`, stroke: 'rgba(0,0,0,0.55)', 'stroke-width': 1.4, fill: 'none', 'stroke-linecap': 'round' }),
+  );
+  return node;
+}
+
 /** A small padlock at (x, y) for a locked element: grey when only its owner may change it, red when nobody may. */
 function lockBadge(x, y, level) {
   const color = level === 'all' ? '#c42b31' : '#4b5563';
@@ -846,6 +880,35 @@ function frameOf(f, p) {
   const lx = dx * Math.cos(a) + dy * Math.sin(a);
   const ly = -dx * Math.sin(a) + dy * Math.cos(a);
   return Math.abs(lx) <= f.w / 2 && Math.abs(ly) <= f.h / 2 ? { u: Math.round((lx / f.w) * 1e6) / 1e6, v: Math.round((ly / f.h) * 1e6) / 1e6 } : null;
+}
+
+/** The (u, v) of the point `p` in the frame `f`, whether it is inside it or not. */
+function frameCoords(f, p) {
+  const a = (f.rot * Math.PI) / 180;
+  const dx = p.x - f.x;
+  const dy = p.y - f.y;
+  return { u: Math.round(((dx * Math.cos(a) + dy * Math.sin(a)) / f.w) * 1e6) / 1e6, v: Math.round(((-dx * Math.sin(a) + dy * Math.cos(a)) / f.h) * 1e6) / 1e6 };
+}
+
+/** What follows an element that holds others: where each is and how it is turned, given the element as it will be. */
+function followers(live, before, after, out = new Map(), seen = new Set()) {
+  if (seen.has(after.id)) {
+    return out;
+  }
+  seen.add(after.id);
+  const frame = hostFrame(after);
+  if (!frame) {
+    return out;
+  }
+  for (const c of live) {
+    if (c.on === after.id && (c.kind === 'note' || c.kind === 'image' || c.kind === 'link')) {
+      const at = frameAt(frame, c.u, c.v);
+      const moved = { ...c, x: round1(at.x), y: round1(at.y), rot: degrees((after.rot ?? 0) + (c.dr ?? 0)) };
+      out.set(c.id, moved);
+      followers(live, c, moved, out, seen);
+    }
+  }
+  return out;
 }
 
 /**
@@ -896,6 +959,8 @@ const noteFont = (item) => item.fs ?? NOTE_TEXT;
 const NOTE_PAD = 10;
 /** What can be selected, to be changed or locked with the bar over it. */
 const SELECTABLE = new Set(['note', 'pin', 'arrow', 'image', 'link']);
+/** The elements that carry a pin, and can be attached to another element by it. */
+const ELEMENTS = new Set(['note', 'image', 'link']);
 const NOTE_HANG = 1.6; // a hanging baseline sits this far below the top of a text box line (at the usual size)
 
 /** The width a note's text may take, in units. */
@@ -1769,7 +1834,7 @@ export class Whiteboard {
           delete fields.file;
         }
       }
-      if (fields.kind === 'pin' && fields.on) {
+      if ((fields.kind === 'pin' || ELEMENTS.has(fields.kind)) && fields.on) {
         const on = ids.get(fields.on);
         if (on) {
           fields.on = on;
@@ -1777,6 +1842,7 @@ export class Whiteboard {
           delete fields.on;
           delete fields.u;
           delete fields.v;
+          delete fields.dr;
         }
       }
       if (fields.kind === 'arrow') {
@@ -1798,9 +1864,17 @@ export class Whiteboard {
         this.files.set(mine, blob);
       }
     };
-    for (const kind of [['arrow', 'pin'], ['pin'], ['arrow']]) {
-      kept.filter((i) => (kind.length === 2 ? !kind.includes(i.kind) : i.kind === kind[0])).forEach(place);
+    const things = kept.filter((i) => i.kind !== 'arrow' && i.kind !== 'pin');
+    const queue = [...things];
+    for (let pass = 0; pass < 8 && queue.length > 0; ++pass) {
+      // Whatever is on nothing, or on what is already here, then what is on those, and so on.
+      const now = queue.filter((i) => !i.on || ids.has(i.on) || !things.some((o) => o.id === i.on));
+      now.forEach(place);
+      queue.splice(0, queue.length, ...queue.filter((i) => !now.includes(i)));
     }
+    queue.forEach(place);
+    kept.filter((i) => i.kind === 'pin').forEach(place);
+    kept.filter((i) => i.kind === 'arrow').forEach(place);
     this.render();
     this.emit('change', { source: 'load' });
     const added = ops.length;
@@ -2247,7 +2321,23 @@ export class Whiteboard {
       return;
     }
     const all = this.model.live();
-    const live = [...all.filter((i) => i.kind !== 'arrow' && i.kind !== 'pin'), ...all.filter((i) => i.kind === 'arrow'), ...all.filter((i) => i.kind === 'pin')];
+    const things = all.filter((i) => i.kind !== 'arrow' && i.kind !== 'pin');
+    const byId = new Map(things.map((i) => [i.id, i]));
+    const ordered = [];
+    const placed = new Set();
+    const place = (i, depth = 0) => {
+      if (placed.has(i.id) || depth > 8) {
+        return;
+      }
+      placed.add(i.id);
+      const host = i.on ? byId.get(i.on) : null;
+      if (host) {
+        place(host, depth + 1); // what is on an element is drawn after it
+      }
+      ordered.push(i);
+    };
+    things.forEach((i) => place(i));
+    const live = [...ordered, ...all.filter((i) => i.kind === 'arrow'), ...all.filter((i) => i.kind === 'pin')];
     const seen = new Set();
     let previous = null;
     for (const item of live) {
@@ -2481,7 +2571,7 @@ export class Whiteboard {
       const h = item.size * item.ratio;
       const left = item.x - item.size / 2;
       const top = item.y - h / 2;
-      const grip = this.canEdit(item) ? [svgEl('path', { class: 'grip', d: `M${left + item.size - 12} ${top + h - 2}L${left + item.size - 2} ${top + h - 12}M${left + item.size - 7} ${top + h - 2}L${left + item.size - 2} ${top + h - 7}`, stroke: 'rgba(0,0,0,0.45)', 'stroke-width': 1.4, fill: 'none' })] : [];
+      const grip = this.canEdit(item) ? [gripNode(item)] : [];
       const tip = svgEl('title');
       tip.textContent = `${item.file?.name ?? 'Picture'}: ${this.strings.dragFile}`;
       g.append(this.printNode(item, h, turn, [svgEl('image', { href: item.data, x: left, y: top, width: item.size, height: h, preserveAspectRatio: 'none' }), ...grip, tip]));
@@ -2516,7 +2606,7 @@ export class Whiteboard {
         text.append(span);
       });
       body.append(text);
-      const grip = this.canEdit(item) ? [svgEl('path', { class: 'grip', d: `M${left + w - 12} ${top + h - 2}L${left + w - 2} ${top + h - 12}M${left + w - 7} ${top + h - 2}L${left + w - 2} ${top + h - 7}`, stroke: 'rgba(0,0,0,0.35)', 'stroke-width': 1.2, fill: 'none' })] : [];
+      const grip = this.canEdit(item) ? [gripNode(item)] : [];
       g.append(this.printNode(item, h, turn, [body, ...grip], item.color, shape));
     } else if (item.kind === 'link') {
       // A card of the page's address, drawn here from the link itself (not from a picture the sender made).
@@ -3192,7 +3282,7 @@ export class Whiteboard {
     if (grab) {
       // A pin on an item is moved from where it is drawn, not from where it was first put.
       const grabbed = mine.kind === 'pin' && mine.on ? { ...mine, ...pinPoint(mine, this.lookup) } : mine;
-      this.dragging = { item: grabbed, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0, corner: (mine.kind === 'note' || mine.kind === 'image') && this.onCorner(mine, p) };
+      this.dragging = { item: grabbed, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0, corner: (mine.kind === 'note' || mine.kind === 'image') && this.onCorner(mine, p), byPin: ELEMENTS.has(mine.kind) && this.pinAt(p)?.id === mine.id };
     } else if (this.tool === 'pen') {
       this.inkSeq += 1;
       this.drawing = { id: `${this.model.peerId}.${this.model.counter + 1}`, points: [p.x, p.y], sent: 0, seq: 0 };
@@ -3379,6 +3469,61 @@ export class Whiteboard {
     }
   }
 
+  /**
+   * @private Changes an element and moves what is attached to it along (their places on it are
+   * kept). What is locked against this person stays where it is.
+   */
+  commit(item, fields) {
+    const old = this.model.get(item.id);
+    if (!old) {
+      return;
+    }
+    const live = this.model.live();
+    const next = { ...old, ...fields };
+    if (!this.local(() => this.model.change(item.id, fields))) {
+      return;
+    }
+    for (const [id, moved] of followers(live, old, next)) {
+      const c = this.model.get(id);
+      if (c && this.canEdit(c)) {
+        this.local(() => this.model.change(id, { x: moved.x, y: moved.y, rot: moved.rot }));
+      }
+    }
+  }
+
+  /**
+   * @private What an element holds about the one it is on, once it is as `geometry` says: when it
+   * was grabbed by its pin and dropped at `drop` it is attached to the element under that point (or
+   * detached from the one it was on, if none); else, if it is attached, its place on it is
+   * updated (it was moved, scaled or turned). Fields that are not changed are not returned.
+   */
+  anchorFields(item, geometry, drop) {
+    const none = { on: undefined, u: undefined, v: undefined, dr: undefined };
+    let host = null;
+    if (drop) {
+      const excluded = new Set([item.id, ...followers(this.model.live(), item, item).keys()]);
+      const live = this.model.live();
+      for (let i = live.length - 1; i >= 0 && !host; --i) {
+        const frame = excluded.has(live[i].id) ? null : hostFrame(live[i]);
+        if (frame && frameOf(frame, drop)) {
+          host = live[i];
+        }
+      }
+      // Not on something that sits on this element (it would hold itself up).
+      if (host && followers(live, item, item).has(host.id)) {
+        host = null;
+      }
+    } else if (item.on) {
+      host = this.model.get(item.on);
+    }
+    const frame = hostFrame(host);
+    if (!frame) {
+      return item.on ? none : {};
+    }
+    const at = frameCoords(frame, geometry);
+    return { on: host.id, u: at.u, v: at.v, dr: degrees((geometry.rot ?? 0) - (host.rot ?? 0)) || undefined };
+  }
+
   /** @private The pointer position in a note's own frame (origin at its centre, turned back). */
   inNote(item, p) {
     const a = ((item.rot ?? 0) * Math.PI) / 180;
@@ -3390,7 +3535,8 @@ export class Whiteboard {
   /** @private Whether `p` is on the bottom right corner of a note, the handle that resizes it. */
   onCorner(item, p) {
     const l = this.inNote(item, p);
-    return l.x > item.size / 2 - 16 && l.y > (item.size * item.ratio) / 2 - 16;
+    const g = gripOf(item);
+    return Math.hypot(l.x - g.x, l.y - g.y) <= 14;
   }
 
   /**
@@ -3411,9 +3557,13 @@ export class Whiteboard {
       // The top left corner stays where it is; the pointer pulls the bottom right one.
       const a = ((it.rot ?? 0) * Math.PI) / 180;
       const l = this.inNote(it, p);
+      // The grip follows the pointer: its place on the new size is (s + 1) / 2 of it, less 9, from the top left.
       const picture = it.kind === 'image'; // a picture keeps its proportions
-      const w = picture ? Math.min(2000, Math.max(8, l.x + it.size / 2, (l.y + (it.size * it.ratio) / 2) / it.ratio)) : Math.min(600, Math.max(60, l.x + it.size / 2));
-      const h = picture ? w * it.ratio : Math.min(600, Math.max(0.3 * w, l.y + (it.size * it.ratio) / 2));
+      const k = 2 / (1 + gripOf(it).s);
+      const wide = (l.x + it.size / 2 + 9) * k;
+      const high = (l.y + (it.size * it.ratio) / 2 + 9) * k;
+      const w = picture ? Math.min(2000, Math.max(8, wide, high / it.ratio)) : Math.min(600, Math.max(60, wide));
+      const h = picture ? w * it.ratio : Math.min(600, Math.max(0.3 * w, high));
       const cx = w / 2 - it.size / 2;
       const cy = h / 2 - (it.size * it.ratio) / 2;
       d.fields = {
@@ -3460,16 +3610,24 @@ export class Whiteboard {
 
   /**
    * @private Redraws what hangs on `item` as if it were as given (it is being moved or changed): the
-   * pins attached to it, and the threads tied to it or to those pins.
+   * elements attached to it, the pins on those, and the threads tied to any of them.
    */
   followThreads(item) {
     if (this.editing?.note && this.editing.item.id === item.id) {
       this.editing.preview = item; // the text box follows the note
       this.placeTextarea();
     }
-    const resolve = (id) => (id === item.id ? item : this.model.get(id));
     const live = this.model.live();
-    const moved = new Set([item.id, ...live.filter((i) => i.kind === 'pin' && i.on === item.id).map((i) => i.id)]);
+    const old = this.model.get(item.id);
+    const same = !old || ['x', 'y', 'rot', 'size', 'ratio'].every((k) => old[k] === item[k]);
+    const over = new Map([[item.id, item]]);
+    if (!same) {
+      for (const [id, moved] of followers(live, old, item)) {
+        over.set(id, moved);
+      }
+    }
+    const resolve = (id) => over.get(id) ?? this.model.get(id);
+    const moved = new Set([...over.keys(), ...live.filter((i) => i.kind === 'pin' && over.has(i.on)).map((i) => i.id)]);
     const redraw = (i) => {
       const entry = this.nodes.get(i.id);
       if (entry) {
@@ -3479,7 +3637,12 @@ export class Whiteboard {
       }
     };
     for (const i of live) {
-      if (i.id !== item.id && ((i.kind === 'pin' && moved.has(i.id)) || (i.kind === 'arrow' && (moved.has(i.from) || moved.has(i.to))))) {
+      if (i.id === item.id) {
+        continue;
+      }
+      if (over.has(i.id)) {
+        redraw(over.get(i.id));
+      } else if ((i.kind === 'pin' && moved.has(i.id)) || (i.kind === 'arrow' && (moved.has(i.from) || moved.has(i.to)))) {
         redraw(i);
       }
     }
@@ -3559,14 +3722,15 @@ export class Whiteboard {
       }
       if (d.moved && !cancelled) {
         if (d.fields) {
-          this.local(() => this.model.change(it.id, d.fields));
+          this.commit(it, { ...d.fields, ...this.anchorFields(it, { ...it, ...d.fields }, null) });
         } else if (it.kind === 'ink') {
           this.local(() => this.model.change(it.id, { points: it.points.map((v, i) => round1(v + (i % 2 ? d.dy : d.dx))) }));
         } else if (it.kind === 'pin') {
           const to = { x: round1(it.x + d.dx), y: round1(it.y + d.dy) };
           this.local(() => this.model.change(it.id, { ...to, ...this.attachment(to, it.id) }));
         } else {
-          this.local(() => this.model.change(it.id, { x: round1(it.x + d.dx), y: round1(it.y + d.dy) }));
+          const to = { x: round1(it.x + d.dx), y: round1(it.y + d.dy) };
+          this.commit(it, { ...to, ...this.anchorFields(it, { ...it, ...to }, d.byPin ? this.eventPoint(ev) : null) });
         }
       } else if (!d.moved && it.kind === 'text' && this.tool === 'text' && !cancelled) {
         this.editText(it);
