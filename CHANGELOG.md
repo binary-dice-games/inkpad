@@ -69,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The bar over a selected element is hidden while the element is dragged (or a thread pulled from it), so it does not cover where it is put down.
 - New sticky notes and pins are about half their former size, and the small, medium and large text sizes of notes and the text tool are about three quarters of what they were.
 - The project is now called inksplat, with a new logo: page titles, invite links (`#inksplat=`), saved files (`.inksplat.json`), npm packages (`@inksplat/...`), CMake names (`INKSPLAT_...`, `inksplat_add_test`) and the site address (`/inksplat/`).
 - Notes, pictures and links turn about their pin (Ctrl+drag, or attached to a turning element), not their centre; the pin and its threads stay put.
@@ -81,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The bar over a selected element shows again when the same element is selected a second time after letting it go.
 - The bar over a selected element stays inside the board near its edges (it goes under the element when there is no room over it), so all its buttons can be reached.
 - The grip that resizes a note or picture is drawn inside its shape (it was at the corner of the box, outside ovals, diamonds and hexagons, so clicking it deselected the note) and is easier to hit.
 - The text box of a note being written follows the note when it is moved, resized or turned.
