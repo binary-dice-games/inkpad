@@ -467,6 +467,52 @@ describe('selecting a note or a thread', () => {
     }
   });
 
+  it('shows the bar again when the same element is selected after letting it go', async () => {
+    const t = await mount();
+    try {
+      t.wb.addPin({ x: 200, y: 200 });
+      const bar = t.root.querySelector<HTMLElement>('.selbar')!;
+      const pin = () => t.root.querySelector('.pin-item');
+      for (let i = 0; i < 2; i++) {
+        t.pick.find = pin;
+        pointer(t.board, 'pointerdown', 200, 200);
+        pointer(t.board, 'pointerup', 200, 200);
+        expect(bar.hidden).toBe(false);
+        expect(buttons(t.root).length).toBeGreaterThan(0);
+        // A click on the empty board lets go.
+        t.pick.find = () => null;
+        const away = { clientX: 600, clientY: 400, bubbles: true, composed: true };
+        t.board.dispatchEvent(new MouseEvent('pointerdown', away));
+        t.board.dispatchEvent(new MouseEvent('pointerup', away));
+        expect(bar.hidden).toBe(true);
+      }
+    } finally {
+      t.wb.destroy();
+      t.room.close();
+    }
+  });
+
+  it('hides the bar while the element is dragged, and shows it when it is let go', async () => {
+    const t = await mount();
+    try {
+      t.wb.addPin({ x: 200, y: 200 });
+      const bar = t.root.querySelector<HTMLElement>('.selbar')!;
+      t.pick.find = () => t.root.querySelector('.pin-item');
+      pointer(t.board, 'pointerdown', 200, 200);
+      expect(bar.hidden).toBe(false);
+      expect(bar.classList.contains('moving')).toBe(false); // a press alone keeps it
+      pointer(t.board, 'pointermove', 260, 240);
+      expect(bar.classList.contains('moving')).toBe(true);
+      pointer(t.board, 'pointerup', 260, 240);
+      expect(bar.classList.contains('moving')).toBe(false);
+      expect(bar.hidden).toBe(false);
+      expect(t.wb.items()[0]).toMatchObject({ x: 260, y: 240 });
+    } finally {
+      t.wb.destroy();
+      t.room.close();
+    }
+  });
+
   it('is offered to others too, with only what they may do once it is locked', async () => {
     const t = await mount();
     try {

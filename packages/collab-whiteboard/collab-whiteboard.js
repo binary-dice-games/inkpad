@@ -14,7 +14,8 @@
  * board (a preview on the board, the file itself sent to everyone to drag out as a copy).
  * Elements are removed by selecting them and pressing Delete or Backspace (the right button does
  * nothing to them). New notes and pins are half the size nymph makes them, text sizes three
- * quarters, and the bar over a selected element is kept inside the board. A note can be dragged
+ * quarters, and the bar over a selected element is kept inside the board (and hidden while the
+ * element is dragged or a thread pulled). A note can be dragged
  * out to its size with the note tool, and a thread pressed on or let go over an element gets a new
  * pin there.
  *
@@ -1241,7 +1242,7 @@ svg.board.arrow, svg.board.pin { cursor: crosshair; }
 .item.editing text { visibility: hidden; }
 .selbar { position: absolute; display: flex; align-items: center; gap: 3px; padding: 4px; border-radius: 8px; transform: translate(-50%, -100%);
   background: var(--wb-bg); border: 1px solid var(--wb-border); box-shadow: 0 2px 10px rgba(0,0,0,.2); pointer-events: auto; }
-.selbar[hidden] { display: none; }
+.selbar[hidden], .selbar.moving { display: none; }
 .selbar button { width: 28px; height: 28px; padding: 3px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--wb-fg); cursor: pointer; }
 .selbar button[aria-pressed="true"] { border-color: var(--wb-accent); background: var(--wb-hover, rgba(0,0,0,.08)); }
 .selbar hr { width: 1px; height: 20px; margin: 0 2px; border: 0; background: var(--wb-border); }
@@ -3673,6 +3674,8 @@ export class Whiteboard {
     if (!item || this.readOnlyFlag || !(editable || mine || item.kind === 'note')) {
       this.selbar.hidden = true;
       this.selbar.replaceChildren();
+      delete this.selbar.dataset.sig; // built again when something is selected, the same item too
+      delete this.selbar.dataset.id;
       return;
     }
     const sig = `${item.stamp[0]}.${item.stamp[1]}`;
@@ -3917,6 +3920,9 @@ export class Whiteboard {
     if (!d.moved && Math.hypot(dx, dy) < 2) {
       return;
     }
+    if (!d.moved) {
+      this.selbar.classList.add('moving'); // out of the way of where it is put down
+    }
     d.moved = true;
     if (d.corner) {
       // The top left corner stays where it is; the pointer pulls the bottom right one.
@@ -4045,6 +4051,7 @@ export class Whiteboard {
     } else if (this.threading) {
       const t = this.threading;
       this.threading = null;
+      this.selbar.classList.remove('moving');
       t.node.remove();
       t.ring.remove();
       t.dot?.remove();
@@ -4088,6 +4095,7 @@ export class Whiteboard {
       const d = this.dragging;
       const it = d.item;
       this.dragging = null;
+      this.selbar.classList.remove('moving');
       this.endPinDrag(d);
       this.nodes.get(it.id)?.node.removeAttribute('transform');
       if (d.preview) {
@@ -4156,6 +4164,7 @@ export class Whiteboard {
     const node = svgEl('path', { fill: 'none', stroke: this.style.color, 'stroke-width': 2.6, 'stroke-linecap': 'round', opacity: 0.8 });
     const ring = svgEl('circle', { r: PIN_RADIUS + 5, fill: 'none', stroke: 'var(--wb-accent, #3e63dd)', 'stroke-width': 2, 'pointer-events': 'none' });
     this.threading = { from: source, origin, node, ring, restore, x0: ev.clientX, y0: ev.clientY };
+    this.selbar.classList.add('moving');
     if (origin) {
       this.threading.dot = svgEl('circle', { class: 'pending-pin', cx: origin.at.x, cy: origin.at.y, r: PIN_RADIUS, fill: this.style.color, stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8, opacity: 0.8, 'pointer-events': 'none' });
       this.liveGroup.append(this.threading.dot);
