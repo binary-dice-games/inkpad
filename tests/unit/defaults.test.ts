@@ -7,6 +7,7 @@ import {
   DEFAULT_VIEWER_BASE,
   UPLINK_WARNING_KBPS,
   VIDEO_LIMITS,
+  BACKGROUNDS,
   cleanStage,
   cleanVideoSettings,
   inviteLink,
@@ -73,6 +74,18 @@ describe('stage message', () => {
 
   it('accepts a well formed stage and drops unknown fields', () => {
     expect(cleanStage({ ...good, evil: 1 })).toEqual(good);
+  });
+
+  it('says a session has no video, and keeps only a known background', () => {
+    expect(cleanStage({ ...good, video: false, background: 'cork' })).toEqual({
+      ...good,
+      video: false,
+      background: 'cork',
+    });
+    expect(cleanStage({ ...good, video: true })).toEqual(good);
+    expect(cleanStage({ ...good, video: 'no' })).toEqual(good);
+    expect(cleanStage({ ...good, background: 'lava' })).toEqual(good);
+    expect(BACKGROUNDS).toEqual(['whiteboard', 'blackboard', 'wall', 'cork']);
   });
 
   it('cleans the optional title', () => {

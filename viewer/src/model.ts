@@ -76,6 +76,9 @@ export function placeholder(stage: Stage | null, hasVideo: boolean): string | nu
   if (stage?.state === 'ended') {
     return 'The presenter ended the session.';
   }
+  if (stage?.video === false) {
+    return null; // a board without video: nothing to wait for
+  }
   if (stage?.state === 'paused') {
     return 'The presenter paused the video.';
   }

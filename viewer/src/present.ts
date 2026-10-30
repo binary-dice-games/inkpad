@@ -27,6 +27,9 @@ import {
 import type { DisplayCapture } from './display-capture';
 import { boardAspect, errorMessage } from './model';
 import { setToolbarFolded } from './fold';
+import { filePreview } from './previews';
+import { qrModules, qrPng, qrSvg } from './qr';
+import { showSheet } from './sheet';
 import { cleanPrefs, loadPrefs, savePrefs } from './present-settings';
 import type { PresenterPrefs } from './present-settings';
 
@@ -93,8 +96,22 @@ function video(): HTMLVideoElement {
 }
 
 /** Sends the stage the captured size, and tells the encoder how far to reduce it. */
+/** Shows the video or, in a session without video, the sheet with its background. */
+function layoutSheet(): void {
+  const v = video();
+  if (!host) {
+    return;
+  }
+  showSheet(
+    { video: v, page: $('page'), box: $('stage') },
+    host.stage(),
+    boardAspect({ width: v.videoWidth, height: v.videoHeight }, host.stage()),
+  );
+}
+
 function frameChanged(): void {
   const v = video();
+  layoutSheet();
   adapter?.update();
   if (!host || !settings || v.videoWidth === 0) {
     return;
@@ -118,6 +135,12 @@ function render(): void {
   $<HTMLInputElement>('drawing').checked = ui.drawing;
   $<HTMLInputElement>('lock').checked = ui.locked;
   $('pause').textContent = ui.paused ? 'Resume' : 'Pause';
+  $('pause').hidden = !ui.video;
+  $('reshare').hidden = !ui.video;
+  $('backgroundRow').hidden = ui.video;
+  $<HTMLSelectElement>('background').value = ui.background;
+  layoutSheet();
+  adapter?.update();
   $('viewers').replaceChildren(
     ...ui.viewers.map((p) => {
       const li = document.createElement('li');
@@ -193,9 +216,14 @@ function enterApp(): void {
     adapter,
     readOnly: false,
     avatar: settings?.avatar,
+    filePreview,
   });
   board.on('error', (e) => toast(e.message));
   host.onChange(render);
+  new ResizeObserver(() => {
+    layoutSheet();
+    adapter?.update();
+  }).observe(stageEl);
   setToolsCollapsed(prefs.toolsCollapsed);
   setPanelCollapsed(prefs.panelCollapsed);
   render();
@@ -216,23 +244,29 @@ function endSession(message: string): void {
 
 // ── Starting ─────────────────────────────────────────────────────────────────
 
-async function startSharing(): Promise<void> {
+/**
+ * Starts the session. With `withVideo` the browser's picker opens first; without it the session
+ * is only the board, with a background and no capture.
+ */
+async function startSharing(withVideo = true): Promise<void> {
   if (picking || host) {
     return;
   }
   const problem = $('startProblem');
   problem.hidden = true;
 
-  picking = true;
-  let picked: DisplayCapture;
-  try {
-    picked = await startDisplayCapture(prefs.cursor);
-  } catch (e) {
-    problem.textContent = captureProblem(e);
-    problem.hidden = false;
-    return;
-  } finally {
-    picking = false;
+  let picked: DisplayCapture | null = null;
+  if (withVideo) {
+    picking = true;
+    try {
+      picked = await startDisplayCapture(prefs.cursor);
+    } catch (e) {
+      problem.textContent = captureProblem(e);
+      problem.hidden = false;
+      return;
+    } finally {
+      picking = false;
+    }
   }
 
   // `?tr=wss://...` (repeatable) replaces the trackers; the viewer link then carries them.
@@ -246,15 +280,18 @@ async function startSharing(): Promise<void> {
     host = await ShareHost.start({
       settings,
       clearBoard: () => board?.clear(),
+      video: withVideo,
     });
   } catch (e) {
-    picked.stop();
+    picked?.stop();
     problem.textContent = errorMessage(e instanceof SessionError ? e.reason : undefined);
     problem.hidden = false;
     return;
   }
   enterApp();
-  useCapture(picked);
+  if (picked) {
+    useCapture(picked);
+  }
   frameChanged();
 }
 
@@ -368,14 +405,18 @@ function main(): void {
     $('startProblem').textContent =
       'This browser cannot share a screen, window or tab. Use Chrome, Edge, Firefox or Safari on a computer.';
     $('startProblem').hidden = false;
-    $<HTMLButtonElement>('startShare').disabled = true;
-    return;
+    $<HTMLButtonElement>('startShare').disabled = true; // a board without video still works
   }
 
   $('startForm').addEventListener('submit', (e) => {
     e.preventDefault();
     void startSharing();
   });
+  $('startBoard').addEventListener('click', () => void startSharing(false));
+  $<HTMLSelectElement>('background').addEventListener(
+    'change',
+    (e) => void host?.command({ cmd: 'background', name: (e.target as HTMLSelectElement).value }),
+  );
   $('again').addEventListener('click', () => {
     show('start');
   });
@@ -439,6 +480,32 @@ function main(): void {
     e.preventDefault();
     saveSettings();
     dialog.close();
+  });
+  const qrDialog = $<HTMLDialogElement>('qr');
+  let qrCode: boolean[][] = [];
+  $('showQr').addEventListener('click', () => {
+    const link = host?.ui().link;
+    if (!link) {
+      return;
+    }
+    try {
+      qrCode = qrModules(link);
+    } catch {
+      toast('This link is too long for a QR code. Copy it instead.');
+      return;
+    }
+    $('qrCode').replaceChildren(qrSvg(qrCode));
+    $('qrLink').textContent = link;
+    qrDialog.showModal();
+  });
+  $('closeQr').addEventListener('click', () => qrDialog.close());
+  $('copyQr').addEventListener('click', () => {
+    qrPng(qrCode)
+      .then((png) => navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]))
+      .then(
+        () => toast('QR code copied.'),
+        () => toast('Could not copy the image: scan it from the screen instead.'),
+      );
   });
   $('newLink').addEventListener('click', () => void host?.command({ cmd: 'newLink' }));
   $('copyLink').addEventListener('click', () => {

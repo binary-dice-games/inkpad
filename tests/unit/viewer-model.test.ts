@@ -48,6 +48,7 @@ describe('placeholder', () => {
   it('waits for the video until a frame arrives', () => {
     expect(placeholder(null, false)).toMatch(/Waiting/);
     expect(placeholder(stage(), false)).toMatch(/Waiting/);
+    expect(placeholder(stage({ video: false }), false)).toBeNull(); // a board has no video to wait for
     expect(placeholder(stage(), true)).toBeNull();
   });
 

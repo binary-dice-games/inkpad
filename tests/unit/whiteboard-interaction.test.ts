@@ -146,6 +146,16 @@ describe('numbered tools', () => {
       expect(inside.tool).toBe('sticker');
       expect(inside.style.color).not.toBe(before);
 
+      // Pressing it on goes through every colour, white last, and round again.
+      const seen = new Set([before, inside.style.color]);
+      for (let i = 0; i < 7; i++) {
+        keydown('6');
+        seen.add(inside.style.color);
+      }
+      expect(seen.size).toBe(8);
+      expect(seen.has('#ffffff')).toBe(true);
+      expect(wb.element.shadowRoot?.querySelectorAll('.pop button')).toHaveLength(0); // closed
+
       keydown('5');
       expect(inside.tool).toBe('eraser');
       keydown('1');
@@ -294,7 +304,7 @@ describe('moving, turning, scaling and removing', () => {
       const image = t.node().querySelector('image')!;
       expect(image.getAttribute('href')).toBe(PNG);
       expect(image.getAttribute('height')).toBe('100');
-      expect(image.getAttribute('transform')).toBe('rotate(30 100 100)');
+      expect(image.parentElement?.getAttribute('transform')).toBe('rotate(30 100 100)');
       pointer(t.board, 'pointerdown', 100, 100);
       pointer(t.board, 'pointermove', 90, 100);
       pointer(t.board, 'pointerup', 90, 100);

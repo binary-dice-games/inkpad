@@ -117,6 +117,18 @@
         object-fit: cover;
         border: 1px solid var(--border);
       }
+      #qrCode svg {
+        display: block;
+        width: min(70vmin, 340px);
+        height: auto;
+        margin: 4px auto;
+        border-radius: 6px;
+      }
+      #qrLink {
+        word-break: break-all;
+        max-width: 340px;
+        margin-inline: auto;
+      }
       .actions {
         display: flex;
         gap: 8px;
@@ -144,6 +156,9 @@
           a link, watch it live and draw on it with you. Nothing to install.
         </p>
         <p class="muted">
+          Or start a shared board with no video, to draw, write and share files together.
+        </p>
+        <p class="muted">
           Everything in what you choose will be visible to anyone with the link. You choose in the
           next step, and your browser always shows when you are sharing.
         </p>
@@ -151,6 +166,7 @@
         <p id="startProblem" class="muted" role="alert" hidden></p>
         <p class="row">
           <button id="startShare" class="primary" type="submit">Start sharing</button>
+          <button id="startBoard" type="button">Start a board without video</button>
           <button id="openSettings" type="button">Settings…</button>
         </p>
         <p class="muted">
@@ -170,7 +186,10 @@
 
     <main id="app" hidden>
       <div id="stage">
-        <video id="video" muted autoplay playsinline aria-label="What you are sharing"></video>
+        <div id="zoom">
+          <video id="video" muted autoplay playsinline aria-label="What you are sharing"></video>
+          <div id="page" hidden></div>
+        </div>
         <div id="notice" role="status"></div>
       </div>
       <div id="bar">
@@ -189,8 +208,18 @@
           <input id="link" type="text" readonly />
           <button id="copyLink" type="button">Copy</button>
           <button id="newLink" type="button">New link</button>
+          <button id="showQr" type="button">QR code</button>
         </div>
         <ul id="viewers" aria-label="Viewers"></ul>
+        <div id="backgroundRow" class="row" hidden>
+          <label for="background">Background</label>
+          <select id="background">
+            <option value="whiteboard">Whiteboard</option>
+            <option value="blackboard">Blackboard</option>
+            <option value="wall">Wall</option>
+            <option value="cork">Cork board</option>
+          </select>
+        </div>
         <label><input id="drawing" type="checkbox" /> Viewers can draw</label>
         <label><input id="lock" type="checkbox" /> Lock: no new viewers</label>
         <div class="row">
@@ -213,6 +242,17 @@
       </aside>
       <div id="toast" role="status" hidden></div>
     </main>
+    <dialog id="qr" aria-labelledby="qrTitle">
+      <h2 id="qrTitle">Scan to join</h2>
+      <div id="qrCode" role="img" aria-label="QR code of the viewer link"></div>
+      <p id="qrLink" class="hint"></p>
+      <div class="actions">
+        <button id="copyQr" type="button">Copy image</button>
+        <span class="spacer"></span>
+        <button id="closeQr" class="primary" type="button">Close</button>
+      </div>
+    </dialog>
+
     <dialog id="settings" aria-labelledby="settingsTitle">
       <form id="settingsForm">
         <h2 id="settingsTitle">Settings</h2>

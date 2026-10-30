@@ -13,3 +13,12 @@ The copies were adapted for inkpad; the changes are listed in each file's
 header and in spec/01_core_features/DESIGN.md sections 4.1 and 4.2. Each file
 keeps its license line and provenance note. inkpad does not depend on nymph at
 build or run time.
+
+inkpad also uses these libraries, which are not part of its own code:
+
+  qrcode-generator (MIT License, Copyright (c) 2009 Kazuhiko Arase), bundled in
+    the presenter page to draw the QR code of the viewer link.
+  pdf.js (pdfjs-dist, Apache License 2.0, Copyright Mozilla Foundation), shipped
+    unmodified next to the pages as pdf.min.mjs and pdf.worker.min.mjs with its
+    license (pdfjs-LICENSE.txt), and loaded only when a PDF is dropped on the
+    board, to draw its first page.

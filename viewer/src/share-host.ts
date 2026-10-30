@@ -8,8 +8,15 @@
 import { createSession } from '@inkpad/collab-session';
 import type { Peer, RendezvousSpec, Session } from '@inkpad/collab-session';
 import { drawingGate } from '@inkpad/collab-whiteboard';
-import { PROTOCOL, STAGE_CHANNEL, inviteLink, toMediaParams } from '@inkpad/defaults';
-import type { Stage } from '@inkpad/defaults';
+import {
+  DEFAULT_BACKGROUND,
+  PROTOCOL,
+  STAGE_CHANNEL,
+  cleanBackground,
+  inviteLink,
+  toMediaParams,
+} from '@inkpad/defaults';
+import type { Background, Stage } from '@inkpad/defaults';
 import type { Settings } from './settings';
 
 /** What the presenter page shows about the share. */
@@ -23,6 +30,10 @@ export interface UiState {
   /** Whether viewers may draw. */
   drawing: boolean;
   paused: boolean;
+  /** Whether the session has video (false: only the board). */
+  video: boolean;
+  /** The background of a session without video. */
+  background: Background;
   /** A problem to show (for example `no-tracker`), or null. */
   problem: string | null;
 }
@@ -34,6 +45,8 @@ export const IDLE_UI: Readonly<UiState> = {
   locked: false,
   drawing: true,
   paused: false,
+  video: true,
+  background: DEFAULT_BACKGROUND,
   problem: null,
 };
 
@@ -45,6 +58,7 @@ export type Command =
   | { cmd: 'newLink' }
   | { cmd: 'remove'; id: string }
   | { cmd: 'clear' }
+  | { cmd: 'background'; name: string }
   | { cmd: 'viewport'; w: number; h: number };
 
 export interface ShareHostOptions {
@@ -53,6 +67,8 @@ export interface ShareHostOptions {
   rendezvous?: RendezvousSpec[];
   /** Clears the whiteboard for everyone; the owner's whiteboard does it. */
   clearBoard?: () => void;
+  /** `false`: a session without video, only the board; default true. */
+  video?: boolean;
 }
 
 const DEFAULT_ASPECT_W = 1280;
@@ -68,6 +84,8 @@ export class ShareHost {
   private readonly clearBoard: () => void;
   private drawing: boolean;
   private paused = false;
+  private readonly hasVideo: boolean;
+  private background: Background = DEFAULT_BACKGROUND;
   private problem: string | null = null;
   private viewport = { w: DEFAULT_ASPECT_W, h: DEFAULT_ASPECT_H };
   private source: MediaStream | null = null;
@@ -80,6 +98,7 @@ export class ShareHost {
     this.settings = options.settings;
     this.clearBoard = options.clearBoard ?? (() => {});
     this.drawing = options.settings.viewersMayDraw;
+    this.hasVideo = options.video !== false;
     session.mediaParams(toMediaParams(options.settings.video));
     session.channel(STAGE_CHANNEL).on('join', (peer) => this.sendStage(peer.id));
     session.on('peers', () => this.changed());
@@ -146,6 +165,15 @@ export class ShareHost {
       case 'remove':
         this.session.remove(command.id);
         break;
+      case 'background': {
+        const name = cleanBackground(command.name);
+        if (!name) {
+          throw new Error('unknown background');
+        }
+        this.background = name;
+        this.sendStage();
+        break;
+      }
       case 'clear':
         this.clearBoard();
         break;
@@ -163,6 +191,7 @@ export class ShareHost {
       fps: this.settings.video.fps,
       state: this.stopped ? 'ended' : this.paused ? 'paused' : 'live',
       drawing: this.drawing,
+      ...(this.hasVideo ? {} : { video: false as const, background: this.background }),
     };
   }
 
@@ -198,6 +227,8 @@ export class ShareHost {
       locked: this.session.locked,
       drawing: this.drawing,
       paused: this.paused,
+      video: this.hasVideo,
+      background: this.background,
       problem: this.problem,
     };
   }
@@ -270,6 +301,7 @@ export class ShareHost {
       case 'pause':
       case 'remove':
       case 'clear':
+      case 'background':
         this.run(command);
         return;
       default:

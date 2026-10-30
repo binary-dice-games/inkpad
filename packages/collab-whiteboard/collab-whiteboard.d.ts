@@ -43,8 +43,18 @@ export interface ImageItem extends ItemBase {
   size: number;
   /** Height / width. */
   ratio: number;
+  /** The preview shown on the board. */
   data: string;
+  /** The file pinned with the preview, when it was small enough to send. */
+  file?: FileInfo;
   rot?: number;
+}
+
+/** A file shared on the board. */
+export interface FileInfo {
+  name: string;
+  mime: string;
+  bytes: number;
 }
 
 export interface Tombstone extends ItemBase {
@@ -71,6 +81,9 @@ export const LIMITS: Readonly<{
   images: number;
   imageChars: number;
   avatarChars: number;
+  /** The largest file that is sent, and the most the files of a board add up to. */
+  fileBytes: number;
+  filesTotal: number;
 }>;
 
 /** A refused change (a limit, read-only), with a message for the user. */
@@ -78,6 +91,42 @@ export class WhiteboardError extends Error {}
 
 /** The item if it is well formed, else null. */
 export function cleanItem(item: unknown): StoredItem | null;
+
+/** The file description if valid (the name is made safe as a file name), else null. */
+export function cleanFileInfo(info: unknown): FileInfo | null;
+
+/** What {@link prepareFile} makes of a file. */
+export interface PreparedFile {
+  /** The preview, a data URL. */
+  data: string;
+  width: number;
+  height: number;
+  /** The preview is a card (a file that is not a picture). */
+  card?: boolean;
+  name: string;
+  /** Absent when only the picture could be shared. */
+  file?: FileInfo;
+  blob: Blob | null;
+}
+
+/**
+ * Makes the preview of a dropped file (a picture's own, a text file's first lines, or a card with
+ * its type, name and size). Throws a WhiteboardError if the file is empty or, not being a picture,
+ * too large to send.
+ */
+export function prepareFile(
+  file: File,
+  options?: { maxBytes?: number; room?: number; preview?: FilePreview },
+): Promise<PreparedFile>;
+
+/**
+ * What a host can show of a document: its first page or thumbnail (`image`, closed after use if it
+ * has `close()`), or its first `lines` of text. Null: nothing, the card is shown without content.
+ */
+export type FilePreview = (file: File) => Promise<{
+  image?: CanvasImageSource & { width: number; height: number };
+  lines?: string[];
+} | null>;
 
 /** The data URL if it is a PNG, JPEG or WebP image of at most `maxChars` characters, else null. */
 export function cleanImageData(value: unknown, maxChars?: number): string | null;
@@ -193,6 +242,10 @@ export interface WhiteboardOptions {
   avatar?: string;
   /** Show the speaking queue; default true. */
   turns?: boolean;
+  /** Replaces {@link prepareFile} (tests, or a host with better previews). */
+  prepareFile?: typeof prepareFile;
+  /** Previews of PDF and Office files (they are not part of this package). */
+  filePreview?: FilePreview;
 }
 
 export class Whiteboard {
@@ -208,6 +261,15 @@ export class Whiteboard {
    */
   chooseSlot(n: number): void;
   setAvatar(data: string | null): void;
+  /**
+   * Pins a file on the board at `at` (board units) and sends it to everyone. Resolves to the id of
+   * the item, or null if refused; throws a WhiteboardError for an empty or too large file.
+   */
+  addFile(file: File, at?: { x: number; y: number }): Promise<string | null>;
+  /** The file of an image item (its picture if no file was shared); null while it arrives. */
+  fileOf(id: string): { blob: Blob; name: string; mime: string } | null;
+  /** Saves the file of an image item in the browser's downloads. */
+  downloadFile(id: string): void;
   /** Puts this person at the end of the speaking queue. */
   requestTurn(): void;
   /** Takes this person out of the queue; the next one has the turn. */

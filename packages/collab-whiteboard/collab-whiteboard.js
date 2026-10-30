@@ -10,7 +10,8 @@
  * see spec/01_core_features/DESIGN.md section 4.2) and `drawingGate` (the
  * host-side lock on viewers' changes), and later: numbered tools with options, moving, scaling
  * and turning one's own items, images dropped on the board, zoom (in `frameAdapter`), cursors
- * that show the tool and the avatar, and a queue for the turn to speak.
+ * that show the tool and the avatar, a queue for the turn to speak, and files pinned on the
+ * board (a preview on the board, the file itself sent to everyone to drag out as a copy).
  *
  *   import { createWhiteboard } from './collab-whiteboard.js';
  *   const wb = createWhiteboard(container, { session, adapter });
@@ -32,6 +33,8 @@ export const LIMITS = Object.freeze({
   images: 20,
   imageChars: 300000,
   avatarChars: 16000,
+  fileBytes: 5 * 1024 * 1024,
+  filesTotal: 25 * 1024 * 1024,
 });
 
 /** A refused change (a limit, read-only), with a message for the user. */
@@ -43,6 +46,7 @@ const STICKER = /^[a-z0-9-]{1,32}$/;
 const KINDS = new Set(['ink', 'text', 'sticker', 'image']);
 const IMAGE_DATA = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
 const TOOL_NAMES = new Set(['pointer', 'pen', 'text', 'sticker', 'eraser']);
+const MIME = /^[a-z0-9][a-z0-9.+-]{0,60}\/[a-z0-9][a-z0-9.+-]{0,80}$/;
 const turned = (r) => (finite(r, -360, 360) && r !== 0 ? { rot: r } : {});
 const finite = (n, lo = -1e6, hi = 1e6) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
 
@@ -88,7 +92,8 @@ export function cleanItem(item) {
     if (!finite(item.x) || !finite(item.y) || !finite(item.size, 8, 2000) || !finite(item.ratio, 0.05, 20) || !cleanImageData(item.data)) {
       return null;
     }
-    return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, data: item.data, ...turned(item.rot) };
+    const file = cleanFileInfo(item.file);
+    return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, data: item.data, ...(file ? { file } : {}), ...turned(item.rot) };
   }
   if (!finite(item.x) || !finite(item.y) || !finite(item.size, 4, 400)) {
     return null;
@@ -103,6 +108,21 @@ export function cleanItem(item) {
     return null;
   }
   return { ...base, x: item.x, y: item.y, size: item.size, name: item.name, ...turned(item.rot) };
+}
+
+/**
+ * The description of a file shared on the board ({name, mime, bytes}) if it is valid, else null.
+ * The name loses path separators and control characters, so it is safe as a file name.
+ */
+export function cleanFileInfo(info) {
+  if (!info || typeof info !== 'object') {
+    return null;
+  }
+  const name = typeof info.name === 'string' ? info.name.replace(/[\u0000-\u001f\\/:*?"<>|]/g, '_').trim().slice(0, 120) : '';
+  if (!name || !MIME.test(info.mime ?? '') || !Number.isInteger(info.bytes) || info.bytes < 0 || info.bytes > LIMITS.fileBytes) {
+    return null;
+  }
+  return { name, mime: info.mime, bytes: info.bytes };
 }
 
 /** The data URL if it is a small PNG, JPEG or WebP image (at most `maxChars` long), else null. */
@@ -155,6 +175,200 @@ export async function fileToImageData(file, { maxSide = 800, square = false, max
     bitmap.close?.();
   }
   throw new WhiteboardError('That image is too large.');
+}
+
+const TEXT_NAME = /\.(txt|md|markdown|csv|tsv|json|xml|ya?ml|log|ini|toml|js|mjs|ts|tsx|jsx|py|rb|go|rs|c|h|cc|cpp|hpp|java|cs|sh|bat|ps1|html?|css|sql)$/i;
+
+function toBase64(bytes) {
+  let text = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(text);
+}
+
+function fromBase64(text) {
+  const binary = atob(text);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; ++i) {
+    out[i] = binary.charCodeAt(i);
+  }
+  return out;
+}
+
+/** The bytes of a Blob (FileReader where `arrayBuffer` is missing). */
+async function blobBytes(blob) {
+  if (typeof blob.arrayBuffer === 'function') {
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+function formatBytes(n) {
+  return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+}
+
+function wrapLines(ctx, text, width, maxLines) {
+  const lines = [];
+  let line = '';
+  for (const ch of text) {
+    if (ctx.measureText(line + ch).width > width && line) {
+      lines.push(line);
+      line = ch;
+      if (lines.length === maxLines) {
+        break;
+      }
+    } else {
+      line += ch;
+    }
+  }
+  if (lines.length < maxLines) {
+    lines.push(line);
+  } else {
+    lines[maxLines - 1] = `${lines[maxLines - 1].slice(0, -1)}\u2026`;
+  }
+  return lines;
+}
+
+/**
+ * The preview of a file that is not a picture: a page with a coloured band and the type, the
+ * first lines when it is text, and its name and size.
+ */
+async function cardPreview(file, name, mime, content = null) {
+  const ext = (/\.([A-Za-z0-9]{1,5})$/.exec(name)?.[1] ?? 'file').toUpperCase();
+  let lines = content?.lines ?? null;
+  if (!lines && !content?.image && (mime.startsWith('text/') || TEXT_NAME.test(name) || /[/+](json|xml|javascript)$/.test(mime))) {
+    try {
+      const text = await file.slice(0, 6000).text();
+      if (!/[\u0000\uFFFD]/.test(text)) {
+        lines = text.replace(/\r\n?/g, '\n').replace(/\t/g, '  ').split('\n').slice(0, 14).map((l) => l.slice(0, 36));
+      }
+    } catch {
+      lines = null;
+    }
+  }
+  const w = 320;
+  const h = 400;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  let hue = 0;
+  for (const ch of ext) {
+    hue = (hue * 31 + ch.charCodeAt(0)) % 360;
+  }
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = `hsl(${hue} 55% 42%)`;
+  ctx.fillRect(0, 0, w, 64);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 30px system-ui, sans-serif';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(ext, 20, 44);
+  // The folded corner.
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(w - 48, 0);
+  ctx.lineTo(w, 0);
+  ctx.lineTo(w, 48);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#d5d8de';
+  ctx.beginPath();
+  ctx.moveTo(w - 48, 0);
+  ctx.lineTo(w - 48, 48);
+  ctx.lineTo(w, 48);
+  ctx.closePath();
+  ctx.fill();
+  if (content?.image) {
+    // The first page (or thumbnail) of a document: the top of it, as wide as the card allows.
+    const img = content.image;
+    const scale = 280 / img.width;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(20, 76, 280, 214);
+    ctx.clip();
+    if (img.height * scale >= 214) {
+      ctx.drawImage(img, 0, 0, img.width, 214 / scale, 20, 76, 280, 214);
+    } else {
+      ctx.drawImage(img, 20, 76 + (214 - img.height * scale) / 2, 280, img.height * scale);
+    }
+    ctx.restore();
+    ctx.strokeStyle = '#d0d3da';
+    ctx.strokeRect(20.5, 76.5, 279, 213);
+    content.image.close?.();
+  } else if (lines) {
+    ctx.fillStyle = '#2b2f36';
+    ctx.font = '13px ui-monospace, Consolas, monospace';
+    lines.forEach((l, i) => ctx.fillText(l, 20, 92 + i * 17));
+  } else {
+    ctx.fillStyle = '#e3e5ea';
+    for (let i = 0; i < 9; ++i) {
+      ctx.fillRect(20, 92 + i * 22, i % 4 === 3 ? 150 : 280, 9);
+    }
+  }
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.fillRect(0, 300, w, 100);
+  ctx.fillStyle = '#1c2024';
+  ctx.font = 'bold 20px system-ui, sans-serif';
+  wrapLines(ctx, name, w - 40, 2).forEach((l, i) => ctx.fillText(l, 20, 330 + i * 24));
+  ctx.fillStyle = '#60646c';
+  ctx.font = '15px system-ui, sans-serif';
+  ctx.fillText(formatBytes(file.size), 20, 384);
+  return { data: canvas.toDataURL('image/png'), width: w, height: h, card: true };
+}
+
+/**
+ * Prepares a dropped file for the board: its preview (a picture's own, a text file's first lines,
+ * or a card with the type, name and size) and, when it is small enough, the file itself to send.
+ *
+ * @param {File} file
+ * @param {{maxBytes?: number, room?: number, preview?: (file: File) => Promise<{image?: CanvasImageSource, lines?: string[]} | null>}} [options]
+ *   `maxBytes` the largest file to send, `room` how many more bytes the board can take in total,
+ *   `preview` what a host can show of other documents (the first page of a PDF as `image`, the
+ *   first `lines` of an Office file); it is not called for files that are too large
+ * @returns {Promise<{data: string, width: number, height: number, card?: boolean, name: string,
+ *   file?: {name: string, mime: string, bytes: number}, blob: Blob | null}>} no `file` when only
+ *   the picture could be shared
+ * @throws {WhiteboardError} when it is empty, or not a picture and too large to send
+ */
+export async function prepareFile(file, { maxBytes = LIMITS.fileBytes, room = Infinity, preview = null } = {}) {
+  const info = cleanFileInfo({ name: file?.name || 'file', mime: MIME.test(file?.type ?? '') ? file.type : 'application/octet-stream', bytes: Math.min(file?.size ?? 0, LIMITS.fileBytes) });
+  if (!file || !info) {
+    throw new WhiteboardError('That file cannot be shared.');
+  }
+  if (file.size === 0) {
+    throw new WhiteboardError(`${info.name} is empty.`);
+  }
+  const fits = file.size <= Math.min(maxBytes, LIMITS.fileBytes, room);
+  let picture = null;
+  if (/^image\/(png|jpeg|webp|gif|bmp)$/.test(info.mime)) {
+    try {
+      picture = await fileToImageData(file);
+    } catch {
+      picture = null;
+    }
+  }
+  if (!picture) {
+    if (!fits) {
+      throw new WhiteboardError(`${info.name} is too large to share (the limit is ${Math.floor(LIMITS.fileBytes / 1048576)} MB).`);
+    }
+    let content = null;
+    if (fits && preview) {
+      try {
+        content = await preview(file);
+      } catch {
+        content = null; // a damaged or protected document: the card without its content
+      }
+    }
+    picture = await cardPreview(file, info.name, info.mime, content);
+  }
+  return { ...picture, name: info.name, file: fits ? { ...info, bytes: file.size } : undefined, blob: fits ? file : null };
 }
 
 // ── Points ────────────────────────────────────────────────────────────────────
@@ -464,8 +678,8 @@ const PLACEHOLDER = '<circle cx="12" cy="12" r="10.5" fill="#d9d9e0" stroke="#8b
 // ── Overlay ───────────────────────────────────────────────────────────────────
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const PALETTE = ['#e5484d', '#f5a524', '#30a46c', '#0f9f86', '#3e63dd', '#8e4ec6', '#1c2024'];
-const COLOR_NAMES = ['red', 'orange', 'green', 'teal', 'blue', 'purple', 'black'];
+const PALETTE = ['#e5484d', '#f5a524', '#30a46c', '#0f9f86', '#3e63dd', '#8e4ec6', '#1c2024', '#ffffff'];
+const COLOR_NAMES = ['red', 'orange', 'green', 'teal', 'blue', 'purple', 'black', 'white'];
 /** The options of the pen (thin, normal, thick) and of text (small, medium, large). */
 const WIDTHS = [2, 4, 8];
 const WIDTH_NAMES = ['thin', 'normal', 'thick'];
@@ -474,6 +688,7 @@ const SIZE_NAMES = ['small', 'medium', 'large'];
 /** Where each tool's cursor points, in its 24-unit icon. */
 const HOTSPOT = { pointer: [5, 3], pen: [4, 20], text: [12, 12], sticker: [12, 12], eraser: [5, 19] };
 const MAX_QUEUE = 50;
+const pinColor = (id) => PALETTE[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % 6];
 
 const nearest = (list, v) => list.reduce((best, x, i) => (Math.abs(x - v) < Math.abs(list[best] - v) ? i : best), 0);
 const readableOn = (hex) => ((parseInt(hex.slice(1, 3), 16) * 299 + parseInt(hex.slice(3, 5), 16) * 587 + parseInt(hex.slice(5, 7), 16) * 114) / 1000 > 150 ? '#1c2024' : '#ffffff');
@@ -500,6 +715,8 @@ const STRINGS = {
   you: 'you',
   yourTurn: 'Your turn to speak',
   removeFromQueue: 'Remove from the queue',
+  fileArriving: 'The file is still arriving\u2026',
+  dragFile: 'drag it to copy, double click to save',
 };
 
 const ICONS = {
@@ -558,7 +775,10 @@ svg.board:not(.pen):not(.eraser) .item.own { cursor: move; }
 .pop[hidden] { display: none; }
 .pop button { all: unset; width: 34px; height: 34px; border-radius: 7px; display: grid; place-items: center; cursor: pointer; }
 .pop button:hover, .pop button[aria-pressed="true"] { background: var(--wb-hover); }
-.pop .swatch { width: 20px; height: 20px; border-radius: 50%; }
+.pop .swatch { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(128,128,128,.55); }
+.drag { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.drag .proxy { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: grab; }
+.drag.off .proxy { pointer-events: none; }
 .toolbar button[data-key]::after { content: attr(data-key); position: absolute; right: 3px; bottom: 1px; font: 9px/1 system-ui, sans-serif; opacity: .6; pointer-events: none; }
 .hint { position: absolute; padding: 3px 8px; border-radius: 6px; background: var(--wb-fg); color: var(--wb-bg); font-size: 12px; white-space: nowrap; pointer-events: none; }
 .hint[hidden] { display: none; }
@@ -684,6 +904,10 @@ export class Whiteboard {
     this.queue = []; // peer ids waiting to speak; the first has the turn
     this.queueKey = '';
     this.turns = options.turns !== false;
+    this.prepare = options.prepareFile ?? prepareFile;
+    this.filePreview = options.filePreview ?? null;
+    this.files = new Map(); // item id -> Blob of the file shared with the item
+    this.proxies = new Map(); // item id -> {el, img}: what a copy is dragged from
     if (getComputedStyle(container).position === 'static') {
       container.style.position = 'relative';
     }
@@ -704,6 +928,7 @@ export class Whiteboard {
     this.finishText();
     this.tool = name;
     this.board.setAttribute('class', `board ${name}${name === 'pointer' ? '' : ' active'}`);
+    this.dragLayer.classList.toggle('off', name !== 'pointer');
     this.popover.hidden = true;
     this.renderToolbar();
     this.emit('tool', name);
@@ -784,6 +1009,61 @@ export class Whiteboard {
     if (this.session.role === 'host') {
       this.hubTurn(id, 'leave');
     }
+  }
+
+  /**
+   * Pins a file on the board at (x, y) (content units) and sends it to everyone. Pictures show
+   * themselves, other files a preview with their name and size.
+   * @returns {Promise<string | null>} the id of the item, null if it was refused
+   * @throws {WhiteboardError} when the file is empty or too large to share
+   */
+  async addFile(file, at = { x: 500, y: 300 }) {
+    if (this.readOnlyFlag) {
+      return null;
+    }
+    const p = await this.prepare(file, { room: LIMITS.filesTotal - this.fileTotal(), preview: this.filePreview });
+    const size = p.card ? 170 : Math.max(40, Math.min(300, p.width));
+    const op = this.local(() => this.model.add({ kind: 'image', x: round1(at.x), y: round1(at.y), size, ratio: Math.round((p.height / p.width) * 10000) / 10000, data: p.data, ...(p.file ? { file: p.file } : {}) }));
+    if (!op) {
+      return null;
+    }
+    if (p.file && p.blob) {
+      this.files.set(op.item.id, p.blob);
+      this.sendFile(op.item.id, p.blob);
+    } else {
+      this.flash(`${p.name}: shared as a picture only (too big to send)`);
+    }
+    return op.item.id;
+  }
+
+  /** The file of an image item as {blob, name, mime}: the shared file, else its picture; null while it arrives. */
+  fileOf(id) {
+    const item = this.model.get(id);
+    if (item?.kind !== 'image') {
+      return null;
+    }
+    const blob = this.files.get(id);
+    if (item.file) {
+      return blob ? { blob, name: item.file.name, mime: item.file.mime } : null;
+    }
+    const m = /^data:(image\/[a-z]+);base64,(.*)$/.exec(item.data);
+    const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[m?.[1]] ?? 'png';
+    return m ? { blob: new Blob([fromBase64(m[2])], { type: m[1] }), name: `picture.${ext}`, mime: m[1] } : null;
+  }
+
+  /** Saves a file of the board in the browser's downloads. */
+  downloadFile(id) {
+    const f = this.fileOf(id);
+    if (!f) {
+      this.flash(this.strings.fileArriving);
+      return;
+    }
+    const url = URL.createObjectURL(f.blob);
+    const a = htmlEl('a', { href: url, download: f.name });
+    this.root.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
   /** Zoom back to the whole frame (when the adapter can zoom). */
@@ -878,10 +1158,14 @@ export class Whiteboard {
     const b = box ?? this.bounds(items);
     const svg = svgEl('svg', { xmlns: SVG_NS, viewBox: `${b.x} ${b.y} ${b.width} ${b.height}`, width: b.width, height: b.height });
     const used = new Set(items.filter((i) => i.kind === 'sticker').map((i) => i.name));
-    if (used.size) {
+    const pictures = items.some((i) => i.kind === 'image');
+    if (used.size || pictures) {
       const defs = svgEl('defs');
       for (const name of used) {
         defs.append(this.symbol(name));
+      }
+      if (pictures) {
+        defs.append(this.shadowFilter());
       }
       svg.append(defs);
     }
@@ -993,6 +1277,8 @@ export class Whiteboard {
       this.remoteCursor(from, m);
     } else if (m.t === 'ink') {
       this.remoteInk(from, m);
+    } else if (m.t === 'file') {
+      this.remoteFile(from, m);
     } else if (m.t === 'avatar') {
       this.remoteAvatar(from, m);
     } else if (m.t === 'queue') {
@@ -1070,17 +1356,26 @@ export class Whiteboard {
     this.layer.append(this.itemsGroup, this.liveGroup);
     this.board.append(this.defs, this.capture, this.layer);
     this.cursorLayer = htmlEl('div', { class: 'cursors' });
+    this.dragLayer = htmlEl('div', { class: 'drag' });
     this.toolbarBox = htmlEl('div', { class: 'toolbar', role: 'toolbar', 'aria-label': 'Whiteboard', hidden: !withToolbar });
     this.popover = htmlEl('div', { class: 'pop', hidden: true });
     this.hintBox = htmlEl('div', { class: 'hint', hidden: true, role: 'status' });
     this.queueBox = htmlEl('div', { class: 'queue', role: 'group', 'aria-label': this.strings.queue, hidden: !this.turns });
-    this.root.append(this.board, this.cursorLayer, this.toolbarBox, this.popover, this.hintBox, this.queueBox);
+    this.root.append(this.board, this.dragLayer, this.cursorLayer, this.toolbarBox, this.popover, this.hintBox, this.queueBox);
     this.container.append(this.host);
+    this.defs.append(this.shadowFilter());
     for (const [name, svg] of this.stickers) {
       this.defs.append(this.symbol(name, svg));
     }
     this.renderToolbar();
     this.renderQueue();
+  }
+
+  /** @private The soft shadow of the pinned pictures. */
+  shadowFilter() {
+    const f = svgEl('filter', { id: 'wb-shadow', x: '-20%', y: '-20%', width: '140%', height: '150%' });
+    f.append(svgEl('feDropShadow', { dx: 2, dy: 4, stdDeviation: 3.5, 'flood-color': '#000000', 'flood-opacity': 0.38 }));
+    return f;
   }
 
   /** @private A sticker as a <symbol id="sticker-name">. */
@@ -1205,6 +1500,7 @@ export class Whiteboard {
     }
     this.board.style.clipPath = path;
     this.cursorLayer.style.clipPath = path;
+    this.dragLayer.style.clipPath = path;
     // The toolbar sits at the side of the area the chart is shown in (the
     // window's edge, below an editor's tab bar), never over the chart.
     const left = Math.round(clip ? Math.max(0, clip.x) : 0) + 8;
@@ -1217,6 +1513,7 @@ export class Whiteboard {
     for (const c of this.cursors.values()) {
       this.moveCursor(c);
     }
+    this.placeProxies();
     if (this.editing) {
       this.placeTextarea();
     }
@@ -1277,7 +1574,92 @@ export class Whiteboard {
         this.nodes.delete(id);
       }
     }
+    for (const id of this.files.keys()) {
+      const item = this.model.items.get(id);
+      if (!item || (item.deleted && item.author !== this.model.peerId)) {
+        this.files.delete(id);
+      }
+    }
+    this.syncProxies();
     this.renderToolbar();
+  }
+
+  /**
+   * @private Other people's pictures get an invisible HTML box over them that the browser can
+   * drag out as a copy (an SVG image cannot be dragged); your own are moved, not copied.
+   */
+  syncProxies() {
+    const want = new Map(this.model.live().filter((i) => i.kind === 'image' && i.author !== this.model.peerId).map((i) => [i.id, i]));
+    for (const [id, entry] of this.proxies) {
+      if (!want.has(id)) {
+        entry.el.remove();
+        this.proxies.delete(id);
+      }
+    }
+    for (const [id, item] of want) {
+      let entry = this.proxies.get(id);
+      if (!entry) {
+        const el = htmlEl('div', { class: 'proxy', draggable: 'true' });
+        const img = new Image();
+        img.src = item.data;
+        entry = { el, img };
+        el.addEventListener('dragstart', (ev) => this.dragOut(id, ev));
+        el.addEventListener('dblclick', () => this.downloadFile(id));
+        this.dragLayer.append(el);
+        this.proxies.set(id, entry);
+      }
+      entry.el.title = `${item.file?.name ?? 'Picture'}: ${this.strings.dragFile}`;
+    }
+    this.placeProxies();
+  }
+
+  /** @private Puts each proxy over its picture. */
+  placeProxies() {
+    const scale = Math.hypot(this.matrix?.a ?? 1, this.matrix?.b ?? 0) || 1;
+    for (const [id, entry] of this.proxies) {
+      const item = this.model.get(id);
+      if (!item) {
+        continue;
+      }
+      const w = (item.size + 12) * scale;
+      const h = (item.size * item.ratio + 12) * scale;
+      const p = this.toBox(item.x, item.y);
+      entry.el.style.width = `${w}px`;
+      entry.el.style.height = `${h}px`;
+      entry.el.style.transform = `translate(${p.x - w / 2}px, ${p.y - h / 2}px) rotate(${item.rot ?? 0}deg)`;
+    }
+  }
+
+  /** @private Starts dragging a copy of a picture or file out of the board. */
+  dragOut(id, ev) {
+    const f = this.fileOf(id);
+    const dt = ev.dataTransfer;
+    if (!f || !dt) {
+      ev.preventDefault();
+      this.flash(this.strings.fileArriving);
+      return;
+    }
+    dt.effectAllowed = 'copy';
+    try {
+      dt.items.add(new File([f.blob], f.name, { type: f.mime })); // for pages and apps that take files
+    } catch {
+      // not supported
+    }
+    try {
+      const url = URL.createObjectURL(f.blob);
+      dt.setData('DownloadURL', `${f.mime}:${f.name}:${url}`); // for the desktop and folders (Chromium)
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      // not supported
+    }
+    const entry = this.proxies.get(id);
+    if (entry?.img.complete) {
+      try {
+        dt.setDragImage(entry.img, entry.img.width / 2, entry.img.height / 2);
+      } catch {
+        // the browser picks the image
+      }
+    }
   }
 
   /** @private One item's SVG. Text goes in as textContent only. */
@@ -1293,6 +1675,9 @@ export class Whiteboard {
       );
     } else if (item.kind === 'text') {
       const text = svgEl('text', { x: item.x, y: item.y, 'font-size': item.size, fill: item.color, 'dominant-baseline': 'hanging' });
+      if (item.color.toLowerCase() === '#ffffff') {
+        text.style.stroke = '#1c2024';
+      }
       item.text.split('\n').forEach((line, i) => {
         const span = svgEl('tspan', { x: item.x, dy: i === 0 ? 0 : '1.2em' });
         span.textContent = line || ' ';
@@ -1300,8 +1685,24 @@ export class Whiteboard {
       });
       g.append(text);
     } else if (item.kind === 'image') {
+      // A print pinned on the board: a white border, a shadow that stays put when it is turned, a pin.
       const h = item.size * item.ratio;
-      g.append(svgEl('image', { href: item.data, x: item.x - item.size / 2, y: item.y - h / 2, width: item.size, height: h, preserveAspectRatio: 'none', ...turn }));
+      const pad = Math.min(8, Math.max(3, item.size * 0.03));
+      const left = item.x - item.size / 2;
+      const top = item.y - h / 2;
+      const r = Math.min(8, Math.max(4, item.size * 0.035));
+      const py = top - pad + r * 1.15;
+      const print = svgEl('g', { ...turn });
+      print.append(
+        svgEl('rect', { x: left - pad, y: top - pad, width: item.size + 2 * pad, height: h + 2 * pad, fill: '#ffffff', stroke: 'rgba(0,0,0,0.25)', 'stroke-width': 0.75 }),
+        svgEl('image', { href: item.data, x: left, y: top, width: item.size, height: h, preserveAspectRatio: 'none' }),
+        svgEl('ellipse', { cx: item.x + r * 0.45, cy: py + r * 0.7, rx: r * 0.95, ry: r * 0.6, fill: 'rgba(0,0,0,0.3)' }),
+        svgEl('circle', { cx: item.x, cy: py, r, fill: pinColor(item.id), stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8 }),
+        svgEl('circle', { cx: item.x - r * 0.3, cy: py - r * 0.32, r: r * 0.3, fill: 'rgba(255,255,255,0.6)' }),
+      );
+      const shadow = svgEl('g', { filter: 'url(#wb-shadow)' });
+      shadow.append(print);
+      g.append(shadow);
     } else {
       const known = this.stickers.has(item.name);
       if (!known && !this.defs.querySelector(`#sticker-${item.name}`)) {
@@ -1440,7 +1841,58 @@ export class Whiteboard {
         }
       }
       this.send({ t: 'queue', ids: this.queue }, { to });
+      for (const item of this.model.live()) {
+        const blob = item.kind === 'image' && item.file ? this.files.get(item.id) : null;
+        if (blob) {
+          this.sendFile(item.id, blob, { to });
+        }
+      }
     }
+  }
+
+  /** @private The bytes of a file, to everyone or to one peer. */
+  async sendFile(id, blob, opts = {}) {
+    try {
+      this.send({ t: 'file', id, data: toBase64(await blobBytes(blob)) }, opts);
+    } catch {
+      // the file stays here only
+    }
+  }
+
+  /**
+   * @private The bytes of a file pinned on the board. Only the author of the item, or the host
+   * (for someone who joined later), may send them; they must be as long as the item says.
+   */
+  remoteFile(from, m) {
+    const item = typeof m.id === 'string' ? this.model.get(m.id) : null;
+    const hostId = this.session.role === 'host' ? this.session.me.id : this.session.host?.()?.id;
+    if (item?.kind !== 'image' || !item.file || this.files.has(item.id) || (from !== item.author && from !== hostId)) {
+      return;
+    }
+    if (typeof m.data !== 'string' || m.data.length > Math.ceil(LIMITS.fileBytes / 3) * 4 || this.fileTotal() + item.file.bytes > LIMITS.filesTotal) {
+      return;
+    }
+    let bytes;
+    try {
+      bytes = fromBase64(m.data);
+    } catch {
+      return;
+    }
+    if (bytes.length !== item.file.bytes) {
+      return;
+    }
+    this.files.set(item.id, new Blob([bytes], { type: item.file.mime }));
+  }
+
+  /** @private The bytes of the files still on the board. */
+  fileTotal() {
+    let total = 0;
+    for (const [id, blob] of this.files) {
+      if (this.model.get(id)) {
+        total += blob.size;
+      }
+    }
+    return total;
   }
 
   /** @private An avatar from its owner, or (`of`) from the host on behalf of someone who joined before. */
@@ -1647,6 +2099,12 @@ export class Whiteboard {
     listen(this.board, 'pointercancel', (ev) => this.up(ev, true));
     listen(window, 'keydown', (ev) => this.key(ev), { capture: true });
     listen(this.board, 'contextmenu', (ev) => this.menu(ev));
+    listen(this.board, 'dblclick', (ev) => {
+      const hit = this.itemAt(ev);
+      if (hit?.kind === 'image') {
+        this.downloadFile(hit.id);
+      }
+    });
     // Zoom with the wheel at the pointer, pan with the middle button (or, zoomed in, the pointer tool).
     listen(this.container, 'wheel', (ev) => this.wheel(ev), { passive: false });
     listen(this.container, 'mousedown', (ev) => ev.button === 1 && this.adapter.panBy && ev.preventDefault());
@@ -1728,19 +2186,17 @@ export class Whiteboard {
     return !this.readOnlyFlag && [...(ev.dataTransfer?.types ?? [])].includes('Files');
   }
 
-  /** @private Image files dropped on the board become images where they landed. */
+  /** @private Files dropped on the board are pinned where they landed. */
   async dropped(ev) {
     if (!this.hasFiles(ev)) {
       return;
     }
     ev.preventDefault();
-    const files = [...ev.dataTransfer.files].filter((f) => /^image\/(png|jpeg|webp|gif|bmp)$/.test(f.type)).slice(0, 5);
+    const files = [...ev.dataTransfer.files].slice(0, 5);
     const at = this.eventPoint(ev);
     for (const [n, file] of files.entries()) {
       try {
-        const img = await fileToImageData(file);
-        const size = Math.min(300, img.width);
-        this.local(() => this.model.add({ kind: 'image', x: round1(at.x + n * 24), y: round1(at.y + n * 24), size, ratio: Math.round((img.height / img.width) * 10000) / 10000, data: img.data }));
+        await this.addFile(file, { x: at.x + n * 24, y: at.y + n * 24 });
       } catch (e) {
         if (!(e instanceof WhiteboardError)) {
           throw e;
@@ -2196,6 +2652,10 @@ export function drawingGate(drawing, { channel = 'wb', opsPerSecond = 50, now = 
     const t = message?.t;
     if (t === 'cur') {
       return true;
+    }
+    // Nothing relays a file longer than the board takes.
+    if (t === 'file' && !(typeof message.id === 'string' && typeof message.data === 'string' && message.data.length <= Math.ceil(LIMITS.fileBytes / 3) * 4)) {
+      return false;
     }
     // The queue is the host's alone; asking for a turn and an avatar are always welcome.
     if (t === 'queue') {

@@ -140,7 +140,21 @@ export interface Stage {
   state: StageState;
   /** Whether viewers may draw. */
   drawing: boolean;
+  /** `false` for a session without video (only the board); absent otherwise. */
+  video?: false;
+  /** What the board looks like when there is no video; absent: the default. */
+  background?: Background;
   title?: string;
+}
+
+/** The backgrounds of a session without video. */
+export const BACKGROUNDS = ['whiteboard', 'blackboard', 'wall', 'cork'] as const;
+export type Background = (typeof BACKGROUNDS)[number];
+export const DEFAULT_BACKGROUND: Background = 'whiteboard';
+
+/** The background if `value` is one of {@link BACKGROUNDS}, else undefined. */
+export function cleanBackground(value: unknown): Background | undefined {
+  return BACKGROUNDS.find((b) => b === value);
 }
 
 export const STAGE_CHANNEL = 'stage';
@@ -177,6 +191,13 @@ export function cleanStage(message: unknown): Stage | null {
     state: m.state,
     drawing: m.drawing,
   };
+  if (m.video === false) {
+    stage.video = false;
+  }
+  const background = cleanBackground(m.background);
+  if (background) {
+    stage.background = background;
+  }
   if (typeof m.title === 'string' && m.title.length > 0) {
     // eslint-disable-next-line no-control-regex
     stage.title = m.title.replace(/[\u0000-\u001f]/g, '').slice(0, MAX_TITLE);

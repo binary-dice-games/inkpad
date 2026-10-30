@@ -167,9 +167,27 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   tool that made them), and right click removes them. Shift+drag scales and Ctrl/Alt+drag
   rotates stickers and images about their centre (`rot` degrees, absent when 0). The
   model still lets any peer change any item (last writer wins); "own" is a UI rule.
-- **Images.** `image` items hold a small PNG/JPEG/WebP data URL (at most 300 000
-  characters, 20 per board); a dropped file is scaled down in the browser until it fits.
-  They travel in ops and snapshots like any item, so late joiners get them.
+- **Images and files.** `image` items hold a *preview*: a small PNG/JPEG/WebP data URL (at
+  most 300 000 characters, 20 per board). Any dropped file becomes one: a picture shows
+  itself (scaled down until it fits), a text file shows its first lines, anything else a card
+  with the type, name and size. The host page can add content to the card through the
+  `filePreview` option (`viewer/src/previews.ts`): the first page of a PDF, drawn by pdf.js
+  (shipped next to the pages, loaded only when a PDF is dropped, run in its own worker with
+  `isEvalSupported: false` because of the CSP), and for Office and OpenDocument files, which are
+  zips of XML read without a library, the saved thumbnail if there is one, else the first
+  paragraphs (docx, the first slide of a pptx, the strings of an xlsx, the text of an odt/ods/odp).
+  Old binary formats (.doc, .xls, .ppt), protected or damaged files, and a preview that takes
+  over 10 s keep the plain card. Previews are made once, by whoever drops the file. When the file is at most 5 MiB (25 MiB for the board) the item also
+  carries `file: {name, mime, bytes}` and the bytes travel separately, as `{t: 'file', id,
+  data: base64}` on `wb`, to everyone when the file is added and from the host to anyone who
+  joins later. A receiver accepts them only for an existing image item with `file`, from the
+  item's author or the host, and only with exactly `bytes` bytes; the name and type come from
+  the item, never the message, and the name loses path characters. Others get an invisible HTML
+  box over each print (an SVG image cannot be dragged) whose `dragstart` puts the file on the
+  drag as a `File` (pages and apps) and as `DownloadURL` (desktop and folders, Chromium);
+  double click saves it. Your own prints are moved, not copied. The prints are drawn with a
+  border, a drop shadow (a filter on an unrotated wrapper so the light stays put) and a pin.
+  Past the size limit a picture is still shared, as a preview only; any other file is refused.
 - **Zoom.** Lives in the frame adapter, not in the items: `zoomAt`/`panBy` change a view
   (scale 1-8, always covering the box) that is folded into `transform()` and `clip()`, and
   applied as a CSS transform to the `content` element (the video). Drawings and picture

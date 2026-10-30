@@ -1,6 +1,8 @@
 // MIT License © 2026 Carlos Lopez
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PresenterSite, configure, draw, items } from '../support/presenter-site';
+import { makePdf } from '../support/pdf';
+import { makeZip } from '../support/zip';
 
 // The static presenter page (spec/06_static_presenter) in Chrome: it starts a session from a
 // "screen" (a canvas stream standing in for the picker, which automation cannot drive), a
@@ -85,6 +87,175 @@ describe('static presenter page', () => {
     await presenter.locator('#over').waitFor({ state: 'visible' });
     await expect.poll(() => viewer.locator('#notice').textContent()).toMatch(/ended/);
     await expect.poll(() => viewer.locator('#wait').isVisible()).toBe(true);
+  });
+
+  it('starts a board without video: backgrounds, files pinned with previews, copies dragged out', async () => {
+    const presenter = await presenterPage();
+    const link = await site.startBoard(presenter);
+    const viewer = await joinViewer(link);
+    await viewer.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+
+    // A sheet instead of the video, and nothing to wait for.
+    await expect.poll(() => viewer.locator('#page').isVisible(), { timeout: 15000 }).toBe(true);
+    expect(await viewer.locator('#video').isVisible()).toBe(false);
+    expect(await viewer.locator('#notice').textContent()).toBe('');
+    expect(await presenter.locator('#pause').isVisible()).toBe(false);
+
+    // The presenter changes the background for everyone.
+    const frame = (page: typeof viewer) =>
+      page.locator('#page').evaluate((e) => getComputedStyle(e).borderTopColor);
+    await expect.poll(() => frame(viewer)).toBe('rgb(185, 190, 198)');
+    await presenter.locator('#background').selectOption('cork');
+    await expect.poll(() => frame(viewer), { timeout: 15000 }).toBe('rgb(138, 96, 56)');
+    await expect.poll(() => frame(presenter)).toBe('rgb(138, 96, 56)');
+
+    // Files dropped on the presenter's board: a text file, a real picture, a binary one.
+    await presenter.evaluate(async () => {
+      const png = await new Promise<Blob>((resolve) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 120;
+        canvas.height = 80;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#3e63dd';
+        ctx.fillRect(0, 0, 120, 80);
+        canvas.toBlob((b) => resolve(b!), 'image/png');
+      });
+      const dt = new DataTransfer();
+      dt.items.add(new File(['hello board'], 'notes.txt', { type: 'text/plain' }));
+      dt.items.add(new File([png], 'blue.png', { type: 'image/png' }));
+      dt.items.add(new File([new Uint8Array([80, 75, 3, 4, 1, 2, 3])], 'bundle.zip'));
+      document.getElementById('stage')!.dispatchEvent(
+        new DragEvent('drop', {
+          dataTransfer: dt,
+          bubbles: true,
+          cancelable: true,
+          clientX: 300,
+          clientY: 200,
+        }),
+      );
+    });
+    const pinned = (page: typeof viewer) =>
+      page.locator('collab-whiteboard .item.image-item').count();
+    await expect.poll(() => pinned(presenter), { timeout: 15000 }).toBe(3);
+    await expect.poll(() => pinned(viewer), { timeout: 15000 }).toBe(3);
+
+    // Each has a preview picture, a shadow and a pin.
+    const hrefs = await viewer
+      .locator('collab-whiteboard .item.image-item image')
+      .evaluateAll((nodes) => nodes.map((n) => n.getAttribute('href')?.slice(0, 22)));
+    expect(hrefs.every((h) => h?.startsWith('data:image/'))).toBe(true);
+    expect(await viewer.locator('collab-whiteboard .item.image-item circle').count()).toBe(6);
+    expect(await viewer.locator('collab-whiteboard .item.image-item g[filter]').count()).toBe(3);
+
+    // The viewer drags a copy of the text file out: once it has arrived, the drag carries it.
+    const dragOut = (name: string) =>
+      viewer.evaluate(async (title) => {
+        const proxy = [
+          ...document
+            .querySelector('collab-whiteboard')!
+            .shadowRoot!.querySelectorAll<HTMLElement>('.proxy'),
+        ].find((p) => p.title.startsWith(title))!;
+        const dt = new DataTransfer();
+        const ev = new DragEvent('dragstart', {
+          dataTransfer: dt,
+          bubbles: true,
+          cancelable: true,
+        });
+        proxy.dispatchEvent(ev);
+        const file = dt.files[0];
+        return {
+          refused: ev.defaultPrevented,
+          name: file?.name,
+          text: file?.type === 'text/plain' ? await file.text() : undefined,
+          size: file?.size,
+          url: dt.getData('DownloadURL').slice(0, 30),
+        };
+      }, name);
+    await expect
+      .poll(async () => (await dragOut('notes.txt')).refused, { timeout: 15000 })
+      .toBe(false);
+    expect(await dragOut('notes.txt')).toMatchObject({
+      name: 'notes.txt',
+      text: 'hello board',
+      url: 'text/plain:notes.txt:blob:http',
+    });
+    await expect.poll(async () => (await dragOut('bundle.zip')).size, { timeout: 15000 }).toBe(7);
+
+    // A file over the limit that is not a picture is refused with a message.
+    await presenter.evaluate(() => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([new Uint8Array(6 * 1024 * 1024)], 'huge.zip'));
+      document.getElementById('stage')!.dispatchEvent(
+        new DragEvent('drop', {
+          dataTransfer: dt,
+          bubbles: true,
+          cancelable: true,
+          clientX: 100,
+          clientY: 100,
+        }),
+      );
+    });
+    await expect.poll(() => presenter.locator('#toast').textContent()).toMatch(/too large/);
+    expect(await pinned(presenter)).toBe(3);
+  });
+
+  it('previews a PDF and an Office file with their content, and gives the link as a QR code', async () => {
+    const presenter = await presenterPage();
+    const link = await site.startBoard(presenter);
+
+    // The QR code of the link, for a camera.
+    await presenter.locator('#showQr').click();
+    await presenter.locator('#qr').waitFor({ state: 'visible' });
+    expect(await presenter.locator('#qrCode svg path').count()).toBe(1);
+    expect(await presenter.locator('#qrLink').textContent()).toBe(link);
+    await presenter.locator('#closeQr').click();
+    await expect.poll(() => presenter.locator('#qr').isVisible()).toBe(false);
+
+    // A PDF and a docx dropped on the board show their content, not just the type.
+    const docx = makeZip({
+      'word/document.xml':
+        '<w:document xmlns:w="w"><w:body><w:p><w:r><w:t>Quarterly report: revenue grew and costs fell this year</w:t></w:r></w:p></w:body></w:document>',
+    });
+    await presenter.evaluate(
+      async ([pdf, office]) => {
+        const dt = new DataTransfer();
+        dt.items.add(new File([new Uint8Array(pdf!)], 'plan.pdf', { type: 'application/pdf' }));
+        dt.items.add(new File([new Uint8Array(office!)], 'report.docx'));
+        document.getElementById('stage')!.dispatchEvent(
+          new DragEvent('drop', {
+            dataTransfer: dt,
+            bubbles: true,
+            cancelable: true,
+            clientX: 300,
+            clientY: 200,
+          }),
+        );
+      },
+      [[...makePdf()], [...docx]],
+    );
+    const pinned = presenter.locator('collab-whiteboard .item.image-item image');
+    await expect.poll(() => pinned.count(), { timeout: 30000 }).toBe(2);
+
+    // Dark pixels in the content area of each card: a plain card only has light grey bars.
+    const dark = (index: number) =>
+      pinned.nth(index).evaluate(async (node) => {
+        const img = new Image();
+        img.src = node.getAttribute('href')!;
+        await img.decode();
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const g = c.getContext('2d')!;
+        g.drawImage(img, 0, 0);
+        const px = g.getImageData(20, 80, 280, 205).data;
+        let n = 0;
+        for (let i = 0; i < px.length; i += 4) {
+          if ((px[i]! + px[i + 1]! + px[i + 2]!) / 3 < 100) n++;
+        }
+        return n;
+      });
+    expect(await dark(0)).toBeGreaterThan(3000); // the black bar of the page
+    expect(await dark(1)).toBeGreaterThan(100); // the first lines of the document
   });
 
   it('hides the pointer when asked, and remembers the settings', async () => {

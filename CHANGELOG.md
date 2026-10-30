@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- White in the colour list (the eighth colour).
+- PDF and Office files dropped on the board show their content on the card: the first page of a PDF, the saved thumbnail or the first paragraphs of a Word, Excel, PowerPoint or OpenDocument file (older .doc, .xls and .ppt files show only the card).
+- **QR code** button in the presenter controls: shows the viewer link as a QR code to scan with a phone or tablet camera, and copies it as an image.
+- Start a session without video (**Start a board without video** on the presenter page): only the shared board, on a whiteboard, blackboard, wall or cork background chosen by the presenter.
+- Share files through the board: drop any file (picture, document, zip, ...) up to 5 MB on it. The board shows a preview (a picture's own, the first lines of a text file, or a card with the type, name and size), everyone else gets the file, and can drag a copy out to a folder or another app (double click to save it). Files and pictures are shown as prints pinned to the board, with a border, a shadow and a pin.
 - Numbered tool shortcuts: 1 pointer, 2 line, 3 text, 4 stickers, 5 eraser, 6 colour. Pressing a number again goes through the options of that tool (line: thin, normal, thick; text: small, medium, large; each sticker; each colour); the toolbar shows the option in use. `0` resets the zoom.
 - Drag your own lines, text, stickers and images to move them; right click removes them. Stickers and images scale with Shift+drag and turn with Ctrl (or Alt)+drag.
 - Zoom with the mouse wheel at the pointer (and move with the middle button, or by dragging when zoomed in); the drawings stay where they are on the video.

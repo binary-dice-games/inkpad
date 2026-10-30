@@ -100,6 +100,26 @@ Closing the page ends the session (viewers see `host-gone`).
 `present.html?tr=wss://...` (repeatable) replaces the public trackers, and the viewer
 link then carries them (the same `tr` rule as `spec/01_core_features/DESIGN.md`).
 
+### QR code of the link
+
+**QR code** in the controls opens a dialog with the viewer link as a QR code (black on white
+with its quiet zone, error correction M, drawn as one SVG path; `viewer/src/qr.ts`, encoded by
+the `qrcode-generator` package) so a phone or tablet joins by pointing its camera at the screen.
+It shows the link as it is when the button is pressed (so after **New link** too), and **Copy
+image** puts a PNG of it on the clipboard. A link too long for a QR code (many custom trackers)
+is refused with a message.
+
+### A board without video
+
+**Start a board without video** starts the same session with no capture: `ShareHost.start({video:
+false})`, no `setMedia`, and the `stage` message says `video: false` plus a `background`
+(`whiteboard`, `blackboard`, `wall`, `cork`; the presenter picks it, viewers cannot). Both pages
+then hide the `<video>` and show a sheet of the stage's aspect (16:9 unless a capture said
+otherwise), letterboxed in the window, with that background (`viewer/src/sheet.ts`: CSS gradients
+and inline SVG noise, no image files). The `<video>` and the sheet sit in one `#zoom` element,
+which is what the wheel zooms, so the drawings stay on the sheet. Pause, Share again and the
+video limits do not apply; adding video to a running board is not supported.
+
 ### Link lifetime
 
 The WebTorrent tracker protocol has no time to live a client can set: a tracker forgets a peer

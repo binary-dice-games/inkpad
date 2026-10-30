@@ -25,6 +25,8 @@ import {
 } from '@inkpad/defaults';
 import type { Stage } from '@inkpad/defaults';
 import { setToolbarFolded } from './fold';
+import { filePreview } from './previews';
+import { showSheet } from './sheet';
 import {
   boardAspect,
   endMessage,
@@ -91,8 +93,19 @@ function video(): HTMLVideoElement {
   return $<HTMLVideoElement>('video');
 }
 
+/** Shows the video or, in a session without video, the sheet with its background. */
+function layoutSheet(): void {
+  const v = video();
+  showSheet(
+    { video: v, page: $('page'), box: $('stage') },
+    stage,
+    boardAspect({ width: v.videoWidth, height: v.videoHeight }, stage),
+  );
+}
+
 function refreshStage(): void {
   hasVideo = video().videoWidth > 0;
+  layoutSheet();
   adapter?.update();
   $('notice').textContent = placeholder(stage, hasVideo) ?? '';
   if (board) {
@@ -145,11 +158,13 @@ function enterApp(): void {
     adapter,
     readOnly: !mayDraw(stage),
     avatar,
+    filePreview,
   });
   board.on('error', (e) => toast(e.message));
   for (const event of ['loadedmetadata', 'resize', 'playing']) {
     v.addEventListener(event, refreshStage);
   }
+  new ResizeObserver(layoutSheet).observe(stageEl);
   setToolbarFolded(board, folded);
   refreshStage();
   renderPeople();

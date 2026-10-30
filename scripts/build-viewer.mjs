@@ -3,12 +3,19 @@
 //
 //   node scripts/build-viewer.mjs [outDir]      default: viewer/dist (the GitHub Pages bundle)
 import { build } from 'esbuild';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const src = join(root, 'viewer', 'src');
+
+/** The pdf.js files that ship next to the pages: [file in `pdfjs-dist`, name in the site]. */
+export const PDF_FILES = [
+  ['build/pdf.min.mjs', 'pdf.min.mjs'],
+  ['build/pdf.worker.min.mjs', 'pdf.worker.min.mjs'],
+  ['LICENSE', 'pdfjs-LICENSE.txt'],
+];
 
 /**
  * Builds the viewer page and the presenter page (`index.html`, `viewer.js`,
@@ -32,6 +39,10 @@ export async function buildViewer(out) {
     legalComments: 'none',
     logLevel: 'warning',
   });
+  // pdf.js, loaded by the pages only when a PDF is dropped on the board (for its preview).
+  for (const [from, to] of PDF_FILES) {
+    copyFileSync(join(root, 'node_modules', 'pdfjs-dist', from), join(out, to));
+  }
   const viewerHtml = readFileSync(join(src, 'index.html'), 'utf8');
   const link = '<p><a href="present.html">Want to present your own screen? Start a session</a></p>';
   writeFileSync(join(out, 'index.html'), viewerHtml.replace('<!--{{present-link}}-->', link));

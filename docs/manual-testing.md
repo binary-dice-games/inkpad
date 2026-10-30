@@ -47,6 +47,13 @@ presenter on Chrome.
 | 33 | Two viewers with different tools and one with an avatar | Others see each tool's cursor shape; the avatar replaces the name |
 | 34 | Three people ask for a turn; the first ends it; the presenter removes the second | The queue in the lower left updates everywhere; the speaker's cursor is larger, with a pulsing border on its name tag or avatar |
 | 35 | Set the link lifetime to 1 minute, start, wait, try to join | The page says the link expired and the join fails; **New link** works for a new viewer |
+| 36 | **Start a board without video**; a viewer joins; the presenter cycles the background | Viewer and presenter show a sheet (no video, no waiting message); whiteboard, blackboard, wall and cork follow on both |
+| 37 | Drop a photo, a PDF, a zip, a text file and a 10 MB file on the board | The first four are pinned (border, shadow, pin) with previews; the big one is refused with a message |
+| 38 | On a viewer, drag a pinned PDF onto the desktop, a folder, and a mail or chat web page; double click another | A copy with the right name and contents lands (the desktop and folder in Chrome or Edge; web pages in Chrome and Firefox); double click downloads it |
+| 39 | Join a viewer after files were pinned | The late viewer sees the prints and can drag the files out within a few seconds |
+| 40 | Drop a PDF, a .docx, a .pptx and an .xlsx on the board | The cards show the first page of the PDF and the thumbnail or the first lines of the others; an old .doc shows only the card |
+| 41 | Presenter controls: **QR code**; scan it with an iPad or phone camera | The device opens the viewer link and joins; **Copy image** pastes a QR image into a chat or document |
+| 42 | Press 6 repeatedly and draw with white on the blackboard and on the whiteboard | The eighth colour is white; it is visible on the blackboard, and white text has a dark outline on light backgrounds |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

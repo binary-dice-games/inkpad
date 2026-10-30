@@ -123,6 +123,14 @@
         position: absolute;
         inset: 0;
       }
+      #zoom {
+        position: absolute;
+        inset: 0;
+      }
+      #page {
+        position: absolute;
+        box-shadow: 0 6px 30px rgba(0, 0, 0, 0.5);
+      }
       #video {
         position: absolute;
         inset: 0;
@@ -357,7 +365,10 @@
     </main>
     <main id="app" hidden>
       <div id="stage">
-        <video id="video" muted autoplay playsinline aria-label="The shared screen"></video>
+        <div id="zoom">
+          <video id="video" muted autoplay playsinline aria-label="The shared screen"></video>
+          <div id="page" hidden></div>
+        </div>
         <div id="notice" role="status"></div>
       </div>
       <div id="bar">

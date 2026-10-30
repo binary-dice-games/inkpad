@@ -20,7 +20,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildViewer } from './build-viewer.mjs';
+import { PDF_FILES, buildViewer } from './build-viewer.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const siteSrc = join(root, 'viewer', 'src', 'site');
@@ -61,6 +61,9 @@ export async function buildSite(out, { base = '/', archive = join(root, 'site-ar
   // Its presenter page goes with it: both sides of a link then speak the same protocol.
   copyFileSync(join(out, 'present.html'), join(out, versionDir, 'present.html'));
   copyFileSync(join(out, 'present.js'), join(out, versionDir, 'present.js'));
+  for (const [, name] of PDF_FILES) {
+    copyFileSync(join(out, name), join(out, versionDir, name));
+  }
 
   // Older majors that are kept in the repo (never overwriting the current one).
   if (existsSync(archive)) {

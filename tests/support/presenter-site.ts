@@ -36,7 +36,7 @@ export class PresenterSite {
       try {
         const body = readFileSync(join(out, path === '/' ? 'index.html' : path.slice(1)));
         res.writeHead(200, {
-          'content-type': path.endsWith('.js') ? 'text/javascript' : 'text/html',
+          'content-type': /\.m?js$/.test(path) ? 'text/javascript' : 'text/html',
         });
         res.end(body);
       } catch {
@@ -111,6 +111,15 @@ export class PresenterSite {
   async startSharing(page: Page): Promise<string> {
     await configure(page);
     await page.locator('#startShare').click();
+    await page.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+    await expect.poll(() => page.locator('#link').inputValue()).toMatch(/#inkpad=/);
+    return page.locator('#link').inputValue();
+  }
+
+  /** Starts a session without video on a presenter page; returns the viewer link. */
+  async startBoard(page: Page): Promise<string> {
+    await configure(page);
+    await page.locator('#startBoard').click();
     await page.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
     await expect.poll(() => page.locator('#link').inputValue()).toMatch(/#inkpad=/);
     return page.locator('#link').inputValue();

@@ -25,10 +25,12 @@ describe('ShareHost', () => {
   async function start(
     settings: Partial<Settings> = {},
     clearBoard?: () => void,
+    video?: boolean,
   ): Promise<ShareHost> {
     const host = await ShareHost.start({
       settings: { ...DEFAULT_SETTINGS, name: 'Pat', ...settings },
       clearBoard,
+      video,
       rendezvous: [{ kind: 'memory', network }],
     });
     opened.push(host);
@@ -128,6 +130,29 @@ describe('ShareHost', () => {
     expect(host.ui().locked).toBe(true);
     await host.command({ cmd: 'remove', id: guest.me.id });
     await until(() => host.ui().viewers.length === 0, 'viewer removed');
+  });
+
+  it('starts a session without video that tells viewers, and lets the presenter pick the background', async () => {
+    const host = await start({}, undefined, false);
+    expect(host.ui()).toMatchObject({ video: false, background: 'whiteboard', phase: 'live' });
+    const { stages } = await join(host, 'Ana');
+    await until(() => stages.length > 0, 'stage');
+    expect(stages[0]).toMatchObject({ video: false, background: 'whiteboard' });
+
+    await host.command({ cmd: 'background', name: 'cork' });
+    await until(() => stages.at(-1)?.background === 'cork', 'background changed');
+    expect(host.ui().background).toBe('cork');
+    await expect(host.command({ cmd: 'background', name: 'lava' })).rejects.toThrow(/background/);
+    expect(host.ui().background).toBe('cork');
+  });
+
+  it('does not say anything about video or background when there is video', async () => {
+    const host = await start();
+    const { stages } = await join(host, 'Ana');
+    await until(() => stages.length > 0, 'stage');
+    expect(stages[0]).not.toHaveProperty('video');
+    expect(stages[0]).not.toHaveProperty('background');
+    expect(host.ui().video).toBe(true);
   });
 
   it('issues a new link without dropping the people already there', async () => {

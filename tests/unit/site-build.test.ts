@@ -63,6 +63,17 @@ describe('the Pages site', () => {
     }
   });
 
+  it('ships pdf.js next to the pages, under the protocol major too, for the previews of PDFs', () => {
+    for (const dir of ['', `v${protocolMajor()}/`]) {
+      for (const name of ['pdf.min.mjs', 'pdf.worker.min.mjs', 'pdfjs-LICENSE.txt']) {
+        expect(readFileSync(join(out, dir, name)).length, `${dir}${name}`).toBeGreaterThan(1000);
+      }
+      expect(readFileSync(join(out, dir, 'pdfjs-LICENSE.txt'), 'utf8')).toMatch(/Apache License/);
+    }
+    // pdf.js is not part of the bundles: the pages load it on demand.
+    expect(readFileSync(join(out, 'present.js'), 'utf8')).not.toContain('GlobalWorkerOptions =');
+  });
+
   it('points the 404 page at the site base', () => {
     const page = readFileSync(join(out, '404.html'), 'utf8');
     expect(page).toContain('src="/inkpad/redirect.js"');
