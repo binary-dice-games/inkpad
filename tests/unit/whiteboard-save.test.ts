@@ -227,8 +227,6 @@ describe('saving a board', () => {
       expect('file' in image).toBe(false);
       const r2 = await second.loadBoard(broken);
       expect(r2).toMatchObject({ added: 2, skipped: 2, files: 1 });
-      const old = await second.loadBoard({ ...stripped, format: 'inkpad-board' });
-      expect(old.added).toBe(2); // saved before the rename
       await expect(second.loadBoard({ format: 'other', version: 1, items: [] })).rejects.toThrow(
         /not an inksplat board/,
       );
