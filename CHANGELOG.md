@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Pins put on a note, picture, link or sticker stay attached to it (and their threads with them) when it is moved, turned or scaled; they go when it goes.
+- Pressing on a pin and dragging pulls a thread with any tool in hand, and the previous tool comes back on release; the pin wins over the threads and notes around it when it is clicked. Shift+drag moves a pin.
+- **Clear drawings** in the presenter controls removes only lines, texts and stickers, leaving notes, pins, threads, pictures and files; the old button is now **Clear all**.
 - **Save...** on the viewer and presenter pages: the board as a PNG picture or an SVG drawing (over the video frame or the chosen background), or as a board file to open in a later session and carry on (notes, threads, pictures and pinned files included; what is opened becomes yours).
 - Sticky notes come in five shapes (square, rounded, oval, diamond, hexagon): key 6 again cycles them; select your note to change its shape or colour.
 - Pin tool (7): a bare pin on the board.

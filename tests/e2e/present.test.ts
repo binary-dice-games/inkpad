@@ -467,6 +467,90 @@ describe('static presenter page', () => {
     expect(await again.locator('collab-whiteboard .note-item').textContent()).toContain('Keep me');
   });
 
+  it('pulls a thread from a pin with any tool, keeps pins on their notes, and clears only the drawings', async () => {
+    const presenter = await presenterPage();
+    const link = await site.startBoard(presenter);
+    const viewer = await joinViewer(link);
+    await viewer.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+    await expect.poll(() => viewer.locator('#page').isVisible(), { timeout: 15000 }).toBe(true);
+    const box = (await presenter.locator('#stage').boundingBox())!;
+    const at = (fx: number, fy: number) => ({
+      x: box.x + box.width * fx,
+      y: box.y + box.height * fy,
+    });
+    const pointerTool = presenter.locator('collab-whiteboard .toolbar button[data-key="1"]');
+    const pins = () =>
+      presenter.evaluate(() =>
+        [
+          ...document
+            .querySelector('collab-whiteboard')!
+            .shadowRoot!.querySelectorAll('.pin-item circle.paper'),
+        ].map((c) => {
+          const r = c.getBoundingClientRect();
+          return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        }),
+      );
+
+    // A note, and a pin put on top of it; another pin on the bare board.
+    await presenter.keyboard.press('6');
+    const n = at(0.3, 0.5);
+    await presenter.mouse.click(n.x, n.y);
+    await presenter.keyboard.press('Control+Enter');
+    await presenter.keyboard.press('7');
+    await presenter.mouse.click(n.x + 30, n.y - 20); // on the note
+    const free = at(0.6, 0.2);
+    await presenter.mouse.click(free.x, free.y); // on nothing
+    await expect.poll(async () => (await pins()).length).toBe(2);
+    const before = (await pins())[0]!;
+
+    // Moving the note (pointer tool) takes the pin along.
+    await presenter.keyboard.press('1');
+    await presenter.mouse.move(n.x - 40, n.y + 40);
+    await presenter.mouse.down();
+    await presenter.mouse.move(n.x + 20, n.y + 90, { steps: 5 });
+    await presenter.mouse.up();
+    await expect.poll(async () => (await pins())[0]!.x).toBeCloseTo(before.x + 60, -1);
+    const [attached, bare] = await pins();
+    expect(attached!.y).toBeGreaterThan(before.y + 40);
+
+    // With the pointer tool in hand, pressing on a pin and dragging to the other ties a thread,
+    // and the pointer tool is back as soon as the button is up.
+    await presenter.mouse.move(attached!.x, attached!.y);
+    await presenter.mouse.down();
+    await expect.poll(() => pointerTool.getAttribute('aria-pressed')).toBe('false');
+    await presenter.mouse.move(bare!.x, bare!.y, { steps: 6 });
+    await presenter.mouse.up();
+    await expect.poll(() => pointerTool.getAttribute('aria-pressed')).toBe('true');
+    const threads = viewer.locator('collab-whiteboard .arrow-item');
+    await expect.poll(() => threads.count(), { timeout: 30000 }).toBe(1);
+
+    // A click on that pin selects the pin, though the thread leaves from it.
+    await presenter.mouse.click(bare!.x, bare!.y);
+    await expect
+      .poll(() => presenter.locator('collab-whiteboard .pin-item.selected').count())
+      .toBe(1);
+    await expect
+      .poll(() => presenter.locator('collab-whiteboard .arrow-item.selected').count())
+      .toBe(0);
+
+    // Clear drawings: a line goes, the note, pins and thread stay; Clear all takes everything.
+    await presenter.keyboard.press('2');
+    const a = at(0.5, 0.8);
+    await presenter.mouse.move(a.x, a.y);
+    await presenter.mouse.down();
+    await presenter.mouse.move(a.x + 120, a.y + 30, { steps: 5 });
+    await presenter.mouse.up();
+    const count = (page: typeof viewer) => page.locator('collab-whiteboard .item').count();
+    await expect.poll(() => count(viewer), { timeout: 30000 }).toBe(5);
+    presenter.once('dialog', (d) => void d.accept());
+    await presenter.locator('#clearDrawings').click();
+    await expect.poll(() => count(viewer), { timeout: 30000 }).toBe(4);
+    await expect.poll(() => count(presenter)).toBe(4);
+    presenter.once('dialog', (d) => void d.accept());
+    await presenter.locator('#clear').click();
+    await expect.poll(() => count(viewer), { timeout: 30000 }).toBe(0);
+  });
+
   it('hides the pointer when asked, and remembers the settings', async () => {
     const presenter = await presenterPage();
     await configure(presenter, 'never');

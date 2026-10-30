@@ -408,3 +408,291 @@ describe('selecting a note or a thread', () => {
     }
   });
 });
+
+describe('clearing only the drawings', () => {
+  it('removes lines, texts and stickers of everyone and leaves the elements', async () => {
+    const room = new TestRoom();
+    const host = await room.start();
+    const wb = createWhiteboard(box(800, 450), { session: host, adapter: identity });
+    try {
+      const ana = await room.join('Ana');
+      await until(() => ana.host(), 'Ana reached the host');
+      const anaBoard = createWhiteboard(box(800, 450), { session: ana, adapter: identity });
+      const note = wb.addNote({ x: 100, y: 100 }, 'keep')!;
+      const pin = wb.addPin({ x: 300, y: 100 })!;
+      wb.addArrow(note, pin);
+      await until(() => anaBoard.items().length === 3, 'the elements arrived');
+      // Drawings by both of them, made the way the tools make them.
+      const draw = (b: unknown) => {
+        const inner = b as {
+          local(make: () => unknown): unknown;
+          model: { add(f: object): unknown };
+        };
+        for (const fields of [
+          { kind: 'ink', points: [0, 0, 10, 10], color: '#e5484d', width: 4 },
+          { kind: 'sticker', x: 5, y: 5, size: 32, name: 'check' },
+          { kind: 'text', x: 5, y: 5, size: 18, text: 'hi', color: '#e5484d' },
+        ]) {
+          inner.local(() => inner.model.add(fields));
+        }
+      };
+      draw(wb);
+      draw(anaBoard);
+      await until(() => wb.items().length === 9, 'all the drawings are in');
+      expect(wb.clearDrawings()).toBe(6);
+      expect(
+        wb
+          .items()
+          .map((i) => i.kind)
+          .sort(),
+      ).toEqual(['arrow', 'note', 'pin']);
+      expect(wb.clearDrawings()).toBe(0);
+      await until(
+        () => anaBoard.items().every((i) => ['arrow', 'note', 'pin'].includes(i.kind)),
+        'Ana sees only the elements',
+      );
+      expect(wb.readOnly).toBe(false);
+      wb.readOnly = true;
+      expect(wb.clearDrawings()).toBe(0);
+    } finally {
+      wb.destroy();
+      room.close();
+    }
+  });
+});
+
+describe('pins attached to what they are put on', () => {
+  async function mount() {
+    const room = new TestRoom();
+    const host = await room.start();
+    const wb = createWhiteboard(box(800, 450), {
+      session: host,
+      adapter: identity,
+      random: () => 0.5,
+    });
+    const root = wb.element.shadowRoot!;
+    const board = root.querySelector('svg')!;
+    const pick = { find: (): Element | null => null };
+    Object.defineProperty(root, 'elementsFromPoint', {
+      value: () => [pick.find()].filter(Boolean),
+    });
+    const where = (id: string) =>
+      pinPoint(
+        wb.items().find((i) => i.id === id),
+        (other) => wb.items().find((i) => i.id === other),
+      )!;
+    return { room, wb, root, board, pick, where, inside: wb as unknown as Inside };
+  }
+  type Mounted = Awaited<ReturnType<typeof mount>>;
+  const done = (t: Mounted) => {
+    t.wb.destroy();
+    t.room.close();
+  };
+  /** A pointer event the way the browser makes it: it crosses into the page and can be stopped there. */
+  const press = (t: Mounted, type: string, x: number, y: number, init: MouseEventInit = {}) =>
+    t.board.dispatchEvent(
+      new MouseEvent(type, {
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        ...init,
+      }),
+    );
+  const change = (t: Mounted, id: string, fields: object) =>
+    (
+      t.wb as unknown as {
+        local(f: () => unknown): unknown;
+        model: { change(i: string, f: object): unknown };
+      }
+    ).local(() =>
+      (t.wb as unknown as { model: { change(i: string, f: object): unknown } }).model.change(
+        id,
+        fields,
+      ),
+    );
+
+  it('stays where it was put on a note when the note is moved, turned or scaled', async () => {
+    const t = await mount();
+    try {
+      const note = t.wb.addNote({ x: 200, y: 200 }, 'host')!;
+      const pin = t.wb.addPin({ x: 230, y: 180 })!; // on the note (110..290 by 110..290)
+      const other = t.wb.addPin({ x: 600, y: 400 })!; // on nothing
+      const items = t.wb.items();
+      expect(items.find((i) => i.id === pin)).toMatchObject({ on: note });
+      expect(items.find((i) => i.id === other)).not.toHaveProperty('on');
+      expect(t.where(pin).x).toBeCloseTo(230, 0);
+      expect(t.where(pin).y).toBeCloseTo(180, 0);
+      const thread = t.wb.addArrow(pin, other)!;
+      const d = () => t.root.querySelector('.arrow-item path.paper')!.getAttribute('d');
+      const before = d();
+
+      change(t, note, { x: 300, y: 250 });
+      expect(t.where(pin).x).toBeCloseTo(330, 0); // moved with it
+      expect(t.where(pin).y).toBeCloseTo(230, 0);
+      expect(d()).not.toBe(before); // and so did the thread
+      expect(d()).toMatch(/^M330 230Q/);
+      // The drawn pin is there too.
+      expect(
+        Number(t.root.querySelector('.pin-item circle.paper')!.getAttribute('cx')),
+      ).toBeCloseTo(330, 0);
+
+      change(t, note, { size: 360 }); // twice as wide and as high: twice as far from the centre
+      expect(t.where(pin).x).toBeCloseTo(360, 0);
+      expect(t.where(pin).y).toBeCloseTo(210, 0);
+      change(t, note, { size: 180, rot: 90 });
+      expect(t.where(pin).x).toBeCloseTo(320, 0); // turned a quarter about the centre (300, 250)
+      expect(t.where(pin).y).toBeCloseTo(280, 0);
+      expect(thread).toBeTruthy();
+    } finally {
+      done(t);
+    }
+  });
+
+  it('goes with its note when the note goes, and so does what is tied to it', async () => {
+    const t = await mount();
+    try {
+      const note = t.wb.addNote({ x: 200, y: 200 }, 'host')!;
+      const pin = t.wb.addPin({ x: 230, y: 180 })!;
+      const other = t.wb.addPin({ x: 600, y: 400 })!;
+      t.wb.addArrow(pin, other);
+      t.wb.addArrow(other, note);
+      const kinds = () =>
+        t.wb
+          .items()
+          .map((i) => i.kind)
+          .sort();
+      expect(kinds()).toEqual(['arrow', 'arrow', 'note', 'pin', 'pin']);
+      t.pick.find = () => t.root.querySelector('.note-item');
+      press(t, 'contextmenu', 200, 250);
+      await until(
+        () => !kinds().includes('arrow') && kinds().length === 1,
+        'all that hung on it went',
+      );
+      expect(t.wb.items()[0]).toMatchObject({ id: other, kind: 'pin' });
+    } finally {
+      done(t);
+    }
+  });
+
+  it('is attached when it is moved onto something, and loose when it is moved off', async () => {
+    const t = await mount();
+    try {
+      const note = t.wb.addNote({ x: 200, y: 200 })!;
+      const pin = t.wb.addPin({ x: 600, y: 400 })!;
+      t.pick.find = () => t.root.querySelector('.pin-item');
+      const drag = (from: [number, number], to: [number, number]) => {
+        press(t, 'pointerdown', ...from, { shiftKey: true });
+        press(t, 'pointermove', ...to, { shiftKey: true });
+        press(t, 'pointerup', ...to, { shiftKey: true });
+      };
+      drag([600, 400], [180, 230]);
+      expect(t.wb.items().find((i) => i.id === pin)).toMatchObject({ on: note });
+      expect(t.where(pin).x).toBeCloseTo(180, 0);
+      t.pick.find = () => t.root.querySelector('.pin-item');
+      drag([180, 230], [700, 100]);
+      expect(t.wb.items().find((i) => i.id === pin)).not.toHaveProperty('on');
+      expect(t.where(pin)).toEqual({ x: 700, y: 100 });
+    } finally {
+      done(t);
+    }
+  });
+
+  it('pulls a thread when pressed on and dragged, whatever tool is in hand, and gives the tool back', async () => {
+    const t = await mount();
+    try {
+      const a = t.wb.addPin({ x: 100, y: 100 })!;
+      const b = t.wb.addPin({ x: 400, y: 120 })!;
+      for (const tool of ['pointer', 'note', 'text', 'sticker', 'pin']) {
+        t.wb.setTool(tool as never);
+        press(t, 'pointerdown', 101, 99);
+        expect(t.inside.tool, tool).toBe('arrow'); // the thread tool, for as long as the button is down
+        press(t, 'pointermove', 300, 110);
+        press(t, 'pointerup', 399, 121);
+        expect(t.inside.tool, tool).toBe(tool);
+      }
+      const threads = t.wb.items().filter((i): i is ArrowItem => i.kind === 'arrow');
+      expect(threads).toHaveLength(5);
+      expect(threads.every((x) => x.from === a && x.to === b)).toBe(true);
+      // Nothing else was made, and the pins did not move.
+      expect(t.wb.items().filter((i) => i.kind === 'pin')).toHaveLength(2);
+      expect(t.where(a)).toEqual({ x: 100, y: 100 });
+
+      // Not with the pen or the eraser, nor with Shift (that moves the pin), nor off a pin.
+      for (const tool of ['pen', 'eraser']) {
+        t.wb.setTool(tool as never);
+        press(t, 'pointerdown', 101, 99);
+        expect(t.inside.tool).toBe(tool);
+        press(t, 'pointerup', 101, 99);
+      }
+      t.wb.setTool('pointer');
+      press(t, 'pointerdown', 101, 99, { shiftKey: true });
+      expect(t.inside.tool).toBe('pointer');
+      press(t, 'pointerup', 101, 99, { shiftKey: true });
+      press(t, 'pointerdown', 600, 300);
+      expect(t.inside.tool).toBe('pointer');
+      press(t, 'pointerup', 600, 300);
+      // Let go on nothing: the tool comes back and there is no new thread.
+      press(t, 'pointerdown', 100, 100);
+      press(t, 'pointerup', 650, 350);
+      expect(t.inside.tool).toBe('pointer');
+      expect(t.wb.items().filter((i) => i.kind === 'arrow')).toHaveLength(5);
+    } finally {
+      done(t);
+    }
+  });
+
+  it('selects the pin, not the thread or the note that lie over it, when it is clicked', async () => {
+    const t = await mount();
+    try {
+      const a = t.wb.addPin({ x: 100, y: 100 })!;
+      const b = t.wb.addPin({ x: 400, y: 120 })!;
+      t.wb.addArrow(a, b);
+      t.wb.addNote({ x: 100, y: 130 }, 'under');
+      // Whatever the page finds first under the pointer, the thread is on top of the pin.
+      t.pick.find = () => t.root.querySelector('.arrow-item');
+      press(t, 'pointerdown', 103, 98);
+      press(t, 'pointerup', 103, 98);
+      expect(t.root.querySelector('.pin-item.selected')).not.toBeNull();
+      expect(t.root.querySelector('.arrow-item.selected')).toBeNull();
+      expect(t.root.querySelector<HTMLElement>('.selbar')!.hidden).toBe(false);
+      expect(t.wb.items().filter((i) => i.kind === 'arrow')).toHaveLength(1); // a click is no thread
+      // A click on the thread itself, away from the pins, still selects the thread.
+      press(t, 'pointerdown', 250, 200);
+      press(t, 'pointerup', 250, 200);
+      expect(t.root.querySelector('.arrow-item.selected')).not.toBeNull();
+    } finally {
+      done(t);
+    }
+  });
+
+  it('keeps its place on its note through a saved board', async () => {
+    const t = await mount();
+    try {
+      const note = t.wb.addNote({ x: 200, y: 200 })!;
+      const pin = t.wb.addPin({ x: 230, y: 180 })!;
+      change(t, note, { x: 210 }); // the note is newer than the pin now
+      const saved = await t.wb.saveBoard();
+      const room = new TestRoom();
+      try {
+        const host = await room.start();
+        const next = createWhiteboard(box(800, 450), { session: host, adapter: identity });
+        await next.loadBoard(JSON.parse(JSON.stringify(saved)));
+        const items = next.items();
+        const newNote = items.find((i) => i.kind === 'note')!;
+        const newPin = items.find((i) => i.kind === 'pin')!;
+        expect(newPin).toMatchObject({ on: newNote.id });
+        expect(newPin.id).not.toBe(pin);
+        const at = pinPoint(newPin, (id) => items.find((i) => i.id === id))!;
+        expect(at.x).toBeCloseTo(240, 1);
+        expect(at.y).toBeCloseTo(180, 1);
+        next.destroy();
+      } finally {
+        room.close();
+      }
+    } finally {
+      done(t);
+    }
+  });
+});

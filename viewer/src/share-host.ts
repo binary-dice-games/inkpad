@@ -58,6 +58,7 @@ export type Command =
   | { cmd: 'newLink' }
   | { cmd: 'remove'; id: string }
   | { cmd: 'clear' }
+  | { cmd: 'clearDrawings' }
   | { cmd: 'background'; name: string }
   | { cmd: 'viewport'; w: number; h: number };
 
@@ -67,6 +68,7 @@ export interface ShareHostOptions {
   rendezvous?: RendezvousSpec[];
   /** Clears the whiteboard for everyone; the owner's whiteboard does it. */
   clearBoard?: () => void;
+  clearDrawings?: () => void;
   /** `false`: a session without video, only the board; default true. */
   video?: boolean;
 }
@@ -82,6 +84,7 @@ export class ShareHost {
   readonly session: Session;
   private readonly settings: Settings;
   private readonly clearBoard: () => void;
+  private readonly clearDrawings: () => void;
   private drawing: boolean;
   private paused = false;
   private readonly hasVideo: boolean;
@@ -97,6 +100,7 @@ export class ShareHost {
     this.session = session;
     this.settings = options.settings;
     this.clearBoard = options.clearBoard ?? (() => {});
+    this.clearDrawings = options.clearDrawings ?? (() => {});
     this.drawing = options.settings.viewersMayDraw;
     this.hasVideo = options.video !== false;
     session.mediaParams(toMediaParams(options.settings.video));
@@ -176,6 +180,9 @@ export class ShareHost {
       }
       case 'clear':
         this.clearBoard();
+        break;
+      case 'clearDrawings':
+        this.clearDrawings();
         break;
     }
     this.changed();
@@ -301,6 +308,7 @@ export class ShareHost {
       case 'pause':
       case 'remove':
       case 'clear':
+      case 'clearDrawings':
       case 'background':
         this.run(command);
         return;

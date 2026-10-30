@@ -195,6 +195,21 @@ describe('ShareHost', () => {
     expect(cleared).toBe(1);
   });
 
+  it('clears only the drawings through the owner', async () => {
+    const calls: string[] = [];
+    const host = await ShareHost.start({
+      settings: { ...DEFAULT_SETTINGS, name: 'Pat' },
+      clearBoard: () => calls.push('all'),
+      clearDrawings: () => calls.push('drawings'),
+      rendezvous: [{ kind: 'memory', network }],
+    });
+    opened.push(host);
+    await host.command({ cmd: 'clearDrawings' });
+    expect(calls).toEqual(['drawings']);
+    await host.command({ cmd: 'clear' });
+    expect(calls).toEqual(['drawings', 'all']);
+  });
+
   it('reports changes to listeners until stopped', async () => {
     const host = await start();
     const seen: number[] = [];

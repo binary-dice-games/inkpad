@@ -281,6 +281,7 @@ async function startSharing(withVideo = true): Promise<void> {
     host = await ShareHost.start({
       settings,
       clearBoard: () => board?.clear(),
+      clearDrawings: () => board?.clearDrawings(),
       video: withVideo,
     });
   } catch (e) {
@@ -540,8 +541,17 @@ function main(): void {
     }
   });
   $('reshare').addEventListener('click', () => void reshare());
+  $('clearDrawings').addEventListener('click', () => {
+    if (
+      confirm(
+        'Remove the lines, texts and stickers for everyone? Notes, pins, threads and files stay.',
+      )
+    ) {
+      void host?.command({ cmd: 'clearDrawings' });
+    }
+  });
   $('clear').addEventListener('click', () => {
-    if (confirm('Clear all drawings for everyone?')) {
+    if (confirm('Clear everything on the board for everyone, notes and files too?')) {
       void host?.command({ cmd: 'clear' });
     }
   });

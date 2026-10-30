@@ -207,6 +207,21 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   down (`dropLooseThreads`, not an undo step). Selecting (a click on your own note, pin or thread)
   shows a bar over it to change shape, colour or heads; only the owner sees it. Tool keys: 6 note,
   7 pin, 8 thread, 9 colour.
+- **Pins on things.** A `pin` item may carry `on` (the id of a note, picture, link or sticker) and
+  `u`, `v`: where it is on that item as fractions of its width and height from its centre, in
+  the item's turned frame. Its place is derived (`pinPoint(item, get)`), not stored: moving,
+  turning or scaling the item moves the pin and re-draws the threads (node signatures include the
+  host's stamp; `followThreads` does it during a drag). `x`, `y` are only where it was put. A pin
+  is attached when added or moved (Shift+drag) over such an item, the topmost one; moving it off
+  detaches it. If the item goes, its pins go (their author takes them down quietly, then the threads
+  tied to them). Drawing order: items by stamp, then threads, then pins, so a moved note never covers
+  its pins.
+- **Pulling a thread from a pin.** A capture-phase `pointerdown` on the container finds the pin
+  (`pinAt`, by geometry, so it wins over whatever else is under the pointer), switches to the
+  thread tool for the gesture and stops the event; on release the previous tool returns, and
+  a click without a drag selects the pin (or note). Not with the pen and eraser, nor with Shift.
+- **Clear drawings** removes `ink`, `text` and `sticker` items of everyone (`clearDrawings`, host
+  command `clearDrawings`), not an undo step; `clear` still removes everything.
 - **Saving.** `toSvg(box, {background, backdrop})` draws the frame (`exportArea`: the adapter's
   aspect, else the bounds of the items) with the same node builders as the screen, minus what only
   helps to use the board (hit areas, resize grips, selection); the sheet behind a board without

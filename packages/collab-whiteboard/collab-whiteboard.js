@@ -106,7 +106,8 @@ export function cleanItem(item) {
     return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, text: item.text, color: item.color, ...shape, ...turned(item.rot) };
   }
   if (item.kind === 'pin') {
-    return finite(item.x) && finite(item.y) && COLOR.test(item.color ?? '') ? { ...base, x: item.x, y: item.y, color: item.color } : null;
+    const on = ID.test(item.on ?? '') && finite(item.u, -3, 3) && finite(item.v, -3, 3) ? { on: item.on, u: item.u, v: item.v } : {};
+    return finite(item.x) && finite(item.y) && COLOR.test(item.color ?? '') ? { ...base, x: item.x, y: item.y, color: item.color, ...on } : null;
   }
   if (item.kind === 'arrow') {
     if (!ID.test(item.from ?? '') || !ID.test(item.to ?? '') || item.from === item.to || !COLOR.test(item.color ?? '') || !ARROW_HEADS.includes(item.heads)) {
@@ -764,15 +765,56 @@ function pinMetrics(item, h) {
 const PIN_RADIUS = 9;
 
 /**
- * The point where a thread ties to an item (its pin), in content units, or null when the item has
- * none. Pictures, links and notes carry a pin at the top middle; a pin item is its own pin.
+ * The frame (centre, size, turn) of an item a pin can be attached to, or null: notes, pictures,
+ * links and stickers.
  */
-export function pinPoint(item) {
+function hostFrame(item) {
+  if (!item) {
+    return null;
+  }
+  const flat = { x: item.x, y: item.y, w: item.size, rot: item.rot ?? 0 };
+  if (item.kind === 'note' || item.kind === 'image') {
+    return { ...flat, h: item.size * item.ratio };
+  }
+  if (item.kind === 'link') {
+    return { ...flat, h: item.size * 0.5 };
+  }
+  return item.kind === 'sticker' ? { ...flat, h: item.size } : null;
+}
+
+/** Where (u, v) of a frame is: both are fractions of its width and height from its centre, turned with it. */
+function frameAt(f, u, v) {
+  const a = (f.rot * Math.PI) / 180;
+  const lx = u * f.w;
+  const ly = v * f.h;
+  return { x: f.x + lx * Math.cos(a) - ly * Math.sin(a), y: f.y + lx * Math.sin(a) + ly * Math.cos(a) };
+}
+
+/** The (u, v) of the point `p` in the frame `f`, or null when it is outside it. */
+function frameOf(f, p) {
+  const a = (f.rot * Math.PI) / 180;
+  const dx = p.x - f.x;
+  const dy = p.y - f.y;
+  const lx = dx * Math.cos(a) + dy * Math.sin(a);
+  const ly = -dx * Math.sin(a) + dy * Math.cos(a);
+  return Math.abs(lx) <= f.w / 2 && Math.abs(ly) <= f.h / 2 ? { u: Math.round((lx / f.w) * 1e6) / 1e6, v: Math.round((ly / f.h) * 1e6) / 1e6 } : null;
+}
+
+/**
+ * The point where a thread ties to an item (its pin), in content units, or null when the item has
+ * none. Pictures, links and notes carry a pin at the top middle; a pin item is its own pin, and one
+ * that is attached to another item (`on`) keeps its place on it as it is moved, turned or scaled.
+ *
+ * @param {object} item
+ * @param {(id: string) => object | null | undefined} [get] finds the item a pin is attached to
+ */
+export function pinPoint(item, get = () => null) {
   if (!item) {
     return null;
   }
   if (item.kind === 'pin') {
-    return { x: item.x, y: item.y };
+    const frame = item.on ? hostFrame(get(item.on)) : null;
+    return frame ? frameAt(frame, item.u, item.v) : { x: item.x, y: item.y };
   }
   if (item.kind !== 'image' && item.kind !== 'link' && item.kind !== 'note') {
     return null;
@@ -1108,6 +1150,7 @@ export class Whiteboard {
     this.random = options.random ?? Math.random;
     this.selected = null;
     this.threading = null;
+    this.lookup = (id) => this.model.get(id);
     this.copyText = options.copyText ?? copyToClipboard;
     this.openUrl = options.openUrl ?? ((url) => window.open(url, '_blank', 'noopener,noreferrer'));
     this.files = new Map(); // item id -> Blob of the file shared with the item
@@ -1289,8 +1332,25 @@ export class Whiteboard {
     if (this.readOnlyFlag) {
       return null;
     }
-    const op = this.local(() => this.model.add({ kind: 'pin', x: round1(at.x), y: round1(at.y), color: this.style.color }));
+    const op = this.local(() => this.model.add({ kind: 'pin', x: round1(at.x), y: round1(at.y), color: this.style.color, ...this.attachment(at, null) }));
     return op ? op.item.id : null;
+  }
+
+  /**
+   * @private The item (a note, picture, link or sticker, the one on top) under a content point, with
+   * where the point is on it: the fields of a pin put there, so it keeps its place when that item
+   * moves. `except` is an item to ignore (the pin being moved). Without one, the fields that detach.
+   */
+  attachment(p, except) {
+    const live = this.model.live();
+    for (let i = live.length - 1; i >= 0; --i) {
+      const frame = live[i].id === except ? null : hostFrame(live[i]);
+      const at = frame ? frameOf(frame, p) : null;
+      if (at) {
+        return { on: live[i].id, u: at.u, v: at.v };
+      }
+    }
+    return { on: undefined, u: undefined, v: undefined };
   }
 
   /**
@@ -1298,7 +1358,7 @@ export class Whiteboard {
    * @returns {string | null} its id, null when read only or when either item has no pin
    */
   addArrow(from, to) {
-    if (this.readOnlyFlag || from === to || !pinPoint(this.model.get(from)) || !pinPoint(this.model.get(to))) {
+    if (this.readOnlyFlag || from === to || !pinPoint(this.model.get(from), this.lookup) || !pinPoint(this.model.get(to), this.lookup)) {
       return null;
     }
     const op = this.local(() => this.model.add({ kind: 'arrow', from, to, color: this.style.color, heads: this.style.heads }));
@@ -1312,7 +1372,7 @@ export class Whiteboard {
     let best = null;
     let bestD = reach;
     for (const item of this.model.live()) {
-      const at = item.id === except ? null : pinPoint(item);
+      const at = item.id === except ? null : pinPoint(item, this.lookup);
       const d = at ? Math.hypot(at.x - p.x, at.y - p.y) : Infinity;
       if (d <= bestD) {
         best = item;
@@ -1422,6 +1482,30 @@ export class Whiteboard {
     if (!this.readOnlyFlag) {
       this.local(() => this.model.clear());
     }
+  }
+
+  /**
+   * Takes down only the drawings (lines, texts and stickers, whoever made them) and leaves the
+   * elements (notes, pins, threads, pictures, files, links) where they are.
+   * @returns {number} how many were removed
+   */
+  clearDrawings() {
+    if (this.readOnlyFlag) {
+      return 0;
+    }
+    const ops = this.model
+      .live()
+      .filter((i) => i.kind === 'ink' || i.kind === 'text' || i.kind === 'sticker')
+      .map((old) => this.model.put(old, { id: old.id, author: old.author, deleted: true }, { record: false }));
+    for (const op of ops) {
+      this.send({ t: 'op', op });
+    }
+    if (ops.length > 0) {
+      this.finishText(false);
+      this.render();
+      this.emit('change', { source: 'local' });
+    }
+    return ops.length;
   }
 
   snapshot() {
@@ -1620,6 +1704,16 @@ export class Whiteboard {
           delete fields.file;
         }
       }
+      if (fields.kind === 'pin' && fields.on) {
+        const on = ids.get(fields.on);
+        if (on) {
+          fields.on = on;
+        } else {
+          delete fields.on;
+          delete fields.u;
+          delete fields.v;
+        }
+      }
       if (fields.kind === 'arrow') {
         const from = ids.get(fields.from);
         const to = ids.get(fields.to);
@@ -1639,8 +1733,9 @@ export class Whiteboard {
         this.files.set(mine, blob);
       }
     };
-    kept.filter((i) => i.kind !== 'arrow').forEach(place);
-    kept.filter((i) => i.kind === 'arrow').forEach(place);
+    for (const kind of [['arrow', 'pin'], ['pin'], ['arrow']]) {
+      kept.filter((i) => (kind.length === 2 ? !kind.includes(i.kind) : i.kind === kind[0])).forEach(place);
+    }
     this.render();
     this.emit('change', { source: 'load' });
     const added = ops.length;
@@ -2053,7 +2148,8 @@ export class Whiteboard {
     if (this.destroyed) {
       return;
     }
-    const live = this.model.live();
+    const all = this.model.live();
+    const live = [...all.filter((i) => i.kind !== 'arrow' && i.kind !== 'pin'), ...all.filter((i) => i.kind === 'arrow'), ...all.filter((i) => i.kind === 'pin')];
     const seen = new Set();
     let previous = null;
     for (const item of live) {
@@ -2084,7 +2180,7 @@ export class Whiteboard {
     if (this.selected && !seen.has(this.selected)) {
       this.selected = null;
     }
-    this.dropLooseThreads(live);
+    this.dropLooseThreads(all);
     this.renderSelbar();
     for (const id of this.files.keys()) {
       const item = this.model.items.get(id);
@@ -2096,20 +2192,22 @@ export class Whiteboard {
     this.renderToolbar();
   }
 
-  /** @private What a node was drawn from: the item's stamp, and for a thread those of its pins; and whether it is selected. */
+  /** @private What a node was drawn from: the item's stamp, and for a pin that of what it is on, for a thread those of its pins; and whether it is selected. */
   signature(item) {
     const st = (i) => (i ? `${i.stamp[0]}.${i.stamp[1]}` : '-');
-    return `${st(item)}|${item.kind === 'arrow' ? `${st(this.model.get(item.from))}|${st(this.model.get(item.to))}` : ''}|${item.id === this.selected ? 's' : ''}`;
+    const pinned = (i) => (i?.kind === 'pin' && i.on ? `${st(i)}@${st(this.model.get(i.on))}` : st(i));
+    return `${pinned(item)}|${item.kind === 'arrow' ? `${pinned(this.model.get(item.from))}|${pinned(this.model.get(item.to))}` : ''}|${item.id === this.selected ? 's' : ''}`;
   }
 
-  /** @private Threads of yours whose pin is gone are taken down (quietly: not an undo step). */
+  /** @private Threads of yours whose pin is gone, and pins of yours whose item is gone, are taken down (quietly: not an undo step). */
   dropLooseThreads(live) {
-    const loose = live.filter((i) => i.kind === 'arrow' && i.author === this.model.peerId && (!this.model.get(i.from) || !this.model.get(i.to)));
+    const gone = (i) => (i.kind === 'arrow' && (!this.model.get(i.from) || !this.model.get(i.to))) || (i.kind === 'pin' && i.on && !this.model.get(i.on));
+    const loose = live.filter((i) => i.author === this.model.peerId && gone(i));
     if (loose.length > 0) {
       queueMicrotask(() => {
         for (const t of loose) {
           const old = this.model.get(t.id);
-          if (old && (!this.model.get(old.from) || !this.model.get(old.to))) {
+          if (old && gone(old)) {
             this.local(() => this.model.put(old, { id: old.id, author: old.author, deleted: true }, { record: false }));
           }
         }
@@ -2200,8 +2298,8 @@ export class Whiteboard {
    * and a head at either end when asked. `resolve` finds the items it is tied to (a preview moves them).
    */
   threadNode(item, g, resolve) {
-    const a = pinPoint(resolve(item.from));
-    const b = pinPoint(resolve(item.to));
+    const a = pinPoint(resolve(item.from), resolve);
+    const b = pinPoint(resolve(item.to), resolve);
     if (!a || !b) {
       return;
     }
@@ -2280,13 +2378,14 @@ export class Whiteboard {
       const top = item.y - h / 2;
       g.append(this.printNode(item, h, turn, [svgEl('image', { href: item.data, x: left, y: top, width: item.size, height: h, preserveAspectRatio: 'none' })]));
     } else if (item.kind === 'pin') {
+      const at = pinPoint(item, resolve);
       const shadow = svgEl('g', { filter: 'url(#wb-shadow)' });
       shadow.append(
-        svgEl('ellipse', { cx: item.x + 4, cy: item.y + 6, rx: PIN_RADIUS * 0.95, ry: PIN_RADIUS * 0.6, fill: 'rgba(0,0,0,0.3)' }),
-        svgEl('circle', { class: 'paper', cx: item.x, cy: item.y, r: PIN_RADIUS, fill: item.color, stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8 }),
-        svgEl('circle', { cx: item.x - PIN_RADIUS * 0.3, cy: item.y - PIN_RADIUS * 0.32, r: PIN_RADIUS * 0.3, fill: 'rgba(255,255,255,0.6)' }),
+        svgEl('ellipse', { cx: at.x + 4, cy: at.y + 6, rx: PIN_RADIUS * 0.95, ry: PIN_RADIUS * 0.6, fill: 'rgba(0,0,0,0.3)' }),
+        svgEl('circle', { class: 'paper', cx: at.x, cy: at.y, r: PIN_RADIUS, fill: item.color, stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8 }),
+        svgEl('circle', { cx: at.x - PIN_RADIUS * 0.3, cy: at.y - PIN_RADIUS * 0.32, r: PIN_RADIUS * 0.3, fill: 'rgba(255,255,255,0.6)' }),
       );
-      g.append(svgEl('circle', { class: 'hit', cx: item.x, cy: item.y, r: PIN_RADIUS + 4, fill: 'transparent' }), shadow);
+      g.append(svgEl('circle', { class: 'hit', cx: at.x, cy: at.y, r: PIN_RADIUS + 4, fill: 'transparent' }), shadow);
     } else if (item.kind === 'arrow') {
       this.threadNode(item, g, resolve);
     } else if (item.kind === 'note') {
@@ -2379,10 +2478,11 @@ export class Whiteboard {
       } else if (i.kind === 'note') {
         add(i.x, i.y, (i.size * Math.max(1, i.ratio)) / 2);
       } else if (i.kind === 'pin') {
-        add(i.x, i.y, PIN_RADIUS + 2);
+        const at = pinPoint(i, this.lookup);
+        add(at.x, at.y, PIN_RADIUS + 2);
       } else if (i.kind === 'arrow') {
-        const a = pinPoint(this.model.get(i.from));
-        const b = pinPoint(this.model.get(i.to));
+        const a = pinPoint(this.model.get(i.from), this.lookup);
+        const b = pinPoint(this.model.get(i.to), this.lookup);
         if (a && b) {
           add(a.x, a.y, 0);
           add(b.x, b.y, 0);
@@ -2768,6 +2868,7 @@ export class Whiteboard {
       if (this.selected && !this.onControls(ev) && this.itemAt(ev)?.id !== this.selected) {
         this.deselect();
       }
+      this.pinGesture(ev);
     }, { capture: true });
     listen(this.container, 'pointerdown', (ev) => this.panStart(ev));
     listen(this.container, 'pointermove', (ev) => this.panMove(ev));
@@ -2925,7 +3026,8 @@ export class Whiteboard {
 
   /** @private The context menu key or right button on your own item removes it. */
   menu(ev) {
-    const hit = this.readOnlyFlag ? null : this.itemAt(ev);
+    const pin = this.readOnlyFlag ? null : this.pinAt(this.eventPoint(ev));
+    const hit = this.readOnlyFlag ? null : pin?.kind === 'pin' ? pin : this.itemAt(ev);
     if (hit && hit.author === this.model.peerId) {
       ev.preventDefault();
       this.local(() => this.model.remove(hit.id));
@@ -2945,7 +3047,7 @@ export class Whiteboard {
 
   /** @private */
   down(ev) {
-    if (this.readOnlyFlag || ev.button > 0) {
+    if (this.readOnlyFlag || ev.button > 0 || this.threading) {
       return;
     }
     const hit = this.itemAt(ev);
@@ -2986,9 +3088,7 @@ export class Whiteboard {
     } else if (this.tool === 'arrow') {
       const source = this.pinAt(p);
       if (source) {
-        this.threading = { from: source.id, node: svgEl('path', { fill: 'none', stroke: this.style.color, 'stroke-width': 2.6, 'stroke-linecap': 'round', opacity: 0.8 }), ring: svgEl('circle', { r: PIN_RADIUS + 5, fill: 'none', stroke: 'var(--wb-accent, #3e63dd)', 'stroke-width': 2, 'pointer-events': 'none' }) };
-        this.liveGroup.append(this.threading.node, this.threading.ring);
-        this.dragThread(ev);
+        this.beginThread(source.id, ev, null);
       }
     } else if (this.tool === 'sticker') {
       this.local(() => this.model.add({ kind: 'sticker', x: round1(p.x), y: round1(p.y), size: 32, name: this.style.sticker }));
@@ -3102,8 +3202,8 @@ export class Whiteboard {
     }
     let at;
     if (item.kind === 'arrow') {
-      const a = pinPoint(this.model.get(item.from));
-      const b = pinPoint(this.model.get(item.to));
+      const a = pinPoint(this.model.get(item.from), this.lookup);
+      const b = pinPoint(this.model.get(item.to), this.lookup);
       at = a && b ? { x: (a.x + b.x) / 2, y: Math.max(a.y, b.y) + 30 } : null;
     } else {
       const h = item.kind === 'pin' ? 0 : item.size * item.ratio;
@@ -3190,20 +3290,29 @@ export class Whiteboard {
       d.dx = dx;
       d.dy = dy;
       this.nodes.get(it.id)?.node.setAttribute('transform', `translate(${dx} ${dy})`);
-      this.followThreads(it.kind === 'ink' ? it : { ...it, x: it.x + dx, y: it.y + dy });
+      this.followThreads(it.kind === 'ink' ? it : { ...it, x: it.x + dx, y: it.y + dy, ...(it.kind === 'pin' ? { on: undefined } : {}) });
     }
   }
 
-  /** @private Redraws the threads tied to `item` as if it were as given (it is being moved or changed). */
+  /**
+   * @private Redraws what hangs on `item` as if it were as given (it is being moved or changed): the
+   * pins attached to it, and the threads tied to it or to those pins.
+   */
   followThreads(item) {
-    for (const t of this.model.live()) {
-      if (t.kind === 'arrow' && (t.from === item.id || t.to === item.id)) {
-        const entry = this.nodes.get(t.id);
-        if (entry) {
-          const node = this.itemNode(t, (id) => (id === item.id ? item : this.model.get(id)));
-          entry.node.replaceWith(node);
-          entry.node = node;
-        }
+    const resolve = (id) => (id === item.id ? item : this.model.get(id));
+    const live = this.model.live();
+    const moved = new Set([item.id, ...live.filter((i) => i.kind === 'pin' && i.on === item.id).map((i) => i.id)]);
+    const redraw = (i) => {
+      const entry = this.nodes.get(i.id);
+      if (entry) {
+        const node = this.itemNode(i, resolve);
+        entry.node.replaceWith(node);
+        entry.node = node;
+      }
+    };
+    for (const i of live) {
+      if (i.id !== item.id && ((i.kind === 'pin' && moved.has(i.id)) || (i.kind === 'arrow' && (moved.has(i.from) || moved.has(i.to))))) {
+        redraw(i);
       }
     }
   }
@@ -3244,6 +3353,15 @@ export class Whiteboard {
       const target = cancelled ? null : this.pinAt(this.eventPoint(ev), t.from);
       if (target) {
         this.addArrow(t.from, target.id);
+      } else if (!cancelled && Math.hypot(ev.clientX - t.x0, ev.clientY - t.y0) < 4) {
+        // Pressed and let go on the pin: it is selected, if it is yours and can be changed.
+        const source = this.model.get(t.from);
+        if (source?.author === this.model.peerId && (source.kind === 'pin' || source.kind === 'note')) {
+          this.select(source.id);
+        }
+      }
+      if (t.restore) {
+        this.setTool(t.restore);
       }
     } else if (this.erasing) {
       const ids = [...this.erasing];
@@ -3276,6 +3394,9 @@ export class Whiteboard {
           this.local(() => this.model.change(it.id, d.fields));
         } else if (it.kind === 'ink') {
           this.local(() => this.model.change(it.id, { points: it.points.map((v, i) => round1(v + (i % 2 ? d.dy : d.dx))) }));
+        } else if (it.kind === 'pin') {
+          const to = { x: round1(it.x + d.dx), y: round1(it.y + d.dy) };
+          this.local(() => this.model.change(it.id, { ...to, ...this.attachment(to, it.id) }));
         } else {
           this.local(() => this.model.change(it.id, { x: round1(it.x + d.dx), y: round1(it.y + d.dy) }));
         }
@@ -3299,16 +3420,50 @@ export class Whiteboard {
     }
   }
 
+  /**
+   * @private Starts a thread from the pin of `source`. `restore` is the tool to go back to when it
+   * is let go (a thread pulled from a pin with another tool in hand), or null.
+   */
+  beginThread(source, ev, restore) {
+    this.popover.hidden = true;
+    this.board.setPointerCapture?.(ev.pointerId);
+    const node = svgEl('path', { fill: 'none', stroke: this.style.color, 'stroke-width': 2.6, 'stroke-linecap': 'round', opacity: 0.8 });
+    const ring = svgEl('circle', { r: PIN_RADIUS + 5, fill: 'none', stroke: 'var(--wb-accent, #3e63dd)', 'stroke-width': 2, 'pointer-events': 'none' });
+    this.threading = { from: source, node, ring, restore, x0: ev.clientX, y0: ev.clientY };
+    this.liveGroup.append(node, ring);
+    this.dragThread(ev);
+  }
+
+  /**
+   * @private Pressing on a pin and dragging pulls a thread from it, whatever tool is in hand (the
+   * thread tool for as long as the button is down); Shift moves the pin instead. The pin wins over
+   * what is under it (a thread, the note it is on), so it is easy to hit.
+   */
+  pinGesture(ev) {
+    if (this.readOnlyFlag || ev.button !== 0 || ev.shiftKey || this.threading || this.tool === 'pen' || this.tool === 'eraser' || this.tool === 'arrow' || this.onControls(ev)) {
+      return;
+    }
+    const source = this.pinAt(this.eventPoint(ev));
+    if (!source) {
+      return;
+    }
+    const restore = this.tool;
+    this.setTool('arrow');
+    ev.preventDefault();
+    ev.stopPropagation();
+    this.beginThread(source.id, ev, restore);
+  }
+
   /** @private While a thread is being pulled: it hangs from the source pin to the pointer, snapping to a pin in reach. */
   dragThread(ev) {
     const t = this.threading;
-    const from = pinPoint(this.model.get(t.from));
+    const from = pinPoint(this.model.get(t.from), this.lookup);
     if (!from) {
       return;
     }
     const p = this.eventPoint(ev);
     const target = this.pinAt(p, t.from);
-    const end = target ? pinPoint(target) : p;
+    const end = target ? pinPoint(target, this.lookup) : p;
     t.node.setAttribute('d', threadCurve(from, end, 0.5).d);
     t.ring.setAttribute('cx', end.x);
     t.ring.setAttribute('cy', end.y);

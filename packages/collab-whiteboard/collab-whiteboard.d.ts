@@ -83,9 +83,17 @@ export const NOTE_SHAPES: readonly NoteShape[];
 /** A bare pin, to tie threads to. */
 export interface PinItem extends ItemBase {
   kind: 'pin';
+  /** Where it is (when it is attached to an item: where it was put on it). */
   x: number;
   y: number;
   color: string;
+  /**
+   * The item it is attached to (a note, picture, link or sticker), and where on it: `u` and `v` are
+   * fractions of its width and height from its centre, turned and scaled with it.
+   */
+  on?: string;
+  u?: number;
+  v?: number;
 }
 
 /** Which ends of a thread have a head: none, `start` (its source), `end` (its destination) or both. */
@@ -102,7 +110,10 @@ export interface ArrowItem extends ItemBase {
 }
 
 /** Where a thread ties to an item (its pin), in board units; null when it has no pin. */
-export function pinPoint(item: Item | undefined | null): { x: number; y: number } | null;
+export function pinPoint(
+  item: Item | undefined | null,
+  get?: (id: string) => Item | null | undefined,
+): { x: number; y: number } | null;
 
 /** The curve of a thread between two points (it hangs below the straight line); `d` is its SVG path. */
 export function threadCurve(
@@ -388,6 +399,8 @@ export class Whiteboard {
   redo(): void;
   /** Clears the whiteboard for everyone. */
   clear(): void;
+  /** Removes only the drawings (lines, texts, stickers) for everyone; elements stay. Returns how many. */
+  clearDrawings(): number;
   snapshot(): Snapshot;
   /** Merges a snapshot (it does not replace what is here) and tells the others. */
   load(snapshot: unknown): void;
