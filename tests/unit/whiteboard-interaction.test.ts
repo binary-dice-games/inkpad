@@ -128,11 +128,11 @@ describe('numbered tools', () => {
 
       keydown('3');
       expect(inside.tool).toBe('text');
-      expect(inside.style.size).toBe(28);
+      expect(inside.style.size).toBe(21);
       keydown('3');
-      expect(inside.style.size).toBe(44);
+      expect(inside.style.size).toBe(33);
       keydown('3');
-      expect(inside.style.size).toBe(18);
+      expect(inside.style.size).toBe(14);
 
       keydown('4');
       expect(inside.tool).toBe('sticker');

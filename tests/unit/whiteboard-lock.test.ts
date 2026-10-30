@@ -193,17 +193,17 @@ describe('locking and text size on the board', () => {
       expect(sizes.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'true', 'false']);
       const fontOf = () => t.root.querySelector('.note-item text')!.getAttribute('font-size');
       const lines = () => t.root.querySelectorAll('.note-item tspan').length;
-      expect(fontOf()).toBe('16');
+      expect(fontOf()).toBe('12');
       const usual = lines();
 
       t.named('Text note: large').click();
-      expect(t.wb.items()[0]).toMatchObject({ fs: 24 });
-      expect(fontOf()).toBe('24');
+      expect(t.wb.items()[0]).toMatchObject({ fs: 18 });
+      expect(fontOf()).toBe('18');
       expect(lines()).toBeGreaterThan(usual); // bigger letters, more lines
       expect(t.named('Text note: large').getAttribute('aria-pressed')).toBe('true');
 
       t.named('Text note: small').click();
-      expect(fontOf()).toBe('12');
+      expect(fontOf()).toBe('9');
       expect(lines()).toBeLessThan(usual + 1);
       // The usual size is the default: nothing is stored for it.
       t.named('Text note: medium').click();
@@ -212,7 +212,7 @@ describe('locking and text size on the board', () => {
       t.named('Text note: large').click();
       t.click(200, 200);
       expect(t.root.querySelector<HTMLTextAreaElement>('textarea.sticky')!.style.fontSize).toBe(
-        '24px',
+        '18px',
       );
     } finally {
       done(t);

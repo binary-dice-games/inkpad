@@ -351,7 +351,7 @@ describe('static presenter page', () => {
     // The viewer sees the paper, the text and a pin, but no way to edit it.
     const note = viewer.locator('collab-whiteboard .note-item');
     await expect.poll(() => note.count(), { timeout: 30000 }).toBe(1);
-    expect(await note.locator('tspan').first().textContent()).toContain('Remember');
+    expect(await note.locator('text').first().textContent()).toContain('Remember');
     expect(await note.locator('.pin circle').count()).toBeGreaterThan(0);
     await note.locator('tspan').first().click();
     // Anybody can edit it (until its owner locks it): the click opens its text box for the viewer too.
@@ -619,7 +619,7 @@ describe('static presenter page', () => {
       .poll(() => viewer.locator('collab-whiteboard .note-item text').getAttribute('font-size'), {
         timeout: 30000,
       })
-      .toBe('24');
+      .toBe('18');
 
     // Unlocked: the viewer drags it.
     const before = await noteAt(viewer);

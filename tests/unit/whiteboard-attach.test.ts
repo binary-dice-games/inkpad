@@ -102,7 +102,11 @@ describe('the grip that resizes a shape', () => {
           model: { change(i: string, f: object): unknown };
         };
         inner.local(() =>
-          inner.model.change(id, { shape: shape === 'square' ? undefined : shape, rot: undefined }),
+          inner.model.change(id, {
+            shape: shape === 'square' ? undefined : shape,
+            rot: undefined,
+            size: 180,
+          }),
         );
         const grip = t.root.querySelector('.note-item .grip circle')!;
         const gx = Number(grip.getAttribute('cx')) - 300;

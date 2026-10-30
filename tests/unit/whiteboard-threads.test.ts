@@ -539,6 +539,7 @@ describe('pins attached to what they are put on', () => {
     const t = await mount();
     try {
       const note = t.wb.addNote({ x: 200, y: 200 }, 'host')!;
+      change(t, note, { size: 180 }); // the positions below assume a note this wide
       const pin = t.wb.addPin({ x: 230, y: 180 })!; // on the note (110..290 by 110..290)
       const other = t.wb.addPin({ x: 600, y: 400 })!; // on nothing
       const items = t.wb.items();
@@ -721,6 +722,7 @@ describe('pins attached to what they are put on', () => {
     const t = await mount();
     try {
       const note = t.wb.addNote({ x: 200, y: 200 })!;
+      change(t, note, { size: 180 }); // the positions below assume a note this wide
       const pin = t.wb.addPin({ x: 230, y: 180 })!;
       const other = t.wb.addPin({ x: 600, y: 400 })!;
       const thread = t.wb.addArrow(pin, other)!;
@@ -762,6 +764,42 @@ describe('pins attached to what they are put on', () => {
       change(t, note, { x: 500 });
       expect(parseFloat(bar.style.left)).toBeCloseTo(530, 0);
       expect(pin).toBeTruthy();
+    } finally {
+      done(t);
+    }
+  });
+
+  it('keeps its bar inside the board near the edges, under the pin when there is no room over it', async () => {
+    const t = await mount();
+    try {
+      // jsdom has no layout: an 800 by 450 board and a 200 by 40 bar.
+      Object.defineProperty(t.wb.element, 'clientWidth', { value: 800 });
+      Object.defineProperty(t.wb.element, 'clientHeight', { value: 450 });
+      const bar = t.root.querySelector<HTMLElement>('.selbar')!;
+      Object.defineProperty(bar, 'offsetWidth', { value: 200 });
+      Object.defineProperty(bar, 'offsetHeight', { value: 40 });
+      const select = (x: number, y: number) => {
+        const pin = t.wb.addPin({ x, y })!;
+        t.pick.find = () => t.root.querySelector(`.pin-item[data-id="${pin}"]`);
+        press(t, 'pointerdown', x, y);
+        press(t, 'pointerup', x, y);
+        expect(bar.hidden).toBe(false);
+        // The bar's anchor is its bottom middle: its box is left - 100 .. left + 100, top - 40 .. top.
+        return { left: parseFloat(bar.style.left), top: parseFloat(bar.style.top) };
+      };
+
+      const topLeft = select(20, 10);
+      expect(topLeft.left - 100).toBeGreaterThanOrEqual(0);
+      expect(topLeft.top - 40).toBeGreaterThan(10); // under the pin
+      expect(topLeft.top).toBeLessThanOrEqual(450);
+
+      const bottomRight = select(790, 440);
+      expect(bottomRight.left + 100).toBeLessThanOrEqual(800);
+      expect(bottomRight.top).toBeLessThan(440); // over the pin
+      expect(bottomRight.top - 40).toBeGreaterThanOrEqual(0);
+
+      const middle = select(400, 200);
+      expect(middle).toEqual({ left: 400, top: 200 - 22 }); // away from the edges: right over it
     } finally {
       done(t);
     }
@@ -848,7 +886,7 @@ describe('the options of a tool', () => {
       // key: tool, how many options, the option to choose, what it changes
       const cases: [string, number, number, () => unknown, unknown][] = [
         ['2', 3, 2, () => (t.inside.style as unknown as { width: number }).width, 8],
-        ['3', 3, 0, () => (t.inside.style as unknown as { size: number }).size, 18],
+        ['3', 3, 0, () => (t.inside.style as unknown as { size: number }).size, 14],
         ['6', 5, 3, () => t.inside.style.shape, 'diamond'],
         ['7', 5, 4, () => (t.inside.style as unknown as { pinShape: string }).pinShape, 'star'],
         ['8', 4, 1, () => t.inside.style.heads, 'start'],

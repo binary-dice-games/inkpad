@@ -189,10 +189,10 @@ describe('canvases', () => {
     try {
       t.ana.addNote({ x: 100, y: 100 }, 'on the first');
       t.ana.setPage(1);
-      expect(t.ana.toSvg()).not.toContain('on the first');
+      expect(t.ana.toSvg()).not.toContain('first');
       expect(t.ana.contentBounds()).toBeNull();
       t.ana.setPage(0);
-      expect(t.ana.toSvg()).toContain('on the first');
+      expect(t.ana.toSvg()).toContain('first');
     } finally {
       t.close();
     }
