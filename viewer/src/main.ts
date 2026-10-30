@@ -280,6 +280,15 @@ function wireCodes(s: Session): void {
   });
 }
 
+/** Opens the About dialog from the home page's buttons. */
+function wireAbout(): void {
+  const about = $<HTMLDialogElement>('about');
+  for (const id of ['aboutOpen', 'aboutFoot']) {
+    $(id).addEventListener('click', () => about.showModal());
+  }
+  $('aboutClose').addEventListener('click', () => about.close());
+}
+
 // ── Start ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -314,6 +323,7 @@ async function main(): Promise<void> {
     $('people').setAttribute('aria-expanded', String(!list.hidden));
   });
   if (!invite) {
+    wireAbout();
     show('landing');
     if (location.hash.includes('inksplat=')) {
       $('landingProblem').textContent = 'That link is not valid. Ask the presenter for a new one.';

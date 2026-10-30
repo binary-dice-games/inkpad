@@ -20,7 +20,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PDF_FILES, buildViewer } from './build-viewer.mjs';
+import { ASSET_FILES, PDF_FILES, buildViewer } from './build-viewer.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const siteSrc = join(root, 'viewer', 'src', 'site');
@@ -61,7 +61,7 @@ export async function buildSite(out, { base = '/', archive = join(root, 'site-ar
   // Its presenter page goes with it: both sides of a link then speak the same protocol.
   copyFileSync(join(out, 'present.html'), join(out, versionDir, 'present.html'));
   copyFileSync(join(out, 'present.js'), join(out, versionDir, 'present.js'));
-  for (const [, name] of PDF_FILES) {
+  for (const name of [...PDF_FILES.map(([, n]) => n), ...ASSET_FILES]) {
     copyFileSync(join(out, name), join(out, versionDir, name));
   }
 
@@ -74,6 +74,8 @@ export async function buildSite(out, { base = '/', archive = join(root, 'site-ar
   writeFileSync(join(out, '404.html'), page('404.html'));
   copyFileSync(join(siteSrc, 'redirect.js'), join(out, 'redirect.js'));
   copyFileSync(join(siteSrc, 'privacy.html'), join(out, 'privacy.html'));
+  // The home page links the policy next to itself, so the versioned copy gets one too.
+  copyFileSync(join(siteSrc, 'privacy.html'), join(out, versionDir, 'privacy.html'));
   writeFileSync(join(out, '.nojekyll'), '');
   return { versionDir };
 }

@@ -3,6 +3,7 @@
 //
 //   node scripts/build-viewer.mjs [outDir]      default: viewer/dist (the GitHub Pages bundle)
 import { build } from 'esbuild';
+import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,9 +18,43 @@ export const PDF_FILES = [
   ['LICENSE', 'pdfjs-LICENSE.txt'],
 ];
 
+/** Images the pages use (logo, icon), in `viewer/src/assets/`, copied next to the pages. */
+export const ASSET_FILES = ['logo.png', 'logo-dark.png', 'icon.png'];
+
+/**
+ * The version shown in the About box: the package version, plus the short commit when the
+ * build runs in a git checkout (`0.1.0 (5ac03b7)`), or the package version alone.
+ */
+export function buildVersion() {
+  const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  let commit = process.env.GITHUB_SHA?.slice(0, 7);
+  if (!commit) {
+    try {
+      commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+        cwd: root,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    } catch {
+      commit = undefined; // not a git checkout, or git is missing
+    }
+  }
+  return commit ? `${version} (${commit})` : version;
+}
+
+/** The wire protocol of this build (`inksplat/1`), read from the defaults. */
+function protocol() {
+  const source = readFileSync(join(root, 'packages', 'defaults', 'src', 'index.ts'), 'utf8');
+  const match = /export const PROTOCOL = '([^']+)'/.exec(source);
+  if (!match) {
+    throw new Error('PROTOCOL not found in packages/defaults');
+  }
+  return match[1];
+}
+
 /**
  * Builds the viewer page and the presenter page (`index.html`, `viewer.js`,
- * `present.html`, `present.js`).
+ * `present.html`, `present.js`) with their images (`ASSET_FILES`).
  * @param {string} out directory to write into
  */
 export async function buildViewer(out) {
@@ -43,9 +78,18 @@ export async function buildViewer(out) {
   for (const [from, to] of PDF_FILES) {
     copyFileSync(join(root, 'node_modules', 'pdfjs-dist', from), join(out, to));
   }
+  for (const name of ASSET_FILES) {
+    copyFileSync(join(src, 'assets', name), join(out, name));
+  }
   const viewerHtml = readFileSync(join(src, 'index.html'), 'utf8');
-  const link = '<p><a href="present.html">Want to present your own screen? Start a session</a></p>';
-  writeFileSync(join(out, 'index.html'), viewerHtml.replace('<!--{{present-link}}-->', link));
+  const link = '<a class="button primary" href="present.html">Start presenting</a>';
+  writeFileSync(
+    join(out, 'index.html'),
+    viewerHtml
+      .replace('<!--{{present-link}}-->', link)
+      .replace('{{version}}', buildVersion())
+      .replace('{{protocol}}', protocol()),
+  );
   // The presenter page shares the viewer's stylesheet (the first <style> of index.html).
   const style = /<style>[\s\S]*?<\/style>/.exec(viewerHtml)?.[0];
   if (!style) {

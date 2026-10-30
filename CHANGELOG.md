@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A redesigned home page with the inksplat logo, a **Start presenting** button, the main features and how it works, and an **About** box with the version, licences and credits. The pages have the inksplat icon.
+
 - Each canvas has its own background, chosen by the presenter for the canvas they are on (**Background of canvas N**): the video (in a session with video), whiteboard, blackboard, wall or cork. By default canvas 1 shows the video, if there is one, and the others the whiteboard, blackboard, wall and cork in turn. Board files keep the background of every canvas.
 - Lines, texts and stickers can be selected (pointer tool, or the tool that makes them), so Delete or Backspace removes them too.
 - Pins have a shape (round, square, diamond, triangle, star): the pin tool opens a panel with them, pressing 7 again cycles through them, and the bar over a selected pin changes it.

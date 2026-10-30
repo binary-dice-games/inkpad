@@ -74,6 +74,24 @@ describe('the Pages site', () => {
     expect(readFileSync(join(out, 'present.js'), 'utf8')).not.toContain('GlobalWorkerOptions =');
   });
 
+  it('ships the home page images, the privacy policy and the version, also under the major', () => {
+    for (const dir of ['', `v${protocolMajor()}/`]) {
+      for (const name of ['logo.png', 'logo-dark.png', 'icon.png']) {
+        const png = readFileSync(join(out, dir, name));
+        expect(png.subarray(1, 4).toString('latin1'), `${dir}${name}`).toBe('PNG');
+      }
+      expect(readFileSync(join(out, dir, 'privacy.html'), 'utf8')).toMatch(/privacy/i);
+    }
+    const index = readFileSync(join(out, 'index.html'), 'utf8');
+    const { version } = JSON.parse(
+      readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+    );
+    expect(index).toContain(`Version ${version}`);
+    expect(index).toContain('protocol inksplat/1.');
+    expect(index).not.toMatch(/\{\{\w[\w-]*\}\}/);
+    expect(index).toContain('<a class="button primary" href="present.html">Start presenting</a>');
+  });
+
   it('points the 404 page at the site base', () => {
     const page = readFileSync(join(out, '404.html'), 'utf8');
     expect(page).toContain('src="/inksplat/redirect.js"');
