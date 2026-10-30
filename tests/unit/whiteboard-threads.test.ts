@@ -886,7 +886,7 @@ describe('the options of a tool', () => {
       // key: tool, how many options, the option to choose, what it changes
       const cases: [string, number, number, () => unknown, unknown][] = [
         ['2', 3, 2, () => (t.inside.style as unknown as { width: number }).width, 8],
-        ['3', 3, 0, () => (t.inside.style as unknown as { size: number }).size, 18],
+        ['3', 3, 0, () => (t.inside.style as unknown as { size: number }).size, 14],
         ['6', 5, 3, () => t.inside.style.shape, 'diamond'],
         ['7', 5, 4, () => (t.inside.style as unknown as { pinShape: string }).pinShape, 'star'],
         ['8', 4, 1, () => t.inside.style.heads, 'start'],

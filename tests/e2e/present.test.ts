@@ -619,7 +619,7 @@ describe('static presenter page', () => {
       .poll(() => viewer.locator('collab-whiteboard .note-item text').getAttribute('font-size'), {
         timeout: 30000,
       })
-      .toBe('24');
+      .toBe('18');
 
     // Unlocked: the viewer drags it.
     const before = await noteAt(viewer);

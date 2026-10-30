@@ -13,8 +13,8 @@
  * that show the tool and the avatar, a queue for the turn to speak, and files pinned on the
  * board (a preview on the board, the file itself sent to everyone to drag out as a copy).
  * Elements are removed by selecting them and pressing Delete or Backspace (the right button does
- * nothing to them). New notes and pins are half the size nymph makes them, and the bar over a
- * selected element is kept inside the board.
+ * nothing to them). New notes and pins are half the size nymph makes them, text sizes three
+ * quarters, and the bar over a selected element is kept inside the board.
  *
  *   import { createWhiteboard } from './collab-whiteboard.js';
  *   const wb = createWhiteboard(container, { session, adapter });
@@ -784,7 +784,7 @@ const COLOR_NAMES = ['red', 'orange', 'green', 'teal', 'blue', 'purple', 'black'
 /** The options of the pen (thin, normal, thick) and of text (small, medium, large). */
 const WIDTHS = [2, 4, 8];
 const WIDTH_NAMES = ['thin', 'normal', 'thick'];
-const SIZES = [18, 28, 44];
+const SIZES = [14, 21, 33];
 const SIZE_NAMES = ['small', 'medium', 'large'];
 /** Where each tool's cursor points, in its 24-unit icon. */
 const HOTSPOT = { pointer: [5, 3], pen: [4, 20], text: [12, 12], sticker: [12, 12], eraser: [5, 19], note: [12, 12], pin: [12, 12], arrow: [12, 12] };
@@ -1008,8 +1008,8 @@ export function threadCurve(a, b, seed = 0.5) {
 const BOARD_FORMAT = 'inksplat-board';
 
 const NOTE_FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
-const NOTE_TEXT = 16; // the usual font size of a note, in board units
-const NOTE_SIZES = [12, 16, 24]; // small, medium, large
+const NOTE_TEXT = 12; // the usual font size of a note, in board units
+const NOTE_SIZES = [9, 12, 18]; // small, medium, large
 const noteFont = (item) => item.fs ?? NOTE_TEXT;
 const NOTE_PAD = 10;
 const NOTE_SIZE = 90; // the width of a new note, in board units
