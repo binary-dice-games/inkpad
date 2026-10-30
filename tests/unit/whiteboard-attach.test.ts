@@ -59,7 +59,17 @@ async function mount() {
   const get = (id: string) => wb.items().find((i) => i.id === id) as Attached;
   const order = () =>
     [...root.querySelectorAll('.items > .item')].map((n) => n.getAttribute('data-id'));
-  return { room, wb, root, drag, get, order, close: () => (wb.destroy(), room.close()) };
+  return {
+    room,
+    wb,
+    root,
+    drag,
+    fire,
+    pick,
+    get,
+    order,
+    close: () => (wb.destroy(), room.close()),
+  };
 }
 type Mounted = Awaited<ReturnType<typeof mount>>;
 
@@ -154,6 +164,44 @@ describe('an element dragged by its pin onto another', () => {
       expect(t.get(a)).toMatchObject({ on: b, x: 500, y: 468 });
       t.drag(b, [330, 440], [310, 440]);
       expect(t.get(a)).toMatchObject({ x: 480, y: 468 });
+    } finally {
+      t.close();
+    }
+  });
+
+  it('outlines the pin being dragged, and what it would be attached to, not the element', async () => {
+    const t = await mount();
+    try {
+      const { a, b } = setup(t);
+      const node = (id: string) => t.root.querySelector(`.items > [data-id="${id}"]`)!;
+      const ring = () => t.root.querySelector('.live .pin-ring');
+      // Dragged by its pin: a ring is around the pin, which goes along; the note is not outlined.
+      t.pick.id = a;
+      t.fire('pointerdown', 100, 52);
+      expect(ring()).not.toBeNull();
+      expect(node(a).classList.contains('by-pin')).toBe(true);
+      t.fire('pointermove', 200, 200); // over nothing
+      expect(Number(ring()!.getAttribute('cx'))).toBeCloseTo(200, 0);
+      expect(Number(ring()!.getAttribute('cy'))).toBeCloseTo(200, 0);
+      expect(t.root.querySelector('.drop-target')).toBeNull();
+      t.fire('pointermove', 420, 360); // over B: it is the one to be attached to
+      expect(node(b).classList.contains('drop-target')).toBe(true);
+      expect(node(a).classList.contains('drop-target')).toBe(false);
+      t.fire('pointermove', 700, 80); // and away again
+      expect(t.root.querySelector('.drop-target')).toBeNull();
+      t.fire('pointermove', 420, 360);
+      t.fire('pointerup', 420, 360);
+      expect(ring()).toBeNull();
+      expect(t.root.querySelector('.by-pin, .drop-target')).toBeNull();
+      expect(t.get(a).on).toBe(b);
+
+      // Dragged by its body: nothing of that.
+      t.pick.id = a;
+      t.fire('pointerdown', 420, 430);
+      t.fire('pointermove', 450, 440);
+      expect(ring()).toBeNull();
+      expect(node(a).classList.contains('by-pin')).toBe(false);
+      t.fire('pointerup', 450, 440);
     } finally {
       t.close();
     }

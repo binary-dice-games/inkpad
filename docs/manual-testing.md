@@ -74,7 +74,7 @@ presenter on Chrome.
 | 60 | Select a note, a pin and a thread in turn and press Delete | each goes (a pin takes its threads with it); on a locked element nothing goes and the message shows |
 | 61 | Select a pin attached to a note, then move the note | the bar sits over the pin where it is drawn and follows it |
 | 62 | Make an oval, a diamond and a hexagon note; pull the grip near the bottom right inside each | each grows, stays selected, the grip is on the shape |
-| 63 | Drag a note by its pin onto a bigger note, then move, resize and turn the bigger one; drag the small one by its pin off | the small one is on top and goes, scales and turns with the big one; off it stays where dropped |
+| 63 | Drag a note by its pin onto a bigger note, then move, resize and turn the bigger one; drag the small one by its pin off | the small one is on top and goes, scales and turns with the big one; off it stays where dropped; while dragging by the pin a ring is on the pin and the element it would attach to has a dashed outline |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

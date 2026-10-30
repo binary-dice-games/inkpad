@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dragging an element by its pin outlines the pin (a ring that goes with it), not the element, and outlines with a dashed line the element it would be attached to if dropped there.
 - Pictures and pinned files move with a plain drag, whoever pinned them, and are copied out of the board with Shift+drag (as pins use drag to move and Shift+drag for a thread). They are resized from a corner grip instead of with Shift.
 - The colour shortcut is now key 9 (6 is the sticky note, 7 the pin, 8 the thread).
 - Pinned pictures and files are slightly tilted at random, as if put up by hand.

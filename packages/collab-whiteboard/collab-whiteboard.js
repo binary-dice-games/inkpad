@@ -1154,6 +1154,9 @@ svg.board .note-item { cursor: default; }
 svg.board .arrow-item, svg.board .pin-item { cursor: pointer; }
 svg.board.arrow, svg.board.pin { cursor: crosshair; }
 .item.selected .paper { stroke: var(--wb-accent); stroke-width: 2.5; }
+.item.by-pin .paper { stroke: rgba(0,0,0,0.25); stroke-width: 0.75; }
+.item.drop-target .paper { stroke: var(--wb-accent); stroke-width: 2.5; stroke-dasharray: 7 4; }
+.pin-ring { stroke: var(--wb-accent, #3e63dd); stroke-width: 2.5; }
 .item.editing text { visibility: hidden; }
 .selbar { position: absolute; display: flex; align-items: center; gap: 3px; padding: 4px; border-radius: 8px; transform: translate(-50%, -100%);
   background: var(--wb-bg); border: 1px solid var(--wb-border); box-shadow: 0 2px 10px rgba(0,0,0,.2); pointer-events: auto; }
@@ -3282,7 +3285,15 @@ export class Whiteboard {
     if (grab) {
       // A pin on an item is moved from where it is drawn, not from where it was first put.
       const grabbed = mine.kind === 'pin' && mine.on ? { ...mine, ...pinPoint(mine, this.lookup) } : mine;
-      this.dragging = { item: grabbed, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0, corner: (mine.kind === 'note' || mine.kind === 'image') && this.onCorner(mine, p), byPin: ELEMENTS.has(mine.kind) && this.pinAt(p)?.id === mine.id };
+      const byPin = ELEMENTS.has(mine.kind) && this.pinAt(p)?.id === mine.id;
+      this.dragging = { item: grabbed, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0, corner: (mine.kind === 'note' || mine.kind === 'image') && this.onCorner(mine, p), byPin };
+      if (byPin) {
+        // The pin is what is being dragged: it gets the outline, not the element.
+        this.nodes.get(mine.id)?.node.classList.add('by-pin');
+        this.dragging.ring = svgEl('circle', { class: 'pin-ring', r: PIN_RADIUS + 5, fill: 'none', 'pointer-events': 'none' });
+        this.liveGroup.append(this.dragging.ring);
+        this.showPinDrag(this.dragging, 0, 0, p);
+      }
     } else if (this.tool === 'pen') {
       this.inkSeq += 1;
       this.drawing = { id: `${this.model.peerId}.${this.model.counter + 1}`, points: [p.x, p.y], sent: 0, seq: 0 };
@@ -3470,6 +3481,34 @@ export class Whiteboard {
   }
 
   /**
+   * @private While an element is dragged by its pin: the ring is around the pin, and the element it
+   * would be attached to if it were dropped now (if any) is outlined.
+   */
+  showPinDrag(d, dx, dy, p) {
+    if (!d.byPin) {
+      return;
+    }
+    const at = pinPoint(d.item, this.lookup);
+    d.ring.setAttribute('cx', at.x + dx);
+    d.ring.setAttribute('cy', at.y + dy);
+    const target = this.hostUnder(d.item, p);
+    if (target?.id !== d.target) {
+      this.nodes.get(d.target)?.node.classList.remove('drop-target');
+      this.nodes.get(target?.id)?.node.classList.add('drop-target');
+      d.target = target?.id;
+    }
+  }
+
+  /** @private Takes the outlines of a pin drag away. */
+  endPinDrag(d) {
+    if (d.byPin) {
+      d.ring.remove();
+      this.nodes.get(d.item.id)?.node.classList.remove('by-pin');
+      this.nodes.get(d.target)?.node.classList.remove('drop-target');
+    }
+  }
+
+  /**
    * @private Changes an element and moves what is attached to it along (their places on it are
    * kept). What is locked against this person stays where it is.
    */
@@ -3491,6 +3530,19 @@ export class Whiteboard {
     }
   }
 
+  /** @private The element under `drop` that `item` would be attached to if dropped there, or null (never one that sits on `item`). */
+  hostUnder(item, drop) {
+    const live = this.model.live();
+    const held = followers(live, item, item);
+    for (let i = live.length - 1; i >= 0; --i) {
+      const frame = live[i].id === item.id || held.has(live[i].id) ? null : hostFrame(live[i]);
+      if (frame && frameOf(frame, drop)) {
+        return live[i];
+      }
+    }
+    return null;
+  }
+
   /**
    * @private What an element holds about the one it is on, once it is as `geometry` says: when it
    * was grabbed by its pin and dropped at `drop` it is attached to the element under that point (or
@@ -3501,18 +3553,7 @@ export class Whiteboard {
     const none = { on: undefined, u: undefined, v: undefined, dr: undefined };
     let host = null;
     if (drop) {
-      const excluded = new Set([item.id, ...followers(this.model.live(), item, item).keys()]);
-      const live = this.model.live();
-      for (let i = live.length - 1; i >= 0 && !host; --i) {
-        const frame = excluded.has(live[i].id) ? null : hostFrame(live[i]);
-        if (frame && frameOf(frame, drop)) {
-          host = live[i];
-        }
-      }
-      // Not on something that sits on this element (it would hold itself up).
-      if (host && followers(live, item, item).has(host.id)) {
-        host = null;
-      }
+      host = this.hostUnder(item, drop);
     } else if (item.on) {
       host = this.model.get(item.on);
     }
@@ -3603,6 +3644,7 @@ export class Whiteboard {
       d.fields = null;
       d.dx = dx;
       d.dy = dy;
+      this.showPinDrag(d, dx, dy, p);
       this.nodes.get(it.id)?.node.setAttribute('transform', `translate(${dx} ${dy})`);
       this.followThreads(it.kind === 'ink' ? it : { ...it, x: it.x + dx, y: it.y + dy, ...(it.kind === 'pin' ? { on: undefined } : {}) });
     }
@@ -3707,6 +3749,7 @@ export class Whiteboard {
       const d = this.dragging;
       const it = d.item;
       this.dragging = null;
+      this.endPinDrag(d);
       this.nodes.get(it.id)?.node.removeAttribute('transform');
       if (d.preview) {
         this.showPreview(it, {});
