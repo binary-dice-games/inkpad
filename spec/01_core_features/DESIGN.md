@@ -216,10 +216,10 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   detaches it. If the item goes, its pins go (their author takes them down quietly, then the threads
   tied to them). Drawing order: items by stamp, then threads, then pins, so a moved note never covers
   its pins.
-- **Pulling a thread from a pin.** A capture-phase `pointerdown` on the container finds the pin
+- **Pulling a thread from a pin.** With Shift, a capture-phase `pointerdown` on the container finds the pin
   (`pinAt`, by geometry, so it wins over whatever else is under the pointer), switches to the
   thread tool for the gesture and stops the event; on release the previous tool returns, and
-  a click without a drag selects the pin (or note). Not with the pen and eraser, nor with Shift.
+  a click without a drag selects the pin (or note). Not with the pen and eraser, nor without Shift: a plain drag moves the pin, like any item, and a plain click selects it (the pin wins over what lies on it).
 - **Clear drawings** removes `ink`, `text` and `sticker` items of everyone (`clearDrawings`, host
   command `clearDrawings`), not an undo step; `clear` still removes everything.
 - **Saving.** `toSvg(box, {background, backdrop})` draws the frame (`exportArea`: the adapter's

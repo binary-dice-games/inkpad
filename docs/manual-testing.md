@@ -65,7 +65,7 @@ presenter on Chrome.
 | 51 | In a session with video, draw something and press **Save...**, then PNG and SVG | the files show the video frame with the drawing over it; the SVG opens in a browser and in a vector editor |
 | 52 | Save a board file with a pinned PDF, close the session, start a new one, **Save...** then open the file (also as a viewer, if allowed to draw) | notes, threads, pictures and the pinned file come back as yours; others can drag the file out; a board without video gets its background back |
 | 53 | Put a pin on a note, a picture and a sticker; move, turn and scale them; tie a thread to the pins | the pins stay where they were put on each, threads follow; deleting the item takes its pins and threads |
-| 54 | With the pointer, note and text tools in turn press on a pin and drag to another | a thread is tied, the tool you had is selected again on release; Shift+drag moves the pin instead; a click on a pin with threads selects the pin |
+| 54 | With the pointer, note and text tools in turn Shift+press on a pin and drag to another | a thread is tied, the tool you had is selected again on release; a plain drag moves the pin instead; a click on a pin with threads selects the pin |
 | 55 | Draw lines and text, pin a note and a file; press **Clear drawings**, then **Clear all** | only the drawings go the first time, everything the second, for every viewer |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 

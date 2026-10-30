@@ -583,9 +583,9 @@ describe('pins attached to what they are put on', () => {
       const pin = t.wb.addPin({ x: 600, y: 400 })!;
       t.pick.find = () => t.root.querySelector('.pin-item');
       const drag = (from: [number, number], to: [number, number]) => {
-        press(t, 'pointerdown', ...from, { shiftKey: true });
-        press(t, 'pointermove', ...to, { shiftKey: true });
-        press(t, 'pointerup', ...to, { shiftKey: true });
+        press(t, 'pointerdown', ...from);
+        press(t, 'pointermove', ...to);
+        press(t, 'pointerup', ...to);
       };
       drag([600, 400], [180, 230]);
       expect(t.wb.items().find((i) => i.id === pin)).toMatchObject({ on: note });
@@ -599,17 +599,17 @@ describe('pins attached to what they are put on', () => {
     }
   });
 
-  it('pulls a thread when pressed on and dragged, whatever tool is in hand, and gives the tool back', async () => {
+  it('pulls a thread when pressed on with Shift and dragged, whatever tool is in hand, and gives the tool back', async () => {
     const t = await mount();
     try {
       const a = t.wb.addPin({ x: 100, y: 100 })!;
       const b = t.wb.addPin({ x: 400, y: 120 })!;
       for (const tool of ['pointer', 'note', 'text', 'sticker', 'pin']) {
         t.wb.setTool(tool as never);
-        press(t, 'pointerdown', 101, 99);
+        press(t, 'pointerdown', 101, 99, { shiftKey: true });
         expect(t.inside.tool, tool).toBe('arrow'); // the thread tool, for as long as the button is down
-        press(t, 'pointermove', 300, 110);
-        press(t, 'pointerup', 399, 121);
+        press(t, 'pointermove', 300, 110, { shiftKey: true });
+        press(t, 'pointerup', 399, 121, { shiftKey: true });
         expect(t.inside.tool, tool).toBe(tool);
       }
       const threads = t.wb.items().filter((i): i is ArrowItem => i.kind === 'arrow');
@@ -619,23 +619,23 @@ describe('pins attached to what they are put on', () => {
       expect(t.wb.items().filter((i) => i.kind === 'pin')).toHaveLength(2);
       expect(t.where(a)).toEqual({ x: 100, y: 100 });
 
-      // Not with the pen or the eraser, nor with Shift (that moves the pin), nor off a pin.
+      // Not with the pen or the eraser, nor without Shift (that moves the pin), nor off a pin.
       for (const tool of ['pen', 'eraser']) {
         t.wb.setTool(tool as never);
-        press(t, 'pointerdown', 101, 99);
+        press(t, 'pointerdown', 101, 99, { shiftKey: true });
         expect(t.inside.tool).toBe(tool);
-        press(t, 'pointerup', 101, 99);
+        press(t, 'pointerup', 101, 99, { shiftKey: true });
       }
       t.wb.setTool('pointer');
-      press(t, 'pointerdown', 101, 99, { shiftKey: true });
+      press(t, 'pointerdown', 101, 99);
       expect(t.inside.tool).toBe('pointer');
-      press(t, 'pointerup', 101, 99, { shiftKey: true });
-      press(t, 'pointerdown', 600, 300);
+      press(t, 'pointerup', 101, 99);
+      press(t, 'pointerdown', 600, 300, { shiftKey: true });
       expect(t.inside.tool).toBe('pointer');
-      press(t, 'pointerup', 600, 300);
+      press(t, 'pointerup', 600, 300, { shiftKey: true });
       // Let go on nothing: the tool comes back and there is no new thread.
-      press(t, 'pointerdown', 100, 100);
-      press(t, 'pointerup', 650, 350);
+      press(t, 'pointerdown', 100, 100, { shiftKey: true });
+      press(t, 'pointerup', 650, 350, { shiftKey: true });
       expect(t.inside.tool).toBe('pointer');
       expect(t.wb.items().filter((i) => i.kind === 'arrow')).toHaveLength(5);
     } finally {

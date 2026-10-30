@@ -3050,7 +3050,7 @@ export class Whiteboard {
     if (this.readOnlyFlag || ev.button > 0 || this.threading) {
       return;
     }
-    const hit = this.itemAt(ev);
+    const hit = this.pinAt(this.eventPoint(ev)) ?? this.itemAt(ev); // a pin wins over what lies on it
     const mine = hit && hit.author === this.model.peerId ? hit : null;
     if (mine && ['note', 'pin', 'arrow'].includes(mine.kind) && ['pointer', 'note', 'pin', 'sticker'].includes(this.tool)) {
       this.select(mine.id);
@@ -3435,12 +3435,12 @@ export class Whiteboard {
   }
 
   /**
-   * @private Pressing on a pin and dragging pulls a thread from it, whatever tool is in hand (the
-   * thread tool for as long as the button is down); Shift moves the pin instead. The pin wins over
-   * what is under it (a thread, the note it is on), so it is easy to hit.
+   * @private Shift+press on a pin and drag pulls a thread from it, whatever tool is in hand (the
+   * thread tool for as long as the button is down); a plain drag moves the pin, as with any item.
+   * The pin wins over what is under it (a thread, the note it is on), so it is easy to hit.
    */
   pinGesture(ev) {
-    if (this.readOnlyFlag || ev.button !== 0 || ev.shiftKey || this.threading || this.tool === 'pen' || this.tool === 'eraser' || this.tool === 'arrow' || this.onControls(ev)) {
+    if (this.readOnlyFlag || ev.button !== 0 || !ev.shiftKey || this.threading || this.tool === 'pen' || this.tool === 'eraser' || this.tool === 'arrow' || this.onControls(ev)) {
       return;
     }
     const source = this.pinAt(this.eventPoint(ev));

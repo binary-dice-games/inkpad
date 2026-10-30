@@ -513,13 +513,15 @@ describe('static presenter page', () => {
     const [attached, bare] = await pins();
     expect(attached!.y).toBeGreaterThan(before.y + 40);
 
-    // With the pointer tool in hand, pressing on a pin and dragging to the other ties a thread,
+    // With the pointer tool in hand, Shift+pressing on a pin and dragging to the other ties a thread,
     // and the pointer tool is back as soon as the button is up.
     await presenter.mouse.move(attached!.x, attached!.y);
+    await presenter.keyboard.down('Shift');
     await presenter.mouse.down();
     await expect.poll(() => pointerTool.getAttribute('aria-pressed')).toBe('false');
     await presenter.mouse.move(bare!.x, bare!.y, { steps: 6 });
     await presenter.mouse.up();
+    await presenter.keyboard.up('Shift');
     await expect.poll(() => pointerTool.getAttribute('aria-pressed')).toBe('true');
     const threads = viewer.locator('collab-whiteboard .arrow-item');
     await expect.poll(() => threads.count(), { timeout: 30000 }).toBe(1);
