@@ -1,4 +1,4 @@
-// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inksplat)
+// MIT License © 2026 Binary Dice Games (adapted for inksplat)
 /**
  * @file collab-whiteboard.js A shared whiteboard over any element:
  * everyone's cursors, freehand ink, text notes and stickers, synced over any

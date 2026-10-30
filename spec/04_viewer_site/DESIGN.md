@@ -20,8 +20,14 @@ Out of scope: hosting any dynamic service; presenter functions.
 
 ## 2. Page behaviour
 
-- **Landing** (no fragment): short explanation, how to share, link to the
-  extension. **Invalid/expired token**: clear message.
+- **Landing** (no fragment): the home page of the product: the logo (a
+  light-text copy in dark mode), a short pitch, **Start presenting** (to
+  `present.html`), feature cards, the three steps, and a footer with the
+  licence, privacy policy, source and an **About** box (description, version
+  and commit, protocol, licences and credits, after nymph's). The build fills
+  in the version and protocol and copies the images from `viewer/src/assets/`
+  next to the pages (and under `/v<N>/`, with the privacy policy, so relative
+  links work there). **Invalid/expired token**: clear message.
 - **Join flow**: name field (prefilled from `localStorage`) and colour; "Join"
   creates a guest `Session` with the default trackers/ICE servers. Statuses
   (`connecting`, `no-tracker`, `no-answer`, `ice-failed`, `reconnecting`,

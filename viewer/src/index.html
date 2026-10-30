@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- MIT License © 2026 Carlos Lopez -->
+<!-- MIT License © 2026 Binary Dice Games -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -10,6 +10,7 @@
       content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src blob: mediastream:; connect-src ws: wss:; base-uri 'none'; form-action 'none'"
     />
     <title>inksplat</title>
+    <link rel="icon" href="icon.png" />
     <style>
       :root {
         color-scheme: light dark;
@@ -18,7 +19,15 @@
         --muted: #60646c;
         --border: #d9d9e0;
         --accent: #0b7a67;
+        --accent-hover: #09695a;
         --panel: #ffffff;
+        --ink: #1d2b3a;
+        --soft: #f4f6f8;
+        --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 12px 32px rgba(16, 24, 40, 0.08);
+        --splat-blue: #2f7fc1;
+        --splat-green: #6aa84f;
+        --splat-yellow: #f1c232;
+        --splat-orange: #e8712b;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -27,6 +36,9 @@
           --muted: #b0b4ba;
           --border: #363a3f;
           --panel: #18191b;
+          --ink: #edeef0;
+          --soft: #1d1e21;
+          --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
         }
       }
       * {
@@ -54,13 +66,47 @@
         display: grid;
         place-items: center;
         padding: 16px;
+        background:
+          radial-gradient(40rem 24rem at 0% 0%, rgba(47, 127, 193, 0.1), transparent 70%),
+          radial-gradient(40rem 24rem at 100% 100%, rgba(232, 113, 43, 0.1), transparent 70%),
+          var(--bg);
       }
       .card {
         width: min(440px, 100%);
-        padding: 20px;
+        padding: 24px;
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: 16px;
         background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+      .card-brand {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin: -4px 0 14px;
+        color: var(--muted);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .card-brand img {
+        width: 28px;
+        height: 28px;
+      }
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      a {
+        color: var(--accent);
+      }
+      @media (prefers-color-scheme: dark) {
+        a {
+          color: #4cc7ad;
+        }
       }
       h1 {
         margin: 0 0 8px;
@@ -89,20 +135,47 @@
       input[type='color'] {
         vertical-align: middle;
       }
-      button {
+      button,
+      .button {
+        display: inline-block;
         padding: 7px 14px;
         border-radius: 8px;
         border: 1px solid var(--border);
         background: transparent;
         color: inherit;
         font: inherit;
+        text-decoration: none;
         cursor: pointer;
+        transition:
+          background-color 0.15s,
+          border-color 0.15s;
       }
-      button.primary {
+      button:hover,
+      .button:hover {
+        border-color: var(--muted);
+      }
+      button.primary,
+      .button.primary {
         background: var(--accent);
         border-color: var(--accent);
         color: #fff;
         font-weight: 600;
+      }
+      button.primary:hover,
+      .button.primary:hover {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+      }
+      button.link {
+        padding: 0;
+        border: 0;
+        color: var(--accent);
+        text-decoration: underline;
+      }
+      @media (prefers-color-scheme: dark) {
+        button.link {
+          color: #4cc7ad;
+        }
       }
       button.danger {
         background: #c42b31;
@@ -110,9 +183,222 @@
         color: #fff;
       }
       button:focus-visible,
-      input:focus-visible {
+      input:focus-visible,
+      a:focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: 2px;
+      }
+      /* The home page: shown when the address has no invite. */
+      .home {
+        min-height: 100%;
+        display: flex;
+        flex-direction: column;
+        background:
+          radial-gradient(48rem 30rem at 10% -10%, rgba(47, 127, 193, 0.12), transparent 70%),
+          radial-gradient(40rem 28rem at 95% 10%, rgba(241, 194, 50, 0.12), transparent 70%),
+          radial-gradient(48rem 30rem at 80% 110%, rgba(232, 113, 43, 0.1), transparent 70%),
+          var(--bg);
+      }
+      .home-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        width: min(1080px, 100%);
+        margin: 0 auto;
+        padding: 14px 16px;
+      }
+      .brand {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        color: var(--ink);
+        font-size: 17px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      .home-nav {
+        display: flex;
+        gap: 18px;
+        align-items: center;
+      }
+      .home-nav a,
+      .home-nav button.link {
+        color: var(--muted);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .home-nav a:hover,
+      .home-nav button.link:hover {
+        color: var(--fg);
+      }
+      .hero {
+        width: min(760px, 100%);
+        margin: 0 auto;
+        padding: 24px 16px 40px;
+        text-align: center;
+      }
+      .hero-logo img {
+        display: block;
+        width: min(560px, 100%);
+        height: auto;
+        margin: 0 auto 20px;
+      }
+      .lead {
+        margin: 0 auto 24px;
+        max-width: 560px;
+        font-size: 18px;
+        line-height: 1.55;
+        color: var(--fg);
+      }
+      .cta {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .cta .button {
+        padding: 12px 26px;
+        border-radius: 999px;
+        font-size: 16px;
+        box-shadow: 0 6px 18px rgba(11, 122, 103, 0.28);
+      }
+      .problem {
+        display: inline-block;
+        margin: 0 auto 16px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        background: rgba(196, 43, 49, 0.1);
+        color: #a1242a;
+      }
+      @media (prefers-color-scheme: dark) {
+        .problem {
+          color: #ff9592;
+        }
+      }
+      .features {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        width: min(1080px, 100%);
+        margin: 0 auto;
+        padding: 0 16px 40px;
+      }
+      .feature {
+        padding: 20px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+      .feature svg {
+        width: 36px;
+        height: 36px;
+        padding: 6px;
+        border-radius: 10px;
+        fill: none;
+        stroke: #fff;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .feature:nth-child(2) svg {
+        background: var(--splat-blue);
+      }
+      .feature:nth-child(3) svg {
+        background: var(--splat-green);
+      }
+      .feature:nth-child(4) svg {
+        background: #3d8b6e;
+      }
+      .feature:nth-child(5) svg {
+        background: var(--splat-orange);
+      }
+      .feature h3 {
+        margin: 12px 0 4px;
+        font-size: 16px;
+        color: var(--ink);
+      }
+      .feature p {
+        margin: 0;
+        color: var(--muted);
+      }
+      .steps {
+        width: min(1080px, 100%);
+        margin: 0 auto;
+        padding: 0 16px 48px;
+      }
+      .steps h2 {
+        margin: 0 0 16px;
+        font-size: 20px;
+        text-align: center;
+        color: var(--ink);
+      }
+      .steps ol {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: step;
+      }
+      .steps li {
+        position: relative;
+        padding: 16px 16px 16px 60px;
+        border-radius: 14px;
+        background: var(--soft);
+        counter-increment: step;
+      }
+      .steps li::before {
+        content: counter(step);
+        position: absolute;
+        left: 16px;
+        top: 14px;
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--ink);
+        color: var(--panel);
+        font-weight: 700;
+      }
+      .home-foot {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 20px;
+        justify-content: center;
+        align-items: center;
+        margin-top: auto;
+        padding: 20px 16px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .home-foot a,
+      .home-foot button.link {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      dialog.about {
+        width: min(520px, calc(100% - 24px));
+        padding: 24px;
+      }
+      dialog.about img {
+        display: block;
+        width: min(320px, 100%);
+        height: auto;
+        margin: 0 auto 12px;
+      }
+      @media (max-width: 520px) {
+        .lead {
+          font-size: 16px;
+        }
+        .hero {
+          padding-top: 8px;
+        }
       }
       #app {
         position: fixed;
@@ -156,7 +442,8 @@
         max-height: calc(100% - 24px);
         padding: 16px 18px;
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-radius: 16px;
+        box-shadow: var(--shadow);
         background: var(--panel);
         color: var(--fg);
       }
@@ -344,19 +631,98 @@
     </style>
   </head>
   <body>
-    <main id="landing" class="screen" hidden>
-      <div class="card">
-        <h1>inksplat</h1>
-        <p>
-          inksplat shares a screen, window or browser tab live, with a whiteboard everyone can draw
-          on. To join, open the link the presenter gave you.
+    <main id="landing" class="home" hidden>
+      <header class="home-bar">
+        <a class="brand" href="./" aria-label="inksplat home">
+          <img src="icon.png" alt="" width="28" height="28" />
+          <span>inksplat</span>
+        </a>
+        <nav class="home-nav" aria-label="Site">
+          <a href="https://github.com/binary-dice-games/inksplat" rel="noopener">Source</a>
+          <button id="aboutOpen" class="link" type="button">About</button>
+        </nav>
+      </header>
+
+      <section class="hero">
+        <h1 class="visually-hidden">inksplat</h1>
+        <picture class="hero-logo">
+          <source srcset="logo-dark.png" media="(prefers-color-scheme: dark)" />
+          <img
+            src="logo.png"
+            width="880"
+            height="332"
+            alt="inksplat, remote whiteboard and collaboration tool"
+          />
+        </picture>
+        <p class="lead">
+          Share a browser tab, a window or your whole screen, and draw on it together. Viewers open
+          a link: nothing to install, no account, no server in between.
         </p>
-        <p id="landingProblem" class="muted" hidden></p>
-        <!--{{present-link}}-->
-      </div>
+        <p id="landingProblem" class="problem" role="alert" hidden></p>
+        <div class="cta"><!--{{present-link}}--></div>
+        <p class="muted">Got a link from a presenter? Open it to join the session.</p>
+      </section>
+
+      <section class="features" aria-labelledby="featuresTitle">
+        <h2 id="featuresTitle" class="visually-hidden">Features</h2>
+        <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="12" rx="2" />
+            <path d="M8 20h8M12 16v4" />
+          </svg>
+          <h3>Share anything</h3>
+          <p>A tab, a window or a whole screen, desktop applications included.</p>
+        </article>
+        <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 20l4-1L19 8l-3-3L5 16z" />
+            <path d="M14 7l3 3" />
+          </svg>
+          <h3>Draw together</h3>
+          <p>Lines, text, sticky notes, pins and threads, on five canvases per board.</p>
+        </article>
+        <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z" />
+            <path d="M9 12l2 2 4-4" />
+          </svg>
+          <h3>Peer to peer</h3>
+          <p>Video and drawings go straight between browsers. Nothing is stored on a server.</p>
+        </article>
+        <article class="feature">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 4h11l3 3v13H5z" />
+            <path d="M8 4v5h7V4M8 20v-6h8v6" />
+          </svg>
+          <h3>Save and carry on</h3>
+          <p>Keep the board as a picture, a drawing or a file to open in a later session.</p>
+        </article>
+      </section>
+
+      <section class="steps" aria-labelledby="stepsTitle">
+        <h2 id="stepsTitle">How it works</h2>
+        <ol>
+          <li>
+            <strong>Start presenting</strong> and pick what to share in your browser's own picker,
+            or start a board with no video.
+          </li>
+          <li><strong>Send the link</strong> (or show its QR code) to the people you invite.</li>
+          <li>
+            <strong>Draw together</strong> over the live picture: everyone sees everyone's ink.
+          </li>
+        </ol>
+      </section>
+
+      <footer class="home-foot">
+        <span>MIT License © 2026 Binary Dice Games</span>
+        <a href="privacy.html">Privacy</a>
+        <a href="https://github.com/binary-dice-games/inksplat" rel="noopener">Source code</a>
+        <button id="aboutFoot" class="link" type="button">About inksplat</button>
+      </footer>
     </main>
     <main id="join" class="screen" hidden>
       <form class="card" id="joinForm">
+        <div class="card-brand"><img src="icon.png" alt="" />inksplat</div>
         <h1>Join the session</h1>
         <p class="muted">You will see the presenter's tab and can draw on it.</p>
         <label for="name">Your name</label>
@@ -378,6 +744,7 @@
     </main>
     <main id="wait" class="screen" hidden>
       <div class="card">
+        <div class="card-brand"><img src="icon.png" alt="" />inksplat</div>
         <h1 id="waitTitle">Connecting…</h1>
         <p id="waitText" class="muted" role="status"></p>
         <details id="codes">
@@ -430,6 +797,36 @@
       <div class="actions">
         <span class="spacer"></span>
         <button id="closeSave" class="primary" type="button">Close</button>
+      </div>
+    </dialog>
+    <dialog id="about" class="about" aria-labelledby="aboutTitle">
+      <picture>
+        <source srcset="logo-dark.png" media="(prefers-color-scheme: dark)" />
+        <img src="logo.png" width="880" height="332" alt="" />
+      </picture>
+      <h2 id="aboutTitle">About inksplat</h2>
+      <p>
+        inksplat turns a shared tab, window or screen into a shared whiteboard. The presenter shares
+        from this site; viewers open a link, watch a live video of it and draw on it with everyone
+        else. Peers find each other through public trackers and talk directly over WebRTC: there is
+        no inksplat server, and nothing you draw is stored anywhere but in the browsers.
+      </p>
+      <p id="aboutVersion" class="muted">Version {{version}}, protocol {{protocol}}.</p>
+      <p class="muted">
+        MIT License © 2026 Binary Dice Games. The collaboration code comes from
+        <a href="https://github.com/binary-dice-games/nymph" rel="noopener">nymph</a>, also by
+        Binary Dice Games. Built with qrcode-generator (MIT License) and pdf.js (Apache License
+        2.0).
+      </p>
+      <p>
+        <a href="https://github.com/binary-dice-games/inksplat" rel="noopener"
+          >Source code and documentation</a
+        >
+        · <a href="privacy.html">Privacy policy</a>
+      </p>
+      <div class="actions">
+        <span class="spacer"></span>
+        <button id="aboutClose" class="primary" type="button" autofocus>Close</button>
       </div>
     </dialog>
     <script src="viewer.js"></script>

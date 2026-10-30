@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 import { describe, expect, it } from 'vitest';
 import { cleanItem, cleanUrl, createWhiteboard, frameAdapter } from '@inksplat/collab-whiteboard';
 import type { PreparedFile } from '@inksplat/collab-whiteboard';

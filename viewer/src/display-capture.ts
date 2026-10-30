@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file Screen capture for the presenter page (spec/06_static_presenter): the
  * browser's own picker (a tab, a window or a whole screen) as the video source.

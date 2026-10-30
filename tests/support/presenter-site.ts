@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 import type { Browser, BrowserContext, Page } from 'playwright-core';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -36,7 +36,11 @@ export class PresenterSite {
       try {
         const body = readFileSync(join(out, path === '/' ? 'index.html' : path.slice(1)));
         res.writeHead(200, {
-          'content-type': /\.m?js$/.test(path) ? 'text/javascript' : 'text/html',
+          'content-type': /\.m?js$/.test(path)
+            ? 'text/javascript'
+            : path.endsWith('.png')
+              ? 'image/png'
+              : 'text/html',
         });
         res.end(body);
       } catch {

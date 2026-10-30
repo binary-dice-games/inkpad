@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 
 /**
  * A one-page PDF (a heading and a black bar, so a preview of it has dark pixels whatever fonts the

@@ -1,4 +1,4 @@
-// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inksplat)
+// MIT License © 2026 Binary Dice Games (adapted for inksplat)
 /**
  * @file collab-session.js Rooms of peers talking over WebRTC data
  * channels and one video track, with no server of their own.

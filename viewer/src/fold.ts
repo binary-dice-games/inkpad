@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file Folding the whiteboard toolbar away so it does not hide the video, for
  * the viewer and the presenter page.

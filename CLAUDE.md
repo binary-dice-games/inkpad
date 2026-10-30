@@ -94,8 +94,9 @@ Always write automated tests for new or modified behavior. Add a test with
   shared packages that ship as plain JS with `.d.ts` files. Prettier
   (`.prettierrc.json`) and ESLint (`eslint.config.js`) are authoritative:
   2-space indent, single quotes, trailing commas, sorted imports by hand.
-- Start files with `// MIT License © 2026 Carlos Lopez` (copied files keep
-  their upstream header plus a provenance note).
+- Start files with `// MIT License © 2026 Binary Dice Games` (copied files keep
+  their upstream header plus a provenance note). Copyright notices always name
+  Binary Dice Games, never a person.
 - Add `@file` doc comments to modules and JSDoc/TSDoc to public APIs: intent,
   parameters, return value, failure modes (`@throws`).
 - `camelCase` functions and variables, `PascalCase` types and classes,

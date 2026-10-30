@@ -1,4 +1,4 @@
-// MIT License © 2026 Binary Dice Games (adapted by Carlos Lopez for inksplat)
+// MIT License © 2026 Binary Dice Games (adapted for inksplat)
 
 export type Stamp = [number, string];
 

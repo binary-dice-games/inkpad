@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file The presenter's side of a share, free of DOM code so it is unit
  * tested: the host session, the lock on viewers' drawing, pause, removal and

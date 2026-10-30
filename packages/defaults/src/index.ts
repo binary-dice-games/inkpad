@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file Defaults and small pure helpers shared by the presenter page and the
  * viewer: trackers, ICE servers, video presets, the `stage` message and

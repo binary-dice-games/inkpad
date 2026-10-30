@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PresenterSite, configure, draw, items } from '../support/presenter-site';
 import { makePdf } from '../support/pdf';
@@ -30,6 +30,27 @@ describe('static presenter page', () => {
     await expect
       .poll(() => landing.locator('a[href="present.html"]').count(), { timeout: 10000 })
       .toBe(1);
+  });
+
+  it('shows the logo on the home page and an About box with the version', async () => {
+    const ctx = await site.context();
+    const home = await ctx.newPage();
+    await home.goto(`${site.origin}/`);
+    await expect.poll(() => home.locator('#landing').isVisible()).toBe(true);
+    const logo = home.locator('.hero-logo img');
+    await expect
+      .poll(() => logo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth))
+      .toBe(880);
+    expect(await home.locator('#about').isVisible()).toBe(false);
+    await home.locator('#aboutOpen').click();
+    await expect.poll(() => home.locator('#about').isVisible()).toBe(true);
+    expect(await home.locator('#aboutVersion').textContent()).toMatch(
+      /^Version \d+\.\d+\.\d+.*, protocol inksplat\/\d+\.$/,
+    );
+    await home.locator('#aboutClose').click();
+    await expect.poll(() => home.locator('#about').isVisible()).toBe(false);
+    await home.locator('#aboutFoot').click();
+    await expect.poll(() => home.locator('#about').isVisible()).toBe(true);
   });
 
   it('shares a source: video reaches a viewer, drawings go both ways, pause and end follow', async () => {

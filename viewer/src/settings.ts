@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file Presenter settings: the schema, its defaults and the validation applied
  * to anything read from storage or typed in the settings dialog.

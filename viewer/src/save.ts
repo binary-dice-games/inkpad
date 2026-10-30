@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file Saving the board from the viewer and the presenter page: a picture (PNG), a drawing (SVG), or
  * a board file that a later session opens to carry on (the items and the files pinned on them).

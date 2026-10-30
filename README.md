@@ -22,7 +22,8 @@ one: **Start sharing** opens the picker (a tab, a window or a whole screen), the
 page shows what is shared with the whiteboard on top, and gives the viewer link.
 Nothing is drawn on the shared surface itself, because capture would record it:
 the presenter draws on a live copy next to it. Viewers open the link on the
-viewer page (`index.html`). Both are served from GitHub Pages
+viewer page (`index.html`), which without a link is the home page: the logo, a
+**Start presenting** button and an **About** box with the version and credits. Both are served from GitHub Pages
 (`spec/06_static_presenter`). There used to be a Chrome extension; it was removed
 because the page does the same and more.
 
@@ -65,6 +66,7 @@ Needs Node.js 20+; the browser tests need Chrome. Details in
 | `spec/` | Design and plan documents, one folder per project |
 | `docs/` | User and developer documentation |
 | `resources/` | Project assets: the logo (`inksplat.png`) |
+| `viewer/src/assets/` | The logo, its dark-mode copy and the icon, sized for the pages (made from `resources/inksplat.png`) |
 
 ## Further Documentation
 
@@ -79,4 +81,4 @@ Needs Node.js 20+; the browser tests need Chrome. Details in
 | [NOTICE](NOTICE) | Code copied from nymph |
 | [CHANGELOG.md](CHANGELOG.md) | User-facing changes |
 
-# MIT License © 2026 Carlos Lopez
+# MIT License © 2026 Binary Dice Games

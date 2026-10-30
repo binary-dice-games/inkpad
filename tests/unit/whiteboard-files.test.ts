@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LIMITS,

@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 import { deflateRawSync } from 'node:zlib';
 
 /** A zip with the given parts, deflated or stored (what Office and LibreOffice write). */

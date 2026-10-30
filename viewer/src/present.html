@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- MIT License © 2026 Carlos Lopez -->
+<!-- MIT License © 2026 Binary Dice Games -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -10,6 +10,7 @@
       content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src blob: mediastream:; connect-src ws: wss:; base-uri 'none'; form-action 'none'"
     />
     <title>inksplat presenter</title>
+    <link rel="icon" href="icon.png" />
     <!--{{style}}-->
     <style>
       #panel input[type='text'] {
@@ -155,6 +156,7 @@
   <body>
     <main id="start" class="screen" hidden>
       <form class="card" id="startForm">
+        <div class="card-brand"><img src="icon.png" alt="" />inksplat</div>
         <h1>Present with inksplat</h1>
         <p>
           Share a browser tab, a window or a whole screen, even a desktop application. Viewers open
@@ -183,6 +185,7 @@
 
     <main id="over" class="screen" hidden>
       <div class="card">
+        <div class="card-brand"><img src="icon.png" alt="" />inksplat</div>
         <h1>Session over</h1>
         <p id="overText" class="muted"></p>
         <p><button id="again" class="primary" type="button">Start again</button></p>

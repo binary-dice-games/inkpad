@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   FRAME_BYTES,

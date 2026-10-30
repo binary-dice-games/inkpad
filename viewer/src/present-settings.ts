@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file Settings of the presenter page (spec/06_static_presenter): the
  * session settings plus the mouse pointer choice and the folding of the tools
