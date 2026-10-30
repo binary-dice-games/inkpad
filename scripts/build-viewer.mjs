@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 // Builds the viewer app and the presenter page into a directory.
 //
 //   node scripts/build-viewer.mjs [outDir]      default: viewer/dist (the GitHub Pages bundle)

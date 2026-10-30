@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file Previews of documents for the board: the first page of a PDF (with pdf.js, loaded only when
  * a PDF is dropped) and the thumbnail or first paragraphs of an Office or OpenDocument file (a zip

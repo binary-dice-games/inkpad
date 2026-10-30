@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 // Checks that a deployed (or locally served) site works.
 //
 //   node scripts/smoke-site.mjs <site url, ending with />

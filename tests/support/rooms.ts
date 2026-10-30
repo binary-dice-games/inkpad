@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 import { createMemoryNetwork, createSession } from '@inksplat/collab-session';
 import type { Session, SessionOptions } from '@inksplat/collab-session';
 

@@ -1,4 +1,4 @@
-# MIT License © 2026 Carlos Lopez
+# MIT License © 2026 Binary Dice Games
 # Publishes the viewer to GitHub Pages from main: at the site root (the latest viewer) and
 # under /v<N>/ (the viewer and presenter page for protocol major N).
 # Older majors kept in site-archive/ are published too. See spec/05_release_pipeline.

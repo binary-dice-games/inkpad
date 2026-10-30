@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file QR code of the viewer link, so a phone or tablet can join by pointing its camera at the
  * presenter's screen. The encoding is done by `qrcode-generator`; this file draws it.

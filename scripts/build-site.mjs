@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 // Assembles the GitHub Pages site.
 //
 //   node scripts/build-site.mjs [outDir] [--base /inksplat/]

@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';

@@ -81,4 +81,4 @@ Needs Node.js 20+; the browser tests need Chrome. Details in
 | [NOTICE](NOTICE) | Code copied from nymph |
 | [CHANGELOG.md](CHANGELOG.md) | User-facing changes |
 
-# MIT License © 2026 Carlos Lopez
+# MIT License © 2026 Binary Dice Games

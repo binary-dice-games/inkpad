@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file The viewer's decisions that need no DOM: what to tell the user for a
  * session state or error, what to show over the video, and which aspect the

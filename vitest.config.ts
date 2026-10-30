@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({

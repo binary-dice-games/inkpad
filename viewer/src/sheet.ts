@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file The board of a canvas without video: a sheet in the shape of the shared frame, with one
  * of a few backgrounds (whiteboard, blackboard, wall, cork), for the viewer and the presenter

@@ -1,4 +1,4 @@
-// MIT License © 2026 Carlos Lopez
+// MIT License © 2026 Binary Dice Games
 /**
  * @file The viewer app: joins a session from an invite link, shows the
  * presenter's video with the shared whiteboard over it, and lets the person
