@@ -229,7 +229,8 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   by its body only updates its place on its element. When an element changes, what is on it
   (`followers`, recursively) is moved with it in the same gesture, skipping what is locked against the
   person; during the drag the preview redraws them, a ring is drawn around the pin (not the element) and the
-  element it would attach to is outlined dashed (`showPinDrag`). The drawing order puts an element after the one it is
+  element it would attach to is outlined dashed (`showPinDrag`; a bare pin being dragged outlines
+  the element under it the same way, with no ring). The drawing order puts an element after the one it is
   on, then threads, then pins. The resize grip (`gripOf`) is inside each shape, per `GRIP_REACH`.
 - **Pulling a thread from a pin.** With Shift, a capture-phase `pointerdown` on the container finds the pin
   (`pinAt`, by geometry, so it wins over whatever else is under the pointer), switches to the

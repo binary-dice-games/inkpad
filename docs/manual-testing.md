@@ -78,6 +78,7 @@ presenter on Chrome.
 | 64 | With two people, put a note on canvas 1, go to canvas 3 with the round buttons at the top and draw; the other stays on 1 | Your canvas 3 has only your drawing; the button of 3 shows 1 person and the other's 1 person; you do not see their cursor until you both are on the same canvas; Clear on 3 leaves canvas 1; saving a board file and opening it restores every canvas |
 | 65 | Click the pin tool, choose a star, put a pin down; press 7 again and put another; select the first and change its shape and colour from the bar | The panel lists five shapes; each pin is drawn in its shape, threads still tie to its centre |
 | 66 | Share a window; a viewer joins; both go through the canvases; on canvas 3 the presenter picks **Video**, on canvas 1 **Cork board** | Canvas 1 shows the video, 2 to 5 whiteboard, blackboard, wall, cork; then canvas 3 shows the video and canvas 1 the cork, on both; drawings stay in place |
+| 67 | Put a bare pin down, then drag it over a note, a picture, a link and a sticker, and off them | Each one it is over has a dashed outline, which goes when the pin leaves it or is dropped; dropped on one it stays on it |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)
