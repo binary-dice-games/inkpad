@@ -57,6 +57,8 @@ presenter on Chrome.
 | 43 | Pin a file and a picture on the board | each sits a few degrees tilted (at most 7), a different angle each time |
 | 44 | Copy a web address and press Ctrl+V on the board, or drag one from another tab | a card with the site name and path appears; on a viewer, clicking it opens the page in a new tab; hovering shows the full address |
 | 45 | Choose the wall and cork backgrounds | plaster with soft shading and a rough surface; cork with grain and a wooden frame |
+| 46 | Press 6 and click the board; type; click away. Drag the note, drag its corner, right click it | the note keeps the text, moves, resizes from its bottom right corner and disappears |
+| 47 | On another device, double click the note, then paste in a text editor | the text of the note is pasted; the other device cannot edit, move or delete the note |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

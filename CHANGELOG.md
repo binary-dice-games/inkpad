@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Sticky notes: new tool (6) pins a note in a pale version of your colour; its owner clicks it to type, drags it to move, drags the corner to resize, right clicks to delete; others double click it to copy its text.
 - Web links on the board: paste a link (Ctrl+V) or drag one from a page onto it to pin a card with its address; clicking the card opens the page in a new tab.
 - White in the colour list (the eighth colour).
 - PDF and Office files dropped on the board show their content on the card: the first page of a PDF, the saved thumbnail or the first paragraphs of a Word, Excel, PowerPoint or OpenDocument file (older .doc, .xls and .ppt files show only the card).
@@ -41,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The colour shortcut is now key 7 (6 is the sticky note).
 - Pinned pictures and files are slightly tilted at random, as if put up by hand.
 - Wall and cork backgrounds look like painted plaster and cork, with a lit, rough surface and a wooden frame on the cork.
 

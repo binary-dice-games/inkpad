@@ -43,9 +43,9 @@ export class WhiteboardError extends Error {}
 const ID = /^[A-Za-z0-9_.-]{1,64}$/;
 const COLOR = /^#[0-9a-fA-F]{6}$/;
 const STICKER = /^[a-z0-9-]{1,32}$/;
-const KINDS = new Set(['ink', 'text', 'sticker', 'image', 'link']);
+const KINDS = new Set(['ink', 'text', 'sticker', 'image', 'link', 'note']);
 const IMAGE_DATA = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
-const TOOL_NAMES = new Set(['pointer', 'pen', 'text', 'sticker', 'eraser']);
+const TOOL_NAMES = new Set(['pointer', 'pen', 'text', 'sticker', 'eraser', 'note']);
 const MIME = /^[a-z0-9][a-z0-9.+-]{0,60}\/[a-z0-9][a-z0-9.+-]{0,80}$/;
 const turned = (r) => (finite(r, -360, 360) && r !== 0 ? { rot: r } : {});
 const finite = (n, lo = -1e6, hi = 1e6) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
@@ -94,6 +94,12 @@ export function cleanItem(item) {
     }
     const file = cleanFileInfo(item.file);
     return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, data: item.data, ...(file ? { file } : {}), ...turned(item.rot) };
+  }
+  if (item.kind === 'note') {
+    if (!finite(item.x) || !finite(item.y) || !finite(item.size, 60, 600) || !finite(item.ratio, 0.3, 3) || typeof item.text !== 'string' || item.text.length > LIMITS.text || !COLOR.test(item.color ?? '')) {
+      return null;
+    }
+    return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, text: item.text, color: item.color, ...turned(item.rot) };
   }
   if (item.kind === 'link') {
     const url = cleanUrl(item.url);
@@ -706,12 +712,70 @@ const WIDTH_NAMES = ['thin', 'normal', 'thick'];
 const SIZES = [18, 28, 44];
 const SIZE_NAMES = ['small', 'medium', 'large'];
 /** Where each tool's cursor points, in its 24-unit icon. */
-const HOTSPOT = { pointer: [5, 3], pen: [4, 20], text: [12, 12], sticker: [12, 12], eraser: [5, 19] };
+const HOTSPOT = { pointer: [5, 3], pen: [4, 20], text: [12, 12], sticker: [12, 12], eraser: [5, 19], note: [12, 12] };
 const MAX_QUEUE = 50;
 const pinColor = (id) => PALETTE[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % 6];
 
 const nearest = (list, v) => list.reduce((best, x, i) => (Math.abs(x - v) < Math.abs(list[best] - v) ? i : best), 0);
 const readableOn = (hex) => ((parseInt(hex.slice(1, 3), 16) * 299 + parseInt(hex.slice(3, 5), 16) * 587 + parseInt(hex.slice(5, 7), 16) * 114) / 1000 > 150 ? '#1c2024' : '#ffffff');
+/** A pale version of a colour, for the paper of a note. */
+const pastel = (hex) => {
+  const c = [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.35 + 255 * 0.65));
+  return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+};
+
+const NOTE_FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+const NOTE_TEXT = 16; // font size, in board units
+const NOTE_PAD = 10;
+let noteContext;
+
+/** The lines of a note's text for a paper `width` units wide (words kept whole, long words broken). */
+function wrapNote(text, width) {
+  if (noteContext === undefined) {
+    noteContext = (typeof document !== 'undefined' && document.createElement('canvas').getContext?.('2d')) || null;
+  }
+  if (noteContext) {
+    noteContext.font = `${NOTE_TEXT}px ${NOTE_FONT}`;
+  }
+  const measure = (str) => (noteContext ? noteContext.measureText(str).width : str.length * NOTE_TEXT * 0.55);
+  const lines = [];
+  for (const paragraph of text.split('\n')) {
+    let line = '';
+    for (let word of paragraph.split(' ')) {
+      while (measure(word) > width && word.length > 1) {
+        if (line) {
+          lines.push(line);
+          line = '';
+        }
+        let n = word.length - 1;
+        while (n > 1 && measure(word.slice(0, n)) > width) {
+          --n;
+        }
+        lines.push(word.slice(0, n));
+        word = word.slice(n);
+      }
+      if (line && measure(`${line} ${word}`) > width) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = line ? `${line} ${word}` : word;
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+/** Puts text on the clipboard; resolves false when the browser refuses. */
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const decodeSafe = (s) => {
   try {
     return decodeURIComponent(s);
@@ -728,6 +792,9 @@ const STRINGS = {
   text: 'Text note',
   sticker: 'Sticker (Shift+drag scales, Ctrl+drag turns)',
   eraser: 'Eraser',
+  note: 'Sticky note (click to write; drag the corner to resize)',
+  noteCopied: 'Note copied to the clipboard',
+  noteNotCopied: 'The browser did not allow copying',
   undo: 'Undo (Ctrl+Z)',
   redo: 'Redo (Ctrl+Y)',
   clear: 'Clear the whiteboard for everyone',
@@ -752,6 +819,7 @@ const ICONS = {
   text: '<path d="M5 6V4h14v2M12 4v16M9 20h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
   sticker: '<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
   eraser: '<path d="M8 20h12M4.5 15.5l9-9a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 18H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
+  note: '<path d="M5 4h14v10l-5 6H5z M14 20v-6h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
   undo: '<path d="M9 7L4 12l5 5M4 12h10a6 6 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" transform="translate(0 -3)"/>',
   redo: '<path d="M15 7l5 5-5 5M20 12H10a6 6 0 0 0 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" transform="translate(0 -3)"/>',
   clear: '<path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>',
@@ -825,6 +893,7 @@ svg.board:not(.pen):not(.eraser) .item.own { cursor: move; }
 .queue .turn { all: unset; box-sizing: border-box; cursor: pointer; padding: 5px 12px; border-radius: 999px; background: var(--wb-bg); color: var(--wb-fg);
   border: 1px solid var(--wb-border); box-shadow: 0 2px 8px rgba(0,0,0,.2); pointer-events: auto; }
 .queue .turn:hover { background: var(--wb-hover); }
+svg.board .note-item { cursor: default; }
 textarea.note { position: absolute; margin: 0; padding: 2px 4px; border: 1px dashed var(--wb-accent); border-radius: 4px; background: rgba(255,255,255,.92);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.2; resize: none; overflow: hidden; outline: none; pointer-events: auto; min-width: 4em; transform-origin: 0 0; }
 `;
@@ -902,7 +971,7 @@ export class Whiteboard {
     this.container = container;
     this.session = options.session;
     this.strings = { ...STRINGS, ...(options.strings ?? {}) };
-    this.tools = (options.tools ?? ['pointer', 'pen', 'text', 'sticker', 'eraser']).filter((t) => t in ICONS);
+    this.tools = (options.tools ?? ['pointer', 'pen', 'text', 'sticker', 'eraser', 'note']).filter((t) => t in ICONS);
     if (!this.tools.includes('pointer')) {
       this.tools.unshift('pointer');
     }
@@ -935,6 +1004,7 @@ export class Whiteboard {
     this.prepare = options.prepareFile ?? prepareFile;
     this.filePreview = options.filePreview ?? null;
     this.random = options.random ?? Math.random;
+    this.copyText = options.copyText ?? copyToClipboard;
     this.openUrl = options.openUrl ?? ((url) => window.open(url, '_blank', 'noopener,noreferrer'));
     this.files = new Map(); // item id -> Blob of the file shared with the item
     this.proxies = new Map(); // item id -> {el, img}: what a copy is dragged from
@@ -1082,6 +1152,24 @@ export class Whiteboard {
     }
     const op = this.local(() => this.model.add({ kind: 'link', x: round1(at.x), y: round1(at.y), size: 200, url: clean, ...turned(this.tilt()) }));
     return op ? op.item.id : null;
+  }
+
+  /**
+   * Pins a sticky note at (x, y) (content units) and returns its id; its paper is a pale version of
+   * the current colour. Only its author edits, moves or deletes it; others can copy its text.
+   * @returns {string | null} null when the board is read only
+   */
+  addNote(at = { x: 500, y: 300 }, text = '') {
+    if (this.readOnlyFlag) {
+      return null;
+    }
+    const op = this.local(() => this.model.add({ kind: 'note', x: round1(at.x), y: round1(at.y), size: 180, ratio: 1, text: String(text).slice(0, LIMITS.text), color: pastel(this.style.color), ...turned(this.tilt()) }));
+    return op ? op.item.id : null;
+  }
+
+  /** @private Copies the text of a note to the clipboard, and says so. */
+  async copyNote(item) {
+    this.flash((await this.copyText(item.text)) ? this.strings.noteCopied : this.strings.noteNotCopied);
   }
 
   /** @private A small random turn (up to 7 degrees either way) for what is pinned, as if by hand. */
@@ -1716,20 +1804,24 @@ export class Whiteboard {
   }
 
   /** @private A print pinned on the board around `content`: border, pin, and a shadow that stays put when turned. */
-  printNode(item, h, turn, content) {
+  printNode(item, h, turn, content, paper = '#ffffff') {
     const pad = Math.min(8, Math.max(3, item.size * 0.03));
     const left = item.x - item.size / 2;
     const top = item.y - h / 2;
     const r = Math.min(8, Math.max(4, item.size * 0.035));
     const py = top - pad + r * 1.15;
     const print = svgEl('g', { ...turn });
+    const pin = svgEl('g', { class: 'pin', 'data-id': item.id });
     print.append(
-      svgEl('rect', { x: left - pad, y: top - pad, width: item.size + 2 * pad, height: h + 2 * pad, fill: '#ffffff', stroke: 'rgba(0,0,0,0.25)', 'stroke-width': 0.75 }),
+      svgEl('rect', { x: left - pad, y: top - pad, width: item.size + 2 * pad, height: h + 2 * pad, fill: paper, stroke: 'rgba(0,0,0,0.25)', 'stroke-width': 0.75 }),
       ...content,
+    );
+    pin.append(
       svgEl('ellipse', { cx: item.x + r * 0.45, cy: py + r * 0.7, rx: r * 0.95, ry: r * 0.6, fill: 'rgba(0,0,0,0.3)' }),
       svgEl('circle', { cx: item.x, cy: py, r, fill: pinColor(item.id), stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8 }),
       svgEl('circle', { cx: item.x - r * 0.3, cy: py - r * 0.32, r: r * 0.3, fill: 'rgba(255,255,255,0.6)' }),
     );
+    print.append(pin);
     const shadow = svgEl('g', { filter: 'url(#wb-shadow)' });
     shadow.append(print);
     return shadow;
@@ -1763,6 +1855,23 @@ export class Whiteboard {
       const left = item.x - item.size / 2;
       const top = item.y - h / 2;
       g.append(this.printNode(item, h, turn, [svgEl('image', { href: item.data, x: left, y: top, width: item.size, height: h, preserveAspectRatio: 'none' })]));
+    } else if (item.kind === 'note') {
+      const w = item.size;
+      const h = w * item.ratio;
+      const left = item.x - w / 2;
+      const top = item.y - h / 2;
+      const lines = wrapNote(item.text, w - 2 * NOTE_PAD);
+      const body = svgEl('svg', { x: left, y: top, width: w, height: h, overflow: 'hidden' });
+      const text = svgEl('text', { x: NOTE_PAD, y: NOTE_PAD + 6, 'font-size': NOTE_TEXT, fill: '#1c2024', 'dominant-baseline': 'hanging', 'font-family': NOTE_FONT });
+      text.style.stroke = 'none'; // not the halo of text notes
+      lines.forEach((line, i) => {
+        const span = svgEl('tspan', { x: NOTE_PAD, dy: i === 0 ? 0 : NOTE_TEXT * 1.25 });
+        span.textContent = line || ' ';
+        text.append(span);
+      });
+      body.append(text);
+      const grip = item.author === this.model.peerId ? [svgEl('path', { class: 'grip', d: `M${left + w - 12} ${top + h - 2}L${left + w - 2} ${top + h - 12}M${left + w - 7} ${top + h - 2}L${left + w - 2} ${top + h - 7}`, stroke: 'rgba(0,0,0,0.35)', 'stroke-width': 1.2, fill: 'none' })] : [];
+      g.append(this.printNode(item, h, turn, [body, ...grip], item.color));
     } else if (item.kind === 'link') {
       // A card of the page's address, drawn here from the link itself (not from a picture the sender made).
       const u = new URL(item.url);
@@ -1832,6 +1941,8 @@ export class Whiteboard {
         add(i.x, i.y, (i.size * Math.max(1, i.ratio)) / 2);
       } else if (i.kind === 'link') {
         add(i.x, i.y, i.size / 2);
+      } else if (i.kind === 'note') {
+        add(i.x, i.y, (i.size * Math.max(1, i.ratio)) / 2);
       } else {
         add(i.x, i.y, i.size / 2);
       }
@@ -2199,7 +2310,9 @@ export class Whiteboard {
     listen(window, 'paste', (ev) => this.pasted(ev));
     listen(this.board, 'dblclick', (ev) => {
       const hit = this.itemAt(ev);
-      if (hit?.kind === 'image') {
+      if (hit?.kind === 'note' && hit.author !== this.model.peerId) {
+        this.copyNote(hit);
+      } else if (hit?.kind === 'image') {
         this.downloadFile(hit.id);
       }
     });
@@ -2388,7 +2501,7 @@ export class Whiteboard {
     const hit = this.itemAt(ev);
     const mine = hit && hit.author === this.model.peerId ? hit : null;
     // Your own items move with the pointer tool, and with the tool that makes them.
-    const grab = mine && (this.tool === 'pointer' || (this.tool === 'text' && mine.kind === 'text') || (this.tool === 'sticker' && (mine.kind === 'sticker' || mine.kind === 'image' || mine.kind === 'link')));
+    const grab = mine && (this.tool === 'pointer' || (this.tool === 'text' && mine.kind === 'text') || (this.tool === 'note' && mine.kind === 'note') || (this.tool === 'sticker' && (mine.kind === 'sticker' || mine.kind === 'image' || mine.kind === 'link' || mine.kind === 'note')));
     if (this.tool === 'pointer' && !grab) {
       return;
     }
@@ -2397,7 +2510,7 @@ export class Whiteboard {
     this.board.setPointerCapture?.(ev.pointerId);
     const p = this.eventPoint(ev);
     if (grab) {
-      this.dragging = { item: mine, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0 };
+      this.dragging = { item: mine, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0, corner: mine.kind === 'note' && this.onCorner(mine, p) };
     } else if (this.tool === 'pen') {
       this.inkSeq += 1;
       this.drawing = { id: `${this.model.peerId}.${this.model.counter + 1}`, points: [p.x, p.y], sent: 0, seq: 0 };
@@ -2409,6 +2522,8 @@ export class Whiteboard {
       this.eraseAt(ev);
     } else if (this.tool === 'text') {
       this.pendingText = p;
+    } else if (this.tool === 'note') {
+      this.pendingNote = p;
     } else if (this.tool === 'sticker') {
       this.local(() => this.model.add({ kind: 'sticker', x: round1(p.x), y: round1(p.y), size: 32, name: this.style.sticker }));
     }
@@ -2437,6 +2552,20 @@ export class Whiteboard {
     }
   }
 
+  /** @private The pointer position in a note's own frame (origin at its centre, turned back). */
+  inNote(item, p) {
+    const a = ((item.rot ?? 0) * Math.PI) / 180;
+    const dx = p.x - item.x;
+    const dy = p.y - item.y;
+    return { x: dx * Math.cos(a) + dy * Math.sin(a), y: -dx * Math.sin(a) + dy * Math.cos(a) };
+  }
+
+  /** @private Whether `p` is on the bottom right corner of a note, the handle that resizes it. */
+  onCorner(item, p) {
+    const l = this.inNote(item, p);
+    return l.x > item.size / 2 - 16 && l.y > (item.size * item.ratio) / 2 - 16;
+  }
+
   /**
    * @private Moves the item grabbed; for a sticker or an image, Shift scales it and Ctrl (or Alt)
    * turns it about its centre instead.
@@ -2451,14 +2580,32 @@ export class Whiteboard {
       return;
     }
     d.moved = true;
-    const flat = it.kind === 'sticker' || it.kind === 'image' || it.kind === 'link';
+    if (d.corner) {
+      // The top left corner stays where it is; the pointer pulls the bottom right one.
+      const a = ((it.rot ?? 0) * Math.PI) / 180;
+      const l = this.inNote(it, p);
+      const w = Math.min(600, Math.max(60, l.x + it.size / 2));
+      const h = Math.min(600, Math.max(0.3 * w, l.y + (it.size * it.ratio) / 2));
+      const cx = w / 2 - it.size / 2;
+      const cy = h / 2 - (it.size * it.ratio) / 2;
+      d.fields = {
+        size: round1(w),
+        ratio: Math.round(Math.min(3, Math.max(0.3, h / w)) * 1000) / 1000,
+        x: round1(it.x + cx * Math.cos(a) - cy * Math.sin(a)),
+        y: round1(it.y + cx * Math.sin(a) + cy * Math.cos(a)),
+      };
+      d.preview = true;
+      this.showPreview(it, d.fields);
+      return;
+    }
+    const flat = it.kind === 'sticker' || it.kind === 'image' || it.kind === 'link' || it.kind === 'note';
     const scaling = flat && ev.shiftKey;
     const turning = flat && (ev.ctrlKey || ev.metaKey || ev.altKey);
     if (scaling || turning) {
       const fields = {};
       if (scaling) {
         const grown = (it.size * Math.max(1, Math.hypot(p.x - it.x, p.y - it.y))) / Math.max(1, Math.hypot(d.from.x - it.x, d.from.y - it.y));
-        const [lo, hi] = { image: [8, 2000], link: [40, 1000] }[it.kind] ?? [4, 400];
+        const [lo, hi] = { image: [8, 2000], link: [40, 1000], note: [60, 600] }[it.kind] ?? [4, 400];
         fields.size = round1(Math.min(hi, Math.max(lo, grown)));
       }
       if (turning) {
@@ -2541,6 +2688,16 @@ export class Whiteboard {
         }
       } else if (!d.moved && it.kind === 'text' && this.tool === 'text' && !cancelled) {
         this.editText(it);
+      } else if (!d.moved && it.kind === 'note' && !cancelled) {
+        this.editNote(it);
+      }
+    } else if (this.pendingNote && !cancelled) {
+      const at = this.pendingNote;
+      this.pendingNote = null;
+      const id = this.addNote(at);
+      this.setTool('pointer');
+      if (id) {
+        this.editNote(this.model.get(id));
       }
     } else if (this.pendingText && !cancelled) {
       const p = this.pendingText;
@@ -2585,9 +2742,58 @@ export class Whiteboard {
     ta.focus();
   }
 
+  /** @private A text box over the sticky note being written. Escape drops the change, Ctrl+Enter or a click away keeps it. */
+  editNote(item) {
+    this.finishText();
+    const ta = htmlEl('textarea', { class: 'note sticky', maxlength: String(LIMITS.text), 'aria-label': this.strings.note, placeholder: this.strings.typeHere });
+    ta.value = item.text;
+    this.editing = { item, note: true, x: item.x, y: item.y, node: ta };
+    this.nodes.get(item.id)?.node.setAttribute('opacity', '0');
+    ta.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.finishText(false);
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        this.finishText(true);
+      }
+    });
+    ta.addEventListener('blur', () => this.finishText(true));
+    this.root.append(ta);
+    this.placeTextarea();
+    ta.focus();
+  }
+
   /** @private */
   placeTextarea() {
     const e = this.editing;
+    if (e.note) {
+      const it = this.model.get(e.item.id) ?? e.item;
+      const scale = Math.hypot(this.matrix.a, this.matrix.b) || 1;
+      const c = this.toBox(it.x, it.y);
+      const w = it.size * scale;
+      const h = it.size * it.ratio * scale;
+      Object.assign(e.node.style, {
+        left: `${c.x - w / 2}px`,
+        top: `${c.y - h / 2}px`,
+        width: `${w}px`,
+        height: `${h}px`,
+        fontSize: `${NOTE_TEXT * scale}px`,
+        padding: `${(NOTE_PAD + 6) * scale - NOTE_TEXT * scale * 0.1}px ${NOTE_PAD * scale}px`,
+        boxSizing: 'border-box',
+        lineHeight: '1.25',
+        border: 'none',
+        borderRadius: '0',
+        background: it.color,
+        color: '#1c2024',
+        minWidth: '0',
+        transformOrigin: '50% 50%',
+        transform: `rotate(${it.rot ?? 0}deg)`,
+        boxShadow: '0 0 0 2px var(--wb-accent)',
+      });
+      return;
+    }
     const p = this.toBox(e.x, e.y);
     const scale = Math.hypot(this.matrix.a, this.matrix.b) || 1;
     e.node.style.left = `${p.x - 5}px`;
@@ -2617,6 +2823,13 @@ export class Whiteboard {
     e.node.remove();
     if (e.item) {
       this.nodes.get(e.item.id)?.node.removeAttribute('opacity');
+    }
+    if (e.note) {
+      const kept = e.node.value.replace(/\s+$/, '').slice(0, LIMITS.text);
+      if (commit && kept !== e.item.text && this.model.get(e.item.id)) {
+        this.local(() => this.model.change(e.item.id, { text: kept }));
+      }
+      return;
     }
     const text = e.node.value.replace(/\s+$/, '').slice(0, LIMITS.text);
     if (!commit) {

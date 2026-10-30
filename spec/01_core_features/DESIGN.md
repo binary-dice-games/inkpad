@@ -188,6 +188,13 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   double click saves it. Your own prints are moved, not copied. The prints are drawn with a
   border, a drop shadow (a filter on an unrotated wrapper so the light stays put) and a pin.
   Past the size limit a picture is still shared, as a preview only; any other file is refused.
+- **Sticky notes.** A `note` item is `{x, y, size (width), ratio, text, color (its paper), rot?}`; text up
+  to `LIMITS.text`, may be empty. Made with tool 6 (`addNote`); the paper is a pale mix of the
+  author's current colour. Only its author edits it (click, in a textarea over it; Ctrl+Enter or
+  blur keeps, Escape drops), moves it, resizes it (the bottom right corner keeps the top left one
+  fixed) or deletes it; the text is wrapped with canvas metrics so the box and the drawing agree.
+  Others double click to copy the text (`copyText` option). The pin is a `g.pin[data-id]` so later
+  features can attach to it. Tool numbers are now: 6 note, 7 colour.
 - **Tilt and links.** What is pinned (`image` and `link` items) gets a random `rot` of at most 7
   degrees when added. A `link` item is `{x, y, size, url, rot?}` with an http(s) address only
   (`cleanUrl`); it carries no picture: every client draws the card (site name, path, tooltip with

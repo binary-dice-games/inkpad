@@ -293,6 +293,32 @@ describe('static presenter page', () => {
     await opened.close();
   });
 
+  it('pins a sticky note that is written by its owner and seen by a viewer', async () => {
+    const presenter = await presenterPage();
+    const link = await site.startBoard(presenter);
+    const viewer = await joinViewer(link);
+    await viewer.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+    await expect.poll(() => viewer.locator('#page').isVisible(), { timeout: 15000 }).toBe(true);
+
+    // The note tool (6) makes a note where the page is clicked, with a text box to type in.
+    await presenter.keyboard.press('6');
+    const box = (await presenter.locator('#stage').boundingBox())!;
+    await presenter.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const editor = presenter.locator('collab-whiteboard textarea.sticky');
+    await editor.waitFor({ state: 'visible' });
+    await editor.fill('Remember the milk and the long second line of this note');
+    await presenter.locator('#stage').click({ position: { x: 20, y: box.height - 20 } });
+    await expect.poll(() => editor.count()).toBe(0);
+
+    // The viewer sees the paper, the text and a pin, but no way to edit it.
+    const note = viewer.locator('collab-whiteboard .note-item');
+    await expect.poll(() => note.count(), { timeout: 30000 }).toBe(1);
+    expect(await note.locator('tspan').first().textContent()).toContain('Remember');
+    expect(await note.locator('.pin circle').count()).toBeGreaterThan(0);
+    await note.locator('rect').first().click();
+    expect(await viewer.locator('collab-whiteboard textarea').count()).toBe(0);
+  });
+
   it('hides the pointer when asked, and remembers the settings', async () => {
     const presenter = await presenterPage();
     await configure(presenter, 'never');

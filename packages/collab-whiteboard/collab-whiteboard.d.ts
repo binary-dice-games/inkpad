@@ -62,6 +62,18 @@ export interface LinkItem extends ItemBase {
   rot?: number;
 }
 
+/** A sticky note pinned on the board: `size` is its width, `ratio` height / width, `color` its paper. */
+export interface NoteItem extends ItemBase {
+  kind: 'note';
+  x: number;
+  y: number;
+  size: number;
+  ratio: number;
+  text: string;
+  color: string;
+  rot?: number;
+}
+
 /** A file shared on the board. */
 export interface FileInfo {
   name: string;
@@ -73,7 +85,7 @@ export interface Tombstone extends ItemBase {
   deleted: true;
 }
 
-export type Item = InkItem | TextItem | StickerItem | ImageItem | LinkItem;
+export type Item = InkItem | TextItem | StickerItem | ImageItem | LinkItem | NoteItem;
 export type StoredItem = Item | Tombstone;
 
 export type Operation = { t: 'put'; item: StoredItem } | { t: 'clear'; stamp: Stamp };
@@ -239,7 +251,7 @@ export interface WhiteboardSession {
   on(event: 'peers', cb: (peers: unknown[]) => void): () => void;
 }
 
-export type Tool = 'pointer' | 'pen' | 'text' | 'sticker' | 'eraser';
+export type Tool = 'pointer' | 'pen' | 'text' | 'sticker' | 'eraser' | 'note';
 
 export interface WhiteboardOptions {
   session: WhiteboardSession;
@@ -265,6 +277,8 @@ export interface WhiteboardOptions {
   random?: () => number;
   /** Opens a link card's page (default: a new tab, `noopener`). */
   openUrl?: (url: string) => void;
+  /** Puts a note's text on the clipboard, true when it worked (default: the browser's clipboard). */
+  copyText?: (text: string) => Promise<boolean>;
 }
 
 export class Whiteboard {
@@ -285,6 +299,11 @@ export class Whiteboard {
    * the item, or null if refused; throws a WhiteboardError for an empty or too large file.
    */
   addFile(file: File, at?: { x: number; y: number }): Promise<string | null>;
+  /**
+   * Pins a sticky note (paper: a pale version of the current colour) and returns its id; null when
+   * read only. Only its author edits, moves, resizes or deletes it; others double click to copy it.
+   */
+  addNote(at?: { x: number; y: number }, text?: string): string | null;
   /**
    * Pins a web link (a card that opens the page when clicked); null when read only.
    * @throws {WhiteboardError} when `url` is not an http or https address
