@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The Delete (or Backspace) key removes the selected element, if it is not locked against you.
+- Anybody can now change, move and delete any element of the board (it used to be only its author). A **lock** button in the bar over a selected element, for its owner, locks it: first for the others (only the owner can change it), then for everybody (nobody, until the owner unlocks it). A locked element shows a small padlock.
+- Sticky notes have the three text sizes of the text tool in their bar, and a button to copy their text; a new note is selected as it is written.
 - **Open...** button next to **Save...** to load a board file (it was inside the Save dialog).
 - Every tool with options (line width, text size, stickers, note shapes, thread heads, colour) opens a panel with all of them when clicked in the toolbar; the number keys still cycle through them.
 - Pins put on a note, picture, link or sticker stay attached to it (and their threads with them) when it is moved, turned or scaled; they go when it goes.
@@ -51,12 +54,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Pictures and pinned files move with a plain drag, whoever pinned them, and are copied out of the board with Shift+drag (as pins use drag to move and Shift+drag for a thread). They are resized from a corner grip instead of with Shift.
 - The colour shortcut is now key 9 (6 is the sticky note, 7 the pin, 8 the thread).
 - Pinned pictures and files are slightly tilted at random, as if put up by hand.
 - Wall and cork backgrounds look like painted plaster and cork, with a lit, rough surface and a wooden frame on the cork.
 
 ### Fixed
 
+- The bar over a pin attached to another element is drawn over the pin, where it is, not where it was first put.
 - The thread-heads icons in the toolbar and its options panel are drawn as filled heads along the curve.
 - Dragging a pin that is attached to a note that has been moved no longer starts its thread from the note's old place.
 - Blurry video: the shared tab is now sent at the screen's own resolution (HiDPI included, up

@@ -385,22 +385,37 @@ describe('selecting a note or a thread', () => {
     }
   });
 
-  it('is only for your own things: others see no bar', async () => {
+  it('is offered to others too, with only what they may do once it is locked', async () => {
     const t = await mount();
     try {
       const ana = await t.room.join('Ana');
       await until(() => ana.host(), 'Ana reached the host');
       const anaBoard = createWhiteboard(box(800, 450), { session: ana, adapter: identity });
-      t.wb.addNote({ x: 200, y: 200 }, 'mine');
+      const id = t.wb.addNote({ x: 200, y: 200 }, 'mine')!;
       await until(() => anaBoard.items().length === 1, 'the note arrived');
       const root = anaBoard.element.shadowRoot!;
       Object.defineProperty(root, 'elementsFromPoint', {
         value: () => [root.querySelector('.item')],
       });
+      const labels = () =>
+        [...root.querySelectorAll('.selbar button')].map((b) => b.getAttribute('aria-label') ?? '');
       pointer(root.querySelector('svg')!, 'pointerdown', 200, 200);
       pointer(root.querySelector('svg')!, 'pointerup', 200, 200);
-      expect(root.querySelector<HTMLElement>('.selbar')!.hidden).toBe(true);
-      expect(root.querySelector('.selected')).toBeNull();
+      expect(root.querySelector<HTMLElement>('.selbar')!.hidden).toBe(false);
+      expect(labels().some((l) => l.startsWith('Shape'))).toBe(true);
+      expect(labels().some((l) => l.startsWith('Locked') || l.startsWith('Unlocked'))).toBe(false); // the owner's
+      root.querySelector('textarea')?.dispatchEvent(new Event('blur'));
+
+      const owner = t.wb as unknown as {
+        local(f: () => unknown): unknown;
+        model: { change(i: string, f: object): unknown };
+      };
+      owner.local(() => owner.model.change(id, { lock: 'all' }));
+      await until(
+        () => (anaBoard.items()[0] as { lock?: string }).lock === 'all',
+        'the lock arrived',
+      );
+      expect(labels()).toEqual(['Copy the text']);
       anaBoard.destroy();
     } finally {
       t.wb.destroy();
@@ -688,6 +703,60 @@ describe('pins attached to what they are put on', () => {
       expect(t.where(pin).y).toBeCloseTo(300, 0);
       expect(drawn()).toMatch(/^M460 300Q/);
       expect(thread).toBeTruthy();
+    } finally {
+      done(t);
+    }
+  });
+
+  it('has its bar over the pin where it is drawn, not where it was put', async () => {
+    const t = await mount();
+    try {
+      const note = t.wb.addNote({ x: 200, y: 200 })!;
+      const pin = t.wb.addPin({ x: 230, y: 180 })!;
+      Object.defineProperty(t.wb.element, 'clientWidth', { value: 800 }); // jsdom has no layout
+      change(t, note, { x: 400, y: 300 }); // the pin is now drawn at (430, 280)
+      t.pick.find = () => t.root.querySelector('.pin-item');
+      press(t, 'pointerdown', 430, 280);
+      press(t, 'pointerup', 430, 280);
+      expect(t.root.querySelector('.pin-item.selected')).not.toBeNull();
+      const bar = t.root.querySelector<HTMLElement>('.selbar')!;
+      expect(bar.hidden).toBe(false);
+      expect(parseFloat(bar.style.left)).toBeCloseTo(430, 0);
+      expect(parseFloat(bar.style.top)).toBeCloseTo(280 - 22, 0);
+      // And it follows the note while the bar is open.
+      change(t, note, { x: 500 });
+      expect(parseFloat(bar.style.left)).toBeCloseTo(530, 0);
+      expect(pin).toBeTruthy();
+    } finally {
+      done(t);
+    }
+  });
+
+  it('is taken down by the Delete key when it is selected, unless it is locked against you', async () => {
+    const t = await mount();
+    try {
+      const a = t.wb.addPin({ x: 200, y: 200 })!;
+      const b = t.wb.addPin({ x: 400, y: 200 })!;
+      const thread = t.wb.addArrow(a, b)!;
+      const key = (k: string) =>
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+      key('Delete'); // nothing selected: nothing happens
+      expect(t.wb.items()).toHaveLength(3);
+      t.pick.find = () => t.root.querySelector('.arrow-item');
+      press(t, 'pointerdown', 300, 230);
+      press(t, 'pointerup', 300, 230);
+      expect(t.root.querySelector('.arrow-item.selected')).not.toBeNull();
+      key('Delete');
+      expect(t.wb.items().map((i) => i.id)).toEqual([a, b]);
+      expect(t.wb.items().some((i) => i.id === thread)).toBe(false);
+      // A pin, with its threads going with it.
+      const second = t.wb.addArrow(a, b)!;
+      t.pick.find = () => t.root.querySelectorAll('.pin-item')[0] ?? null;
+      press(t, 'pointerdown', 200, 200);
+      press(t, 'pointerup', 200, 200);
+      key('Backspace');
+      await until(() => !t.wb.items().some((i) => i.id === second), 'the thread went with its pin');
+      expect(t.wb.items().map((i) => i.id)).toEqual([b]);
     } finally {
       done(t);
     }

@@ -6,7 +6,21 @@ interface ItemBase {
   id: string;
   author: string;
   stamp: Stamp;
+  /**
+   * Absent: anybody may change, move or delete it. `owner`: only its author. `all`: nobody, though
+   * its author may unlock it. Only the author changes the lock.
+   */
+  lock?: Lock;
 }
+
+export type Lock = 'owner' | 'all';
+export const LOCKS: readonly Lock[];
+
+/**
+ * Whether `next` (a newer version of `old`, made by the peer in its stamp) may replace it, given the
+ * lock of `old`.
+ */
+export function mayChange(old: StoredItem | undefined, next: StoredItem): boolean;
 
 export interface InkItem extends ItemBase {
   kind: 'ink';
@@ -73,6 +87,8 @@ export interface NoteItem extends ItemBase {
   color: string;
   /** Absent: square. */
   shape?: NoteShape;
+  /** Font size in board units; absent: 16. The sizes offered are 12, 16 and 24. */
+  fs?: number;
   rot?: number;
 }
 

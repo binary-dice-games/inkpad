@@ -183,7 +183,7 @@ describe('sticky notes on the board', () => {
     }
   });
 
-  it('is copied by others with a double click, and they cannot change it', async () => {
+  it('is changed by others unless locked, and then they can only copy it', async () => {
     const t = await mount();
     try {
       const copied: string[] = [];
@@ -197,19 +197,40 @@ describe('sticky notes on the board', () => {
           return true;
         },
       });
-      t.wb.addNote({ x: 100, y: 100 }, 'Shared text\nsecond line');
+      const id = t.wb.addNote({ x: 100, y: 100 }, 'Shared text\nsecond line')!;
       await until(() => anaBoard.items().length === 1, 'the note arrived');
       const root = anaBoard.element.shadowRoot!;
       Object.defineProperty(root, 'elementsFromPoint', {
         value: () => [root.querySelector('.item')].filter(Boolean),
       });
       const board = root.querySelector('svg')!;
-      // Others see no resize grip, a click does not edit, a drag does not move it.
-      expect(root.querySelector('.grip')).toBeNull();
+      // Open to everybody by default: Ana can move it and edit it.
+      expect(root.querySelector('.grip')).not.toBeNull();
       pointer(board, 'pointerdown', 100, 100);
       pointer(board, 'pointermove', 150, 150);
       pointer(board, 'pointerup', 150, 150);
-      expect(anaBoard.items()[0]).toMatchObject({ x: 100, y: 100 });
+      expect(anaBoard.items()[0]).toMatchObject({ x: 150, y: 150 });
+      pointer(board, 'pointerdown', 150, 150);
+      pointer(board, 'pointerup', 150, 150);
+      expect(root.querySelector('textarea.sticky')).not.toBeNull();
+      root.querySelector('textarea')!.dispatchEvent(new Event('blur'));
+
+      // The owner locks it: Ana cannot move or edit it, and sees no grip; she can copy it.
+      const owner = t.wb as unknown as {
+        local(f: () => unknown): unknown;
+        model: { change(i: string, f: object): unknown };
+      };
+      await until(() => (t.wb.items()[0] as { x: number }).x === 150, 'the move reached the owner');
+      owner.local(() => owner.model.change(id, { lock: 'owner' }));
+      await until(
+        () => (anaBoard.items()[0] as { lock?: string }).lock === 'owner',
+        'the lock arrived',
+      );
+      expect(root.querySelector('.grip')).toBeNull();
+      pointer(board, 'pointerdown', 150, 150);
+      pointer(board, 'pointermove', 200, 200);
+      pointer(board, 'pointerup', 200, 200);
+      expect(anaBoard.items()[0]).toMatchObject({ x: 150, y: 150 });
       expect(root.querySelector('textarea')).toBeNull();
       pointer(board, 'dblclick', 100, 100);
       await until(() => copied.length === 1, 'the text was copied');

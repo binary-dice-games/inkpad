@@ -167,10 +167,10 @@ describe('files pinned on the board', () => {
         expect(wb.fileOf(id!)?.blob.size).toBe(11);
       }
 
-      // Others get a box to drag it from; the author moves the item instead.
+      // Everybody gets a box to drag a copy from (it takes the pointer only while Shift is held).
       expect(proxies(p.benBoard)).toHaveLength(1);
       expect(proxies(p.hostBoard)).toHaveLength(1);
-      expect(proxies(p.anaBoard)).toHaveLength(0);
+      expect(proxies(p.anaBoard)).toHaveLength(1);
 
       const add = vi.fn();
       const setData = vi.fn();
@@ -374,6 +374,100 @@ describe('files pinned on the board', () => {
       wb.destroy();
     } finally {
       room.close();
+    }
+  });
+});
+
+describe('moving and copying out pictures and files', () => {
+  async function mount() {
+    const room = new TestRoom();
+    const host = await room.start();
+    const wb = createWhiteboard(box(800, 450), {
+      session: host,
+      adapter: {
+        transform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+        onChange: () => () => {},
+      },
+    });
+    const root = wb.element.shadowRoot!;
+    wb.load({
+      v: 1,
+      clock: 1,
+      clear: [0, ''],
+      items: [
+        {
+          id: 'other.1',
+          author: 'other',
+          stamp: [1, 'other'],
+          kind: 'image',
+          x: 200,
+          y: 200,
+          size: 100,
+          ratio: 0.5,
+          data: PNG,
+        },
+      ],
+    });
+    Object.defineProperty(root, 'elementsFromPoint', {
+      value: () => [root.querySelector('.item')].filter(Boolean),
+    });
+    const board = root.querySelector('svg')!;
+    const fire = (type: string, x: number, y: number, init: MouseEventInit = {}) =>
+      board.dispatchEvent(
+        new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true, ...init }),
+      );
+    return { room, wb, root, fire };
+  }
+
+  it('moves with a plain drag, whoever pinned it, and has a corner to resize it', async () => {
+    const t = await mount();
+    try {
+      expect(t.root.querySelector('.image-item .grip')).not.toBeNull();
+      t.fire('pointerdown', 200, 200);
+      t.fire('pointermove', 250, 260);
+      t.fire('pointerup', 250, 260);
+      expect(t.wb.items()[0]).toMatchObject({ x: 250, y: 260, size: 100 });
+      // Shift does not scale it (that copies it out): it only moves.
+      t.fire('pointerdown', 250, 260, { shiftKey: true });
+      t.fire('pointermove', 300, 260, { shiftKey: true });
+      t.fire('pointerup', 300, 260, { shiftKey: true });
+      expect(t.wb.items()[0]).toMatchObject({ size: 100 });
+      // The bottom right corner (at 350, 285) resizes it, keeping its proportions and top left.
+      t.fire('pointerdown', 345, 280);
+      t.fire('pointermove', 450, 300);
+      t.fire('pointerup', 450, 300);
+      const image = t.wb.items()[0] as { x: number; y: number; size: number; ratio: number };
+      expect(image.ratio).toBe(0.5);
+      expect(image.size).toBeCloseTo(200, 0); // from the left edge at 250 to the pointer at 450
+      expect(image.x - image.size / 2).toBeCloseTo(250, 0);
+      expect(image.y - (image.size * image.ratio) / 2).toBeCloseTo(235, 0);
+    } finally {
+      t.wb.destroy();
+      t.room.close();
+    }
+  });
+
+  it('is copied out only while Shift is held: the box over it takes the pointer then', async () => {
+    const t = await mount();
+    try {
+      const layer = t.root.querySelector('.drag')!;
+      expect(layer.classList.contains('shift')).toBe(false);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+      expect(layer.classList.contains('shift')).toBe(true);
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', bubbles: true }));
+      expect(layer.classList.contains('shift')).toBe(false);
+      // The pointer knows too (Shift pressed before the page had the focus).
+      t.root.host.parentElement!.dispatchEvent(
+        new MouseEvent('pointermove', { shiftKey: true, bubbles: true }),
+      );
+      expect(layer.classList.contains('shift')).toBe(true);
+      t.root.host.parentElement!.dispatchEvent(new MouseEvent('pointermove', { bubbles: true }));
+      expect(layer.classList.contains('shift')).toBe(false);
+      expect(t.root.querySelector('.proxy')).not.toBeNull();
+      expect(t.root.querySelector('.image-item title')?.textContent).toContain('Shift+drag');
+    } finally {
+      t.wb.destroy();
+      t.room.close();
     }
   });
 });

@@ -316,7 +316,8 @@ describe('static presenter page', () => {
     expect(await note.locator('tspan').first().textContent()).toContain('Remember');
     expect(await note.locator('.pin circle').count()).toBeGreaterThan(0);
     await note.locator('tspan').first().click();
-    expect(await viewer.locator('collab-whiteboard textarea').count()).toBe(0);
+    // Anybody can edit it (until its owner locks it): the click opens its text box for the viewer too.
+    expect(await viewer.locator('collab-whiteboard textarea').count()).toBe(1);
   });
 
   it('ties threads between pins and notes of different shapes with the mouse', async () => {
@@ -551,6 +552,135 @@ describe('static presenter page', () => {
     presenter.once('dialog', (d) => void d.accept());
     await presenter.locator('#clear').click();
     await expect.poll(() => count(viewer), { timeout: 30000 }).toBe(0);
+  });
+
+  it('lets anybody change an element until its owner locks it', async () => {
+    const presenter = await presenterPage();
+    const link = await site.startBoard(presenter);
+    const viewer = await joinViewer(link);
+    await viewer.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+    await expect.poll(() => viewer.locator('#page').isVisible(), { timeout: 15000 }).toBe(true);
+    const box = (await presenter.locator('#stage').boundingBox())!;
+    const noteAt = async (page: typeof viewer) =>
+      page.evaluate(() => {
+        const g = document
+          .querySelector('collab-whiteboard')!
+          .shadowRoot!.querySelector('.note-item rect.paper')!;
+        const r = g.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      });
+
+    // The presenter's note, with a bigger text from its bar.
+    await presenter.keyboard.press('6');
+    await presenter.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.5);
+    await presenter.keyboard.press('Control+Enter');
+    await presenter
+      .locator('collab-whiteboard .selbar button[aria-label="Text note: large"]')
+      .click();
+    await expect
+      .poll(() => viewer.locator('collab-whiteboard .note-item text').getAttribute('font-size'), {
+        timeout: 30000,
+      })
+      .toBe('24');
+
+    // Unlocked: the viewer drags it.
+    const before = await noteAt(viewer);
+    await viewer.mouse.move(before.x, before.y + 20);
+    await viewer.mouse.down();
+    await viewer.mouse.move(before.x + 80, before.y + 60, { steps: 5 });
+    await viewer.mouse.up();
+    await expect
+      .poll(async () => (await noteAt(presenter)).x - (await noteAt(viewer)).x, { timeout: 15000 })
+      .toBeCloseTo(0, -1);
+    const moved = await noteAt(viewer);
+    expect(moved.x).toBeGreaterThan(before.x + 50);
+
+    // The presenter locks it for the others; the viewer's drag does nothing, and says why.
+    await presenter.locator('collab-whiteboard .selbar button[aria-label^="Unlocked"]').click();
+    await expect
+      .poll(() => viewer.locator('collab-whiteboard .note-item .lock').count(), { timeout: 30000 })
+      .toBe(1);
+    await viewer.mouse.move(moved.x, moved.y + 20);
+    await viewer.mouse.down();
+    await viewer.mouse.move(moved.x + 80, moved.y + 60, { steps: 5 });
+    await viewer.mouse.up();
+    expect(Math.abs((await noteAt(viewer)).x - moved.x)).toBeLessThan(3);
+    // The presenter, its owner, still can.
+    await presenter.keyboard.press('1');
+    const p = await noteAt(presenter);
+    await presenter.mouse.move(p.x, p.y + 20);
+    await presenter.mouse.down();
+    await presenter.mouse.move(p.x - 60, p.y + 20, { steps: 5 });
+    await presenter.mouse.up();
+    await expect
+      .poll(async () => (await noteAt(viewer)).x, { timeout: 15000 })
+      .toBeLessThan(moved.x - 40);
+  });
+
+  it('moves a pinned file with a plain drag by anybody, and copies it out only with Shift', async () => {
+    const presenter = await presenterPage();
+    const link = await site.startBoard(presenter);
+    const viewer = await joinViewer(link);
+    await viewer.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+    await expect.poll(() => viewer.locator('#page').isVisible(), { timeout: 15000 }).toBe(true);
+    await presenter.evaluate(() => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(['to share'], 'share.txt', { type: 'text/plain' }));
+      document.getElementById('stage')!.dispatchEvent(
+        new DragEvent('drop', {
+          dataTransfer: dt,
+          bubbles: true,
+          cancelable: true,
+          clientX: 400,
+          clientY: 300,
+        }),
+      );
+    });
+    const where = (page: typeof viewer) =>
+      page.evaluate(() => {
+        const r = document
+          .querySelector('collab-whiteboard')!
+          .shadowRoot!.querySelector('.image-item image')!
+          .getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      });
+    await expect
+      .poll(() => viewer.locator('collab-whiteboard .image-item').count(), { timeout: 30000 })
+      .toBe(1);
+    await expect.poll(() => viewer.locator('collab-whiteboard .proxy').count()).toBe(1);
+
+    // The viewer's plain drag moves it, for the presenter too.
+    const before = await where(viewer);
+    await viewer.mouse.move(before.x, before.y);
+    await viewer.mouse.down();
+    await viewer.mouse.move(before.x + 70, before.y + 40, { steps: 5 });
+    await viewer.mouse.up();
+    await expect
+      .poll(async () => (await where(presenter)).x - (await where(viewer)).x, { timeout: 15000 })
+      .toBeCloseTo(0, -1);
+    expect((await where(viewer)).x).toBeGreaterThan(before.x + 40);
+
+    // Shift hands the pointer to the box that the browser drags out: it is the one under the mouse.
+    const now = await where(viewer);
+    await viewer.keyboard.down('Shift');
+    await viewer.mouse.move(now.x + 2, now.y + 2);
+    const top = await viewer.evaluate(
+      ([x, y]) => {
+        const root = document.querySelector('collab-whiteboard')!.shadowRoot!;
+        return root.elementsFromPoint(x!, y!)[0]?.className;
+      },
+      [now.x + 2, now.y + 2],
+    );
+    await viewer.keyboard.up('Shift');
+    expect(top).toBe('proxy');
+    await viewer.mouse.move(now.x + 2, now.y + 2);
+    const plain = await viewer.evaluate(
+      ([x, y]) =>
+        document.querySelector('collab-whiteboard')!.shadowRoot!.elementsFromPoint(x!, y!)[0]
+          ?.className,
+      [now.x + 2, now.y + 2],
+    );
+    expect(plain).not.toBe('proxy');
   });
 
   it('hides the pointer when asked, and remembers the settings', async () => {

@@ -222,6 +222,16 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   a click without a drag selects the pin (or note). Not with the pen and eraser, nor without Shift: a plain drag moves the pin, like any item, and a plain click selects it (the pin wins over what lies on it).
 - **Clear drawings** removes `ink`, `text` and `sticker` items of everyone (`clearDrawings`, host
   command `clearDrawings`), not an undo step; `clear` still removes everything.
+- **Locks.** Any item may carry `lock`: absent (anybody may change, move or delete it), `owner`
+  (only its author), `all` (nobody; its author may only change the lock, to unlock). The rule is the
+  model's (`mayChange`, using the editor named in the new stamp), so it holds on every board: a
+  forged operation is dropped on arrival, a local change throws a `WhiteboardError`. Only the author
+  changes the lock. Unlocked is the default so that collaboration is easy; the bar over a selected
+  element (note, pin, thread, picture, link) offers the lock to its owner. The exceptions are
+  administrative: **Clear all** and a new session wipe locked items too. Another person's picture or
+  file is moved by a plain drag like any element; Shift+drag copies it out: the box over each
+  picture (pointer-events off) takes the pointer only while Shift is held (`.drag.shift`). A picture is resized
+  from a corner grip, as notes are, because Shift is taken. A note has `fs` (font size, 12, 16 default, 24); the bar offers the three sizes of the text tool.
 - **Saving.** `toSvg(box, {background, backdrop})` draws the frame (`exportArea`: the adapter's
   aspect, else the bounds of the items) with the same node builders as the screen, minus what only
   helps to use the board (hit areas, resize grips, selection); the sheet behind a board without

@@ -49,12 +49,39 @@ const TOOL_NAMES = new Set(['pointer', 'pen', 'text', 'sticker', 'eraser', 'note
 /** The shapes of a sticky note, and the heads of a thread (none, at its source, at its destination, both). */
 export const NOTE_SHAPES = Object.freeze(['square', 'rounded', 'oval', 'diamond', 'hexagon']);
 export const ARROW_HEADS = Object.freeze(['none', 'start', 'end', 'both']);
+/** How an element is locked: absent (anybody may change it), `owner` (only its author), `all` (nobody, but its author may unlock it). */
+export const LOCKS = Object.freeze(['owner', 'all']);
 const MIME = /^[a-z0-9][a-z0-9.+-]{0,60}\/[a-z0-9][a-z0-9.+-]{0,80}$/;
 const turned = (r) => (finite(r, -360, 360) && r !== 0 ? { rot: r } : {});
 const finite = (n, lo = -1e6, hi = 1e6) => typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
 
 function validStamp(s) {
   return Array.isArray(s) && s.length === 2 && Number.isInteger(s[0]) && s[0] >= 0 && typeof s[1] === 'string' && ID.test(s[1]);
+}
+
+/** The two items apart from their stamps and locks (what a change of nothing but the lock leaves alone). */
+function sameBody(a, b) {
+  const strip = ({ stamp, lock, ...rest }) => JSON.stringify(rest);
+  return strip(a) === strip(b);
+}
+
+/**
+ * Whether `next` (a newer version of `old`, made by the peer in its stamp) may replace it: anything
+ * goes unless `old` is locked; `owner` lets only its author change it; `all` lets nobody change it
+ * but its author may lock or unlock it. Only the author changes the lock.
+ */
+export function mayChange(old, next) {
+  if (!old || old.deleted) {
+    return true;
+  }
+  const owner = next.stamp[1] === old.author;
+  if (next.lock !== old.lock && !owner) {
+    return false;
+  }
+  if (!old.lock) {
+    return true;
+  }
+  return owner && (old.lock === 'owner' || sameBody(old, next));
 }
 
 /** Orders stamps: the clock, then the peer id. */
@@ -81,6 +108,9 @@ export function cleanItem(item) {
     return null;
   }
   base.kind = item.kind;
+  if (LOCKS.includes(item.lock)) {
+    base.lock = item.lock;
+  }
   if (item.kind === 'ink') {
     const p = item.points;
     if (!Array.isArray(p) || p.length < 2 || p.length % 2 !== 0 || p.length > LIMITS.points * 2 || !p.every((n) => finite(n))) {
@@ -103,7 +133,8 @@ export function cleanItem(item) {
       return null;
     }
     const shape = NOTE_SHAPES.includes(item.shape) && item.shape !== 'square' ? { shape: item.shape } : {};
-    return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, text: item.text, color: item.color, ...shape, ...turned(item.rot) };
+    const font = finite(item.fs, 8, 64) && item.fs !== NOTE_TEXT ? { fs: item.fs } : {};
+    return { ...base, x: item.x, y: item.y, size: item.size, ratio: item.ratio, text: item.text, color: item.color, ...shape, ...font, ...turned(item.rot) };
   }
   if (item.kind === 'pin') {
     const on = ID.test(item.on ?? '') && finite(item.u, -3, 3) && finite(item.v, -3, 3) ? { on: item.on, u: item.u, v: item.v } : {};
@@ -554,6 +585,9 @@ export class WhiteboardModel {
     if (old && compareStamps(item.stamp, old.stamp) <= 0) {
       return [];
     }
+    if (!mayChange(old, item)) {
+      return [];
+    }
     this.items.set(item.id, item);
     return [item.id];
   }
@@ -597,6 +631,9 @@ export class WhiteboardModel {
     const item = cleanItem({ ...next, stamp: this.stamp() });
     if (!item) {
       throw new WhiteboardError('That item is not valid (too many points, too long a text, or a bad colour).');
+    }
+    if (!mayChange(this.items.get(item.id), item)) {
+      throw new WhiteboardError('That element is locked.');
     }
     const op = { t: 'put', item };
     this.apply(op);
@@ -764,6 +801,17 @@ function pinMetrics(item, h) {
 
 const PIN_RADIUS = 9;
 
+/** A small padlock at (x, y) for a locked element: grey when only its owner may change it, red when nobody may. */
+function lockBadge(x, y, level) {
+  const color = level === 'all' ? '#c42b31' : '#4b5563';
+  const g = svgEl('g', { class: 'lock' });
+  g.append(
+    svgEl('path', { d: `M${x - 3} ${y}v-2.5a3 3 0 0 1 6 0V${y}`, fill: 'none', stroke: color, 'stroke-width': 1.4 }),
+    svgEl('rect', { x: x - 4.5, y, width: 9, height: 7, rx: 1.5, fill: color, stroke: '#ffffff', 'stroke-width': 0.6 }),
+  );
+  return g;
+}
+
 /**
  * The frame (centre, size, turn) of an item a pin can be attached to, or null: notes, pictures,
  * links and stickers.
@@ -842,28 +890,32 @@ export function threadCurve(a, b, seed = 0.5) {
 const BOARD_FORMAT = 'inkpad-board';
 
 const NOTE_FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
-const NOTE_TEXT = 16; // font size, in board units
+const NOTE_TEXT = 16; // the usual font size of a note, in board units
+const NOTE_SIZES = [12, 16, 24]; // small, medium, large
+const noteFont = (item) => item.fs ?? NOTE_TEXT;
 const NOTE_PAD = 10;
-const NOTE_HANG = 1.6; // a hanging baseline sits this far below the top of a text box line
+/** What can be selected, to be changed or locked with the bar over it. */
+const SELECTABLE = new Set(['note', 'pin', 'arrow', 'image', 'link']);
+const NOTE_HANG = 1.6; // a hanging baseline sits this far below the top of a text box line (at the usual size)
 
 /** The width a note's text may take, in units. */
 const noteTextWidth = (item) => item.size * SHAPE_INSET[item.shape ?? 'square'] - 2 * NOTE_PAD;
 /** The top of a note's text (from the top of the note): centred in the shape, never above the top padding. */
 const noteTextTop = (item, lines) => {
   const h = item.size * item.ratio;
-  return Math.max(NOTE_PAD, (h - lines * NOTE_TEXT * 1.25) / 2);
+  return Math.max(NOTE_PAD, (h - lines * noteFont(item) * 1.25) / 2);
 };
 let noteContext;
 
 /** The lines of a note's text for a paper `width` units wide (words kept whole, long words broken). */
-function wrapNote(text, width) {
+function wrapNote(text, width, font = NOTE_TEXT) {
   if (noteContext === undefined) {
     noteContext = (typeof document !== 'undefined' && document.createElement('canvas').getContext?.('2d')) || null;
   }
   if (noteContext) {
-    noteContext.font = `${NOTE_TEXT}px ${NOTE_FONT}`;
+    noteContext.font = `${font}px ${NOTE_FONT}`;
   }
-  const measure = (str) => (noteContext ? noteContext.measureText(str).width : str.length * NOTE_TEXT * 0.55);
+  const measure = (str) => (noteContext ? noteContext.measureText(str).width : str.length * font * 0.55);
   const lines = [];
   for (const paragraph of text.split('\n')) {
     let line = '';
@@ -924,6 +976,13 @@ const STRINGS = {
   shapeNames: { square: 'Square', rounded: 'Rounded', oval: 'Oval', diamond: 'Diamond', hexagon: 'Hexagon' },
   headNames: { none: 'No heads', start: 'Head at the source', end: 'Head at the destination', both: 'Heads at both ends' },
   shapeLabel: 'Shape',
+  lockNames: {
+    open: 'Unlocked: anybody can change it (click to lock it for the others)',
+    owner: 'Locked: only its owner can change it (click to lock it for everybody)',
+    all: 'Locked for everybody (click to unlock it)',
+  },
+  locked: 'That element is locked',
+  copyText: 'Copy the text',
   noteCopied: 'Note copied to the clipboard',
   noteNotCopied: 'The browser did not allow copying',
   undo: 'Undo (Ctrl+Z)',
@@ -941,7 +1000,7 @@ const STRINGS = {
   yourTurn: 'Your turn to speak',
   removeFromQueue: 'Remove from the queue',
   fileArriving: 'The file is still arriving\u2026',
-  dragFile: 'drag it to copy, double click to save',
+  dragFile: 'Shift+drag it to copy it out, double click to save',
 };
 
 const ICONS = {
@@ -1006,8 +1065,8 @@ svg.board:not(.pen):not(.eraser) .item.own { cursor: move; }
 .pop button:hover, .pop button[aria-pressed="true"] { background: var(--wb-hover); }
 .pop .swatch { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(128,128,128,.55); }
 .drag { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.drag .proxy { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: grab; }
-.drag.off .proxy { pointer-events: none; }
+.drag .proxy { position: absolute; left: 0; top: 0; pointer-events: none; }
+.drag.shift:not(.off) .proxy { pointer-events: auto; cursor: copy; }
 .toolbar button[data-key]::after { content: attr(data-key); position: absolute; right: 3px; bottom: 1px; font: 9px/1 system-ui, sans-serif; opacity: .6; pointer-events: none; }
 .hint { position: absolute; padding: 3px 8px; border-radius: 6px; background: var(--wb-fg); color: var(--wb-bg); font-size: 12px; white-space: nowrap; pointer-events: none; }
 .hint[hidden] { display: none; }
@@ -1586,7 +1645,7 @@ export class Whiteboard {
     try {
       for (const item of items) {
         const node = this.itemNode(item);
-        node.querySelectorAll('.hit, .grip').forEach((h) => h.remove()); // what only helps to use the board
+        node.querySelectorAll('.hit, .grip, .lock').forEach((h) => h.remove()); // what only helps to use the board
         node.querySelectorAll('[data-id]').forEach((n) => n.removeAttribute('data-id'));
         node.removeAttribute('data-id');
         svg.append(node);
@@ -2234,13 +2293,13 @@ export class Whiteboard {
   signature(item) {
     const st = (i) => (i ? `${i.stamp[0]}.${i.stamp[1]}` : '-');
     const pinned = (i) => (i?.kind === 'pin' && i.on ? `${st(i)}@${st(this.model.get(i.on))}` : st(i));
-    return `${pinned(item)}|${item.kind === 'arrow' ? `${pinned(this.model.get(item.from))}|${pinned(this.model.get(item.to))}` : ''}|${item.id === this.selected ? 's' : ''}`;
+    return `${pinned(item)}|${item.kind === 'arrow' ? `${pinned(this.model.get(item.from))}|${pinned(this.model.get(item.to))}` : ''}`;
   }
 
   /** @private Threads of yours whose pin is gone, and pins of yours whose item is gone, are taken down (quietly: not an undo step). */
   dropLooseThreads(live) {
     const gone = (i) => (i.kind === 'arrow' && (!this.model.get(i.from) || !this.model.get(i.to))) || (i.kind === 'pin' && i.on && !this.model.get(i.on));
-    const loose = live.filter((i) => i.author === this.model.peerId && gone(i));
+    const loose = live.filter((i) => i.author === this.model.peerId && !i.lock && gone(i));
     if (loose.length > 0) {
       queueMicrotask(() => {
         for (const t of loose) {
@@ -2254,11 +2313,12 @@ export class Whiteboard {
   }
 
   /**
-   * @private Other people's pictures get an invisible HTML box over them that the browser can
-   * drag out as a copy (an SVG image cannot be dragged); your own are moved, not copied.
+   * @private Every picture gets an invisible HTML box over it that the browser can drag out as a
+   * copy (an SVG image cannot be dragged). It takes the pointer only while Shift is held, so a plain
+   * drag moves the picture like any other element and Shift+drag copies it out.
    */
   syncProxies() {
-    const want = new Map(this.model.live().filter((i) => i.kind === 'image' && i.author !== this.model.peerId).map((i) => [i.id, i]));
+    const want = new Map(this.model.live().filter((i) => i.kind === 'image').map((i) => [i.id, i]));
     for (const [id, entry] of this.proxies) {
       if (!want.has(id)) {
         entry.el.remove();
@@ -2363,6 +2423,9 @@ export class Whiteboard {
     const thread = svgEl('g', { filter: 'url(#wb-shadow)' });
     thread.append(svgEl('path', { class: 'paper', d, fill: 'none', stroke: item.color, 'stroke-width': 2.6, 'stroke-linecap': 'round' }), ...heads);
     g.append(svgEl('path', { class: 'hit', d, fill: 'none', stroke: 'transparent', 'stroke-width': 14, 'stroke-linecap': 'round' }), thread);
+    if (item.lock) {
+      g.append(lockBadge((a.x + 2 * c.x + b.x) / 4, (a.y + 2 * c.y + b.y) / 4 - 4, item.lock));
+    }
   }
 
   /** @private A print pinned on the board around `content`: border, pin, and a shadow that stays put when turned. */
@@ -2372,6 +2435,9 @@ export class Whiteboard {
     const top = item.y - h / 2;
     const print = svgEl('g', { ...turn });
     const pin = svgEl('g', { class: 'pin', 'data-id': item.id });
+    if (item.lock) {
+      content = [...content, lockBadge(left - pad + 8, top - pad + 4, item.lock)];
+    }
     print.append(
       shapeElement(shape, left - pad, top - pad, item.size + 2 * pad, h + 2 * pad, { class: 'paper', fill: paper, stroke: 'rgba(0,0,0,0.25)', 'stroke-width': 0.75 }),
       ...content,
@@ -2414,7 +2480,10 @@ export class Whiteboard {
       const h = item.size * item.ratio;
       const left = item.x - item.size / 2;
       const top = item.y - h / 2;
-      g.append(this.printNode(item, h, turn, [svgEl('image', { href: item.data, x: left, y: top, width: item.size, height: h, preserveAspectRatio: 'none' })]));
+      const grip = this.canEdit(item) ? [svgEl('path', { class: 'grip', d: `M${left + item.size - 12} ${top + h - 2}L${left + item.size - 2} ${top + h - 12}M${left + item.size - 7} ${top + h - 2}L${left + item.size - 2} ${top + h - 7}`, stroke: 'rgba(0,0,0,0.45)', 'stroke-width': 1.4, fill: 'none' })] : [];
+      const tip = svgEl('title');
+      tip.textContent = `${item.file?.name ?? 'Picture'}: ${this.strings.dragFile}`;
+      g.append(this.printNode(item, h, turn, [svgEl('image', { href: item.data, x: left, y: top, width: item.size, height: h, preserveAspectRatio: 'none' }), ...grip, tip]));
     } else if (item.kind === 'pin') {
       const at = pinPoint(item, resolve);
       const shadow = svgEl('g', { filter: 'url(#wb-shadow)' });
@@ -2424,6 +2493,9 @@ export class Whiteboard {
         svgEl('circle', { cx: at.x - PIN_RADIUS * 0.3, cy: at.y - PIN_RADIUS * 0.32, r: PIN_RADIUS * 0.3, fill: 'rgba(255,255,255,0.6)' }),
       );
       g.append(svgEl('circle', { class: 'hit', cx: at.x, cy: at.y, r: PIN_RADIUS + 4, fill: 'transparent' }), shadow);
+      if (item.lock) {
+        g.append(lockBadge(at.x + 12, at.y - 14, item.lock));
+      }
     } else if (item.kind === 'arrow') {
       this.threadNode(item, g, resolve);
     } else if (item.kind === 'note') {
@@ -2432,17 +2504,18 @@ export class Whiteboard {
       const left = item.x - w / 2;
       const top = item.y - h / 2;
       const shape = item.shape ?? 'square';
-      const lines = wrapNote(item.text, noteTextWidth(item));
+      const font = noteFont(item);
+      const lines = wrapNote(item.text, noteTextWidth(item), font);
       const body = svgEl('svg', { x: left, y: top, width: w, height: h, overflow: 'hidden' });
-      const text = svgEl('text', { x: w / 2, y: noteTextTop(item, lines.length) + NOTE_HANG, 'font-size': NOTE_TEXT, fill: '#1c2024', 'text-anchor': 'middle', 'dominant-baseline': 'hanging', 'font-family': NOTE_FONT });
+      const text = svgEl('text', { x: w / 2, y: noteTextTop(item, lines.length) + (NOTE_HANG * font) / NOTE_TEXT, 'font-size': font, fill: '#1c2024', 'text-anchor': 'middle', 'dominant-baseline': 'hanging', 'font-family': NOTE_FONT });
       text.style.stroke = 'none'; // not the halo of text notes
       lines.forEach((line, i) => {
-        const span = svgEl('tspan', { x: w / 2, dy: i === 0 ? 0 : NOTE_TEXT * 1.25 });
+        const span = svgEl('tspan', { x: w / 2, dy: i === 0 ? 0 : font * 1.25 });
         span.textContent = line || ' ';
         text.append(span);
       });
       body.append(text);
-      const grip = item.author === this.model.peerId ? [svgEl('path', { class: 'grip', d: `M${left + w - 12} ${top + h - 2}L${left + w - 2} ${top + h - 12}M${left + w - 7} ${top + h - 2}L${left + w - 2} ${top + h - 7}`, stroke: 'rgba(0,0,0,0.35)', 'stroke-width': 1.2, fill: 'none' })] : [];
+      const grip = this.canEdit(item) ? [svgEl('path', { class: 'grip', d: `M${left + w - 12} ${top + h - 2}L${left + w - 2} ${top + h - 12}M${left + w - 7} ${top + h - 2}L${left + w - 2} ${top + h - 7}`, stroke: 'rgba(0,0,0,0.35)', 'stroke-width': 1.2, fill: 'none' })] : [];
       g.append(this.printNode(item, h, turn, [body, ...grip], item.color, shape));
     } else if (item.kind === 'link') {
       // A card of the page's address, drawn here from the link itself (not from a picture the sender made).
@@ -2893,7 +2966,7 @@ export class Whiteboard {
     listen(window, 'paste', (ev) => this.pasted(ev));
     listen(this.board, 'dblclick', (ev) => {
       const hit = this.itemAt(ev);
-      if (hit?.kind === 'note' && hit.author !== this.model.peerId) {
+      if (hit?.kind === 'note' && !this.canEdit(hit)) {
         this.copyNote(hit);
       } else if (hit?.kind === 'image') {
         this.downloadFile(hit.id);
@@ -2901,6 +2974,12 @@ export class Whiteboard {
     });
     // Zoom with the wheel at the pointer, pan with the middle button (or, zoomed in, the pointer tool).
     listen(this.container, 'wheel', (ev) => this.wheel(ev), { passive: false });
+    // Shift over a picture lets it be dragged out as a copy.
+    const shift = (on) => this.dragLayer.classList.toggle('shift', on);
+    listen(window, 'keydown', (ev) => ev.key === 'Shift' && shift(true), { capture: true });
+    listen(window, 'keyup', (ev) => ev.key === 'Shift' && shift(false), { capture: true });
+    listen(window, 'blur', () => shift(false));
+    listen(this.container, 'pointermove', (ev) => shift(ev.shiftKey), { capture: true, passive: true });
     listen(this.container, 'mousedown', (ev) => ev.button === 1 && this.adapter.panBy && ev.preventDefault());
     listen(this.container, 'pointerdown', (ev) => {
       if (this.selected && !this.onControls(ev) && this.itemAt(ev)?.id !== this.selected) {
@@ -3066,7 +3145,10 @@ export class Whiteboard {
   menu(ev) {
     const pin = this.readOnlyFlag ? null : this.pinAt(this.eventPoint(ev));
     const hit = this.readOnlyFlag ? null : pin?.kind === 'pin' ? pin : this.itemAt(ev);
-    if (hit && hit.author === this.model.peerId) {
+    if (hit && !this.canEdit(hit)) {
+      ev.preventDefault();
+      this.flash(this.strings.locked);
+    } else if (hit) {
       ev.preventDefault();
       this.local(() => this.model.remove(hit.id));
     }
@@ -3089,10 +3171,10 @@ export class Whiteboard {
       return;
     }
     const hit = this.pinAt(this.eventPoint(ev)) ?? this.itemAt(ev); // a pin wins over what lies on it
-    const mine = hit && hit.author === this.model.peerId ? hit : null;
-    if (mine && ['note', 'pin', 'arrow'].includes(mine.kind) && ['pointer', 'note', 'pin', 'sticker'].includes(this.tool)) {
-      this.select(mine.id);
-      if (mine.kind === 'arrow') {
+    const mine = hit && this.canEdit(hit) ? hit : null; // what can be changed by this peer
+    if (hit && SELECTABLE.has(hit.kind) && ['pointer', 'note', 'pin', 'sticker'].includes(this.tool)) {
+      this.select(hit.id);
+      if (hit.kind === 'arrow') {
         ev.preventDefault();
         return;
       }
@@ -3109,7 +3191,7 @@ export class Whiteboard {
     if (grab) {
       // A pin on an item is moved from where it is drawn, not from where it was first put.
       const grabbed = mine.kind === 'pin' && mine.on ? { ...mine, ...pinPoint(mine, this.lookup) } : mine;
-      this.dragging = { item: grabbed, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0, corner: mine.kind === 'note' && this.onCorner(mine, p) };
+      this.dragging = { item: grabbed, from: p, moved: false, fields: null, preview: false, dx: 0, dy: 0, corner: (mine.kind === 'note' || mine.kind === 'image') && this.onCorner(mine, p) };
     } else if (this.tool === 'pen') {
       this.inkSeq += 1;
       this.drawing = { id: `${this.model.peerId}.${this.model.counter + 1}`, points: [p.x, p.y], sent: 0, seq: 0 };
@@ -3160,6 +3242,24 @@ export class Whiteboard {
     }
   }
 
+  /** @private Whether this peer may change, move or delete an element: anybody, unless it is locked. */
+  canEdit(item) {
+    return !this.readOnlyFlag && mayChange(item, { ...item, stamp: [item.stamp[0], this.model.peerId], deleted: true });
+  }
+
+  /** @private The Delete key: takes down the selected element, unless it is locked against this person. */
+  removeSelected() {
+    const item = this.model.get(this.selected);
+    if (!item) {
+      return;
+    }
+    if (this.canEdit(item)) {
+      this.local(() => this.model.remove(item.id));
+    } else {
+      this.flash(this.strings.locked);
+    }
+  }
+
   /** @private Selects one of your items (a note, a pin or a thread): a bar to change it appears over it. */
   select(id) {
     if (this.selected === id) {
@@ -3167,13 +3267,11 @@ export class Whiteboard {
     }
     const before = this.selected;
     this.selected = id;
+    // Only the mark changes: the nodes stay, or the click that follows the press would be lost.
     for (const key of [before, id]) {
-      const entry = key ? this.nodes.get(key) : null;
-      if (entry) {
-        entry.sig = '';
-      }
+      this.nodes.get(key)?.node.classList.toggle('selected', key === id);
     }
-    this.render();
+    this.renderSelbar();
   }
 
   /** @private Nothing selected. */
@@ -3183,10 +3281,16 @@ export class Whiteboard {
     }
   }
 
-  /** @private The bar over the selected item: shapes and paper colours for a note, colours and heads for a thread. */
+  /**
+   * @private The bar over the selected element: for a note its shapes, text sizes and paper colours;
+   * for a thread its heads and colours; for a pin its colours; for anybody the copy of a note's text,
+   * and for its owner the lock. Only what the person may change is offered.
+   */
   renderSelbar() {
     const item = this.selected ? this.model.get(this.selected) : null;
-    if (!item || item.author !== this.model.peerId || this.readOnlyFlag) {
+    const mine = item?.author === this.model.peerId;
+    const editable = !!item && this.canEdit(item);
+    if (!item || this.readOnlyFlag || !(editable || mine || item.kind === 'note')) {
       this.selbar.hidden = true;
       this.selbar.replaceChildren();
       return;
@@ -3202,19 +3306,29 @@ export class Whiteboard {
         return b;
       };
       const change = (fields) => this.local(() => this.model.change(item.id, fields));
+      const rule = () => parts.length > 0 && parts.push(htmlEl('hr'));
       const swatches = (colors, current, field) => {
         for (const [i, c] of colors.entries()) {
           parts.push(button(`${s.color}: ${COLOR_NAMES[i]}`, `<span class="swatch" style="background:${c}"></span>`, c.toLowerCase() === current.toLowerCase(), () => change({ [field]: c })));
         }
       };
       if (item.kind === 'note') {
+        parts.push(button(s.copyText, '<svg viewBox="0 0 24 24"><path d="M8 8V4h12v12h-4M4 8h12v12H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>', false, () => this.copyNote(item)));
+      }
+      if (editable && item.kind === 'note') {
+        rule();
         for (const shape of NOTE_SHAPES) {
           const icon = shapeElement(shape, 3, 4, 18, 16, { fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8 }).outerHTML;
           parts.push(button(`${s.shapeLabel}: ${s.shapeNames[shape]}`, `<svg viewBox="0 0 24 24">${icon}</svg>`, (item.shape ?? 'square') === shape, () => change({ shape: shape === 'square' ? undefined : shape })));
         }
-        parts.push(htmlEl('hr'));
+        rule();
+        for (const [i, size] of NOTE_SIZES.entries()) {
+          const px = [10, 14, 19][i];
+          parts.push(button(`${s.text}: ${SIZE_NAMES[i]}`, `<svg viewBox="0 0 24 24"><text x="12" y="${12 + px * 0.35}" font-size="${px}" font-weight="700" text-anchor="middle" fill="currentColor" font-family="system-ui, sans-serif">A</text></svg>`, noteFont(item) === size, () => change({ fs: size === NOTE_TEXT ? undefined : size })));
+        }
+        rule();
         swatches(PALETTE.map(pastel), item.color, 'color');
-      } else if (item.kind === 'arrow') {
+      } else if (editable && item.kind === 'arrow') {
         for (const heads of ARROW_HEADS) {
           const saved = this.style.heads;
           this.style.heads = heads;
@@ -3222,16 +3336,23 @@ export class Whiteboard {
           this.style.heads = saved;
           parts.push(button(s.headNames[heads], `<svg viewBox="0 0 24 24">${icon}</svg>`, item.heads === heads, () => change({ heads })));
         }
-        parts.push(htmlEl('hr'));
+        rule();
         swatches(PALETTE, item.color, 'color');
-      } else {
+      } else if (editable && item.kind === 'pin') {
         swatches(PALETTE, item.color, 'color');
+      }
+      if (mine) {
+        rule();
+        const level = item.lock ?? 'open';
+        const next = { open: 'owner', owner: 'all', all: undefined }[level];
+        const body = { open: '<path d="M8 11V8a4 4 0 0 1 7.6-1.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>', owner: '<path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>', all: '<path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="#c42b31" stroke-width="2" stroke-linecap="round"/><rect x="5" y="11" width="14" height="9" rx="2" fill="#c42b31"/>' }[level];
+        parts.push(button(s.lockNames[level], `<svg viewBox="0 0 24 24">${body}</svg>`, level !== 'open', () => change({ lock: next })));
       }
       this.selbar.replaceChildren(...parts);
       this.selbar.dataset.sig = sig;
       this.selbar.dataset.id = item.id;
     }
-    this.selbar.hidden = false;
+    this.selbar.hidden = this.selbar.childElementCount === 0;
     this.placeSelbar(item);
   }
 
@@ -3246,8 +3367,9 @@ export class Whiteboard {
       const b = pinPoint(this.model.get(item.to), this.lookup);
       at = a && b ? { x: (a.x + b.x) / 2, y: Math.max(a.y, b.y) + 30 } : null;
     } else {
-      const h = item.kind === 'pin' ? 0 : item.size * item.ratio;
-      at = { x: item.x, y: item.y - h / 2 - 22 };
+      const h = item.kind === 'pin' ? 0 : item.size * (item.kind === 'link' ? 0.5 : item.ratio);
+      const where = item.kind === 'pin' ? pinPoint(item, this.lookup) : item; // a pin on something is where it is drawn
+      at = { x: where.x, y: where.y - h / 2 - 22 };
     }
     if (at) {
       const p = this.toBox(at.x, at.y);
@@ -3288,13 +3410,14 @@ export class Whiteboard {
       // The top left corner stays where it is; the pointer pulls the bottom right one.
       const a = ((it.rot ?? 0) * Math.PI) / 180;
       const l = this.inNote(it, p);
-      const w = Math.min(600, Math.max(60, l.x + it.size / 2));
-      const h = Math.min(600, Math.max(0.3 * w, l.y + (it.size * it.ratio) / 2));
+      const picture = it.kind === 'image'; // a picture keeps its proportions
+      const w = picture ? Math.min(2000, Math.max(8, l.x + it.size / 2, (l.y + (it.size * it.ratio) / 2) / it.ratio)) : Math.min(600, Math.max(60, l.x + it.size / 2));
+      const h = picture ? w * it.ratio : Math.min(600, Math.max(0.3 * w, l.y + (it.size * it.ratio) / 2));
       const cx = w / 2 - it.size / 2;
       const cy = h / 2 - (it.size * it.ratio) / 2;
       d.fields = {
         size: round1(w),
-        ratio: Math.round(Math.min(3, Math.max(0.3, h / w)) * 1000) / 1000,
+        ratio: picture ? it.ratio : Math.round(Math.min(3, Math.max(0.3, h / w)) * 1000) / 1000,
         x: round1(it.x + cx * Math.cos(a) - cy * Math.sin(a)),
         y: round1(it.y + cx * Math.sin(a) + cy * Math.cos(a)),
       };
@@ -3304,7 +3427,7 @@ export class Whiteboard {
       return;
     }
     const flat = it.kind === 'sticker' || it.kind === 'image' || it.kind === 'link' || it.kind === 'note';
-    const scaling = flat && ev.shiftKey;
+    const scaling = flat && ev.shiftKey && it.kind !== 'image'; // a picture is resized from its corner: Shift copies it out
     const turning = flat && (ev.ctrlKey || ev.metaKey || ev.altKey);
     if (scaling || turning) {
       const fields = {};
@@ -3396,7 +3519,7 @@ export class Whiteboard {
       } else if (!cancelled && Math.hypot(ev.clientX - t.x0, ev.clientY - t.y0) < 4) {
         // Pressed and let go on the pin: it is selected, if it is yours and can be changed.
         const source = this.model.get(t.from);
-        if (source?.author === this.model.peerId && (source.kind === 'pin' || source.kind === 'note')) {
+        if (source && SELECTABLE.has(source.kind)) {
           this.select(source.id);
         }
       }
@@ -3442,7 +3565,7 @@ export class Whiteboard {
         }
       } else if (!d.moved && it.kind === 'text' && this.tool === 'text' && !cancelled) {
         this.editText(it);
-      } else if (!d.moved && it.kind === 'note' && !cancelled) {
+      } else if (!d.moved && it.kind === 'note' && !cancelled && this.canEdit(it)) {
         this.editNote(it);
       }
     } else if (this.pendingNote && !cancelled) {
@@ -3451,6 +3574,7 @@ export class Whiteboard {
       const id = this.addNote(at);
       this.setTool('pointer');
       if (id) {
+        this.select(id); // its bar is there to change it as it is written
         this.editNote(this.model.get(id));
       }
     } else if (this.pendingText && !cancelled) {
@@ -3513,7 +3637,7 @@ export class Whiteboard {
   /** @private Marks the items under the eraser; they go on pointer up. */
   eraseAt(ev) {
     const hit = this.itemAt(ev);
-    if (hit && !this.erasing.has(hit.id)) {
+    if (hit && this.canEdit(hit) && !this.erasing.has(hit.id)) {
       this.erasing.add(hit.id);
       this.nodes.get(hit.id)?.node.classList.add('erasing');
     }
@@ -3578,7 +3702,7 @@ export class Whiteboard {
       return;
     }
     const scale = Math.hypot(this.matrix.a, this.matrix.b) || 1;
-    const lines = wrapNote(e.node.value, noteTextWidth(it)).length;
+    const lines = wrapNote(e.node.value, noteTextWidth(it), noteFont(it)).length;
     const inset = SHAPE_INSET[it.shape ?? 'square'];
     e.node.style.paddingTop = `${Math.max(0, noteTextTop(it, lines) - (it.size * it.ratio * (1 - inset)) / 2) * scale}px`;
   }
@@ -3598,7 +3722,7 @@ export class Whiteboard {
         top: `${c.y - h / 2}px`,
         width: `${w}px`,
         height: `${h}px`,
-        fontSize: `${NOTE_TEXT * scale}px`,
+        fontSize: `${noteFont(it) * scale}px`,
         paddingLeft: `${NOTE_PAD * scale}px`,
         paddingRight: `${NOTE_PAD * scale}px`,
         paddingBottom: '0',
@@ -3685,6 +3809,8 @@ export class Whiteboard {
       }
     } else if (!ctrl && !ev.altKey && ev.key === '0' && this.adapter.resetView) {
       this.resetZoom();
+    } else if ((ev.key === 'Delete' || ev.key === 'Backspace') && this.selected && this.model.get(this.selected)) {
+      this.removeSelected();
     } else if (ev.key === 'Escape' && this.selected) {
       this.deselect();
     } else if (this.tool === 'pointer') {

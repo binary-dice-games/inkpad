@@ -210,10 +210,10 @@ describe('moving, turning, scaling and removing', () => {
     return { room, wb, board, me: host.me.id, node };
   }
 
-  it('drags your own item with the pointer tool, and not somebody else’s', async () => {
+  it('drags anybody’s item with the pointer tool, unless its owner locked it', async () => {
     const t = await mount();
     try {
-      t.wb.load(snapshot([sticker('other')]));
+      t.wb.load(snapshot([{ ...sticker('other'), lock: 'owner' }]));
       pointer(t.board, 'pointerdown', 100, 100);
       pointer(t.board, 'pointermove', 130, 140);
       pointer(t.board, 'pointerup', 130, 140);
@@ -221,6 +221,18 @@ describe('moving, turning, scaling and removing', () => {
       t.wb.destroy();
     } finally {
       t.room.close();
+    }
+
+    const free = await mount();
+    try {
+      free.wb.load(snapshot([sticker('other')]));
+      pointer(free.board, 'pointerdown', 100, 100);
+      pointer(free.board, 'pointermove', 130, 140);
+      pointer(free.board, 'pointerup', 130, 140);
+      expect(free.wb.items()[0]).toMatchObject({ x: 130, y: 140, author: 'other' });
+      free.wb.destroy();
+    } finally {
+      free.room.close();
     }
 
     const mine = await mount();
@@ -321,14 +333,23 @@ describe('moving, turning, scaling and removing', () => {
     }
   });
 
-  it('removes with the right button only what is yours', async () => {
+  it('removes with the right button what is not locked against you', async () => {
+    const locked = await mount();
+    try {
+      locked.wb.load(snapshot([{ ...sticker('other'), lock: 'owner' }]));
+      const menu = new MouseEvent('contextmenu', { cancelable: true, bubbles: true });
+      locked.board.dispatchEvent(menu);
+      expect(menu.defaultPrevented).toBe(true);
+      expect(locked.wb.items()).toHaveLength(1);
+      locked.wb.destroy();
+    } finally {
+      locked.room.close();
+    }
     const t = await mount();
     try {
       t.wb.load(snapshot([sticker('other')]));
-      const menu = new MouseEvent('contextmenu', { cancelable: true, bubbles: true });
-      t.board.dispatchEvent(menu);
-      expect(menu.defaultPrevented).toBe(false);
-      expect(t.wb.items()).toHaveLength(1);
+      t.board.dispatchEvent(new MouseEvent('contextmenu', { cancelable: true, bubbles: true }));
+      expect(t.wb.items()).toHaveLength(0);
       t.wb.destroy();
     } finally {
       t.room.close();

@@ -49,7 +49,7 @@ presenter on Chrome.
 | 35 | Set the link lifetime to 1 minute, start, wait, try to join | The page says the link expired and the join fails; **New link** works for a new viewer |
 | 36 | **Start a board without video**; a viewer joins; the presenter cycles the background | Viewer and presenter show a sheet (no video, no waiting message); whiteboard, blackboard, wall and cork follow on both |
 | 37 | Drop a photo, a PDF, a zip, a text file and a 10 MB file on the board | The first four are pinned (border, shadow, pin) with previews; the big one is refused with a message |
-| 38 | On a viewer, drag a pinned PDF onto the desktop, a folder, and a mail or chat web page; double click another | A copy with the right name and contents lands (the desktop and folder in Chrome or Edge; web pages in Chrome and Firefox); double click downloads it |
+| 38 | On a viewer, Shift+drag a pinned PDF onto the desktop, a folder, and a mail or chat web page; double click another | A copy with the right name and contents lands (the desktop and folder in Chrome or Edge; web pages in Chrome and Firefox); double click downloads it |
 | 39 | Join a viewer after files were pinned | The late viewer sees the prints and can drag the files out within a few seconds |
 | 40 | Drop a PDF, a .docx, a .pptx and an .xlsx on the board | The cards show the first page of the PDF and the thumbnail or the first lines of the others; an old .doc shows only the card |
 | 41 | Presenter controls: **QR code**; scan it with an iPad or phone camera | The device opens the viewer link and joins; **Copy image** pastes a QR image into a chat or document |
@@ -68,6 +68,11 @@ presenter on Chrome.
 | 54 | With the pointer, note and text tools in turn Shift+press on a pin and drag to another | a thread is tied, the tool you had is selected again on release; a plain drag moves the pin instead; a click on a pin with threads selects the pin |
 | 55 | Draw lines and text, pin a note and a file; press **Clear drawings**, then **Clear all** | only the drawings go the first time, everything the second, for every viewer |
 | 56 | Click the line, text, sticker, note, thread and colour tools in the toolbar | each opens a panel with all its options (line widths, text sizes, stickers, shapes, heads, colours); choosing one closes it; the pointer, eraser and pin only select |
+| 57 | As a viewer who can draw, move, edit and delete the presenter's note, thread and pin | all work (not on a picture or file: dragging it copies it out) |
+| 58 | As the presenter select the note and press the lock twice; as the viewer try to move, edit, delete and erase it | after the first press (grey padlock) only the presenter can; after the second (red) nobody, not even the presenter, until unlocked; the viewer sees the message and can still copy the text from the bar |
+| 59 | Choose small, medium and large text in a note's bar | the text size changes for everybody, the text re-wraps, and the box being written in follows |
+| 60 | Select a note, a pin and a thread in turn and press Delete | each goes (a pin takes its threads with it); on a locked element nothing goes and the message shows |
+| 61 | Select a pin attached to a note, then move the note | the bar sits over the pin where it is drawn and follows it |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)
