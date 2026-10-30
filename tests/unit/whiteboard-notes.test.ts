@@ -26,6 +26,15 @@ function pointer(target: Element, type: string, x: number, y: number): void {
   );
 }
 
+/** Sets a note's width, for tests whose positions assume a note of that size. */
+function resize(wb: unknown, id: string, size: number): void {
+  const inner = wb as {
+    local(f: () => unknown): unknown;
+    model: { change(i: string, f: object): unknown };
+  };
+  inner.local(() => inner.model.change(id, { size }));
+}
+
 function keydown(key: string, init: KeyboardEventInit = {}): void {
   window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...init }));
 }
@@ -101,7 +110,7 @@ describe('sticky notes on the board', () => {
       pointer(t.board, 'pointerdown', 200, 150);
       pointer(t.board, 'pointerup', 200, 150);
       expect((t.wb as unknown as Inside).tool).toBe('pointer');
-      expect(t.wb.items()).toMatchObject([{ kind: 'note', x: 200, y: 150, text: '', size: 180 }]);
+      expect(t.wb.items()).toMatchObject([{ kind: 'note', x: 200, y: 150, text: '', size: 90 }]); // half the width of earlier versions
       const ta = t.root.querySelector('textarea.sticky') as HTMLTextAreaElement;
       expect(ta).not.toBeNull();
       const text = 'Buy milk\nand a very long line of words that has to wrap around';
@@ -149,7 +158,7 @@ describe('sticky notes on the board', () => {
   it('moves when dragged and resizes from its corner, keeping the top left corner', async () => {
     const t = await mount();
     try {
-      t.wb.addNote({ x: 100, y: 100 }, 'note');
+      resize(t.wb, t.wb.addNote({ x: 100, y: 100 }, 'note')!, 180);
       pointer(t.board, 'pointerdown', 100, 100);
       pointer(t.board, 'pointermove', 130, 140);
       pointer(t.board, 'pointerup', 130, 140);
@@ -278,7 +287,7 @@ describe('the text box of a note being written', () => {
       value: () => [root.querySelector('.item')].filter(Boolean),
     });
     try {
-      wb.addNote({ x: 200, y: 200 }, 'writing');
+      resize(wb, wb.addNote({ x: 200, y: 200 }, 'writing')!, 180);
       pointer(board, 'pointerdown', 200, 200);
       pointer(board, 'pointerup', 200, 200);
       const ta = root.querySelector<HTMLTextAreaElement>('textarea.sticky')!;

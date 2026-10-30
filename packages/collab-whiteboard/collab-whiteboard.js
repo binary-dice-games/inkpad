@@ -13,7 +13,8 @@
  * that show the tool and the avatar, a queue for the turn to speak, and files pinned on the
  * board (a preview on the board, the file itself sent to everyone to drag out as a copy).
  * Elements are removed by selecting them and pressing Delete or Backspace (the right button does
- * nothing to them).
+ * nothing to them). New notes and pins are half the size nymph makes them, and the bar over a
+ * selected element is kept inside the board.
  *
  *   import { createWhiteboard } from './collab-whiteboard.js';
  *   const wb = createWhiteboard(container, { session, adapter });
@@ -822,7 +823,7 @@ function pinMetrics(item, h) {
   return { pad, r, x: item.x, y: item.y - h / 2 - pad + r * 1.15 };
 }
 
-const PIN_RADIUS = 9;
+const PIN_RADIUS = 5;
 
 /** How far below its centre the pin of a note, picture or link is (before it is turned); 0 for what has no pin. */
 function pinOffset(item) {
@@ -1011,6 +1012,7 @@ const NOTE_TEXT = 16; // the usual font size of a note, in board units
 const NOTE_SIZES = [12, 16, 24]; // small, medium, large
 const noteFont = (item) => item.fs ?? NOTE_TEXT;
 const NOTE_PAD = 10;
+const NOTE_SIZE = 90; // the width of a new note, in board units
 /** What can be selected, to be changed or locked with the bar over it. */
 const SELECTABLE = new Set(['note', 'pin', 'arrow', 'image', 'link']);
 /** Drawn items, selected (to be removed with Delete or locked) with the pointer or the tool that makes them. */
@@ -1525,7 +1527,7 @@ export class Whiteboard {
     if (this.readOnlyFlag) {
       return null;
     }
-    const op = this.local(() => this.model.add({ kind: 'note', x: round1(at.x), y: round1(at.y), size: 180, ratio: 1, text: String(text).slice(0, LIMITS.text), color: pastel(this.style.color), ...(this.style.shape === 'square' ? {} : { shape: this.style.shape }), ...turned(this.tilt()) }));
+    const op = this.local(() => this.model.add({ kind: 'note', x: round1(at.x), y: round1(at.y), size: NOTE_SIZE, ratio: 1, text: String(text).slice(0, LIMITS.text), color: pastel(this.style.color), ...(this.style.shape === 'square' ? {} : { shape: this.style.shape }), ...turned(this.tilt()) }));
     return op ? op.item.id : null;
   }
 
@@ -3684,29 +3686,60 @@ export class Whiteboard {
     this.placeSelbar(item);
   }
 
-  /** @private The selection bar sits over the middle top of the item (a thread: the middle of it). */
+  /**
+   * @private The selection bar sits over the middle top of the item (a thread: the middle of it).
+   * It is kept inside the board's visible area: moved sideways near the left or right edge, and
+   * put under the item when there is no room over it.
+   */
   placeSelbar(item = this.selected ? this.model.get(this.selected) : null) {
     if (!item || this.selbar.hidden) {
       return;
     }
-    let at;
+    let above;
+    let below;
     if (item.kind === 'arrow') {
       const a = pinPoint(this.model.get(item.from), this.lookup);
       const b = pinPoint(this.model.get(item.to), this.lookup);
-      at = a && b ? { x: (a.x + b.x) / 2, y: Math.max(a.y, b.y) + 30 } : null;
+      above = a && b ? { x: (a.x + b.x) / 2, y: Math.max(a.y, b.y) + 30 } : null;
+      below = above;
     } else if (DRAWN.has(item.kind)) {
       const b = this.bounds([item]);
-      at = { x: b.x + b.width / 2, y: b.y - 22 };
+      above = { x: b.x + b.width / 2, y: b.y - 22 };
+      below = { x: above.x, y: b.y + b.height + 22 };
     } else {
       const h = item.kind === 'pin' ? 0 : item.size * (item.kind === 'link' ? 0.5 : item.ratio);
       const where = item.kind === 'pin' ? pinPoint(item, this.lookup) : item; // a pin on something is where it is drawn
-      at = { x: where.x, y: where.y - h / 2 - 22 };
+      above = { x: where.x, y: where.y - h / 2 - 22 };
+      below = { x: where.x, y: where.y + h / 2 + 22 };
     }
-    if (at) {
-      const p = this.toBox(at.x, at.y);
-      this.selbar.style.left = `${Math.max(120, Math.min(this.host.clientWidth - 120, p.x))}px`;
-      this.selbar.style.top = `${Math.max(46, p.y)}px`;
+    if (!above) {
+      return;
     }
+    // The area the board is shown in: the host, cut to the adapter's clip if any.
+    const clip = this.adapter.clip?.() ?? null;
+    const W = this.host.clientWidth;
+    const H = this.host.clientHeight;
+    const x0 = clip ? Math.max(0, clip.x) : 0;
+    const y0 = clip ? Math.max(0, clip.y) : 0;
+    const x1 = clip ? Math.min(W || Infinity, clip.x + clip.width) : W;
+    const y1 = clip ? Math.min(H || Infinity, clip.y + clip.height) : H;
+    const margin = 4;
+    // Its size (none before layout, as in tests without one: then a usual bar's).
+    const w = this.selbar.offsetWidth || 240;
+    const h = this.selbar.offsetHeight || 38;
+    const p = this.toBox(above.x, above.y);
+    const q = this.toBox(below.x, below.y);
+    // The bar's anchor is its bottom middle (it is moved up by its height and left by half its width).
+    let top = p.y;
+    if (y1 > y0 && top - h < y0 + margin) {
+      top = q.y + h <= y1 - margin ? q.y + h : y0 + margin + h; // under the item, or else at the top edge
+    }
+    let left = p.x;
+    if (x1 > x0) {
+      left = Math.max(x0 + margin + w / 2, Math.min(x1 - margin - w / 2, left));
+    }
+    this.selbar.style.left = `${left}px`;
+    this.selbar.style.top = `${top}px`;
   }
 
   /**
