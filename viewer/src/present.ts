@@ -35,7 +35,10 @@ import { setToolbarFolded } from './fold';
 import { filePreview } from './previews';
 import { qrModules, qrPng, qrSvg } from './qr';
 import { showSheet } from './sheet';
-import { wireSave } from './save';
+import { boardFile, download, fileStamp, openBoardFile, wireSave } from './save';
+import type { SaveHost } from './save';
+import { BACKUP_NAME, BackupWriter, backupInfo, openBackupStore } from './backup';
+import type { BackupInfo, BackupStore } from './backup';
 import { cleanPrefs, loadPrefs, savePrefs } from './present-settings';
 import type { PresenterPrefs } from './present-settings';
 
@@ -62,6 +65,10 @@ let avatarDraft = '';
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 /** Set while a picker is open, so a second click does not open another. */
 let picking = false;
+/** Where the board's backup is kept (null: this browser has no storage for it). */
+let backupStore: Promise<BackupStore | null> | null = null;
+/** Writes the running session's board to its backup; null before the resume question is answered. */
+let backup: BackupWriter | null = null;
 
 function toast(text: string): void {
   const el = $('toast');
@@ -245,6 +252,10 @@ function enterApp(): void {
 }
 
 function endSession(message: string): void {
+  // The backup stays (written up to the end): the next session offers to resume it.
+  const writer = backup;
+  backup = null;
+  void writer?.flush().then(() => writer.stop());
   host?.stop();
   host = null;
   capture?.stop();
@@ -309,7 +320,90 @@ async function startSharing(withVideo = true): Promise<void> {
     useCapture(picked);
   }
   frameChanged();
+  void startBackup();
 }
+
+// ── Backup ───────────────────────────────────────────────────────────────────
+
+/** Asks whether to resume the board in `info` or start a new one. */
+function askResume(info: BackupInfo): Promise<'resume' | 'new'> {
+  const dialog = $<HTMLDialogElement>('resume');
+  const when = info.saved ? ` from ${info.saved.toLocaleString()}` : '';
+  $('resumeText').textContent =
+    `This browser kept a backup of an earlier board${when}, with ${info.items} ` +
+    `item${info.items === 1 ? '' : 's'}. Resume it in this session, or start with an empty ` +
+    'board? Starting new replaces the backup.';
+  $('resumeDownload').onclick = () =>
+    download(
+      new Blob([info.text], { type: 'application/json' }),
+      `inksplat-backup-${fileStamp(info.saved ?? new Date())}.inksplat.json`,
+    );
+  return new Promise((resolve) => {
+    $('resumeYes').onclick = () => dialog.close('resume');
+    $('resumeNo').onclick = () => dialog.close('new');
+    dialog.addEventListener(
+      'close',
+      () => resolve(dialog.returnValue === 'new' ? 'new' : 'resume'),
+      { once: true },
+    );
+    dialog.returnValue = '';
+    dialog.showModal();
+  });
+}
+
+/**
+ * Offers to resume the backup of an earlier board, if there is one, then keeps this session's
+ * board in the backup a moment after every change.
+ */
+async function startBackup(): Promise<void> {
+  const store = await backupStore;
+  const b = board;
+  const h = host;
+  if (!store || !b || !h) {
+    return;
+  }
+  let info: BackupInfo | null = null;
+  try {
+    info = backupInfo(await store.read());
+  } catch {
+    info = null; // unreadable: treated as none, and replaced
+  }
+  if (info && (await askResume(info)) === 'resume' && board === b) {
+    await openBoardFile(new File([info.text], BACKUP_NAME, { type: 'application/json' }), saveHost);
+  }
+  if (board !== b) {
+    return; // the session ended meanwhile
+  }
+  let warned = false;
+  const writer = new BackupWriter({
+    store,
+    make: () => boardFile(b, h.stage()),
+    onError: () => {
+      if (!warned) {
+        warned = true;
+        toast('The board could not be backed up in this browser. Save it as a file to keep it.');
+      }
+    },
+  });
+  backup = writer;
+  b.on('change', () => writer.schedule());
+  h.onChange(() => writer.schedule()); // the backgrounds
+  writer.schedule(); // the resumed board, or no backup for a new one
+}
+
+/** What the Save… and Open… buttons work on. */
+const saveHost: SaveHost = {
+  board: () => board,
+  stage: () => host?.stage() ?? null,
+  video: () => video(),
+  toast,
+  backgrounds: (names) =>
+    names.forEach((name, page) => {
+      if (name) {
+        void host?.command({ cmd: 'background', page, name });
+      }
+    }),
+};
 
 // ── Settings and collapsing ──────────────────────────────────────────────────
 
@@ -520,18 +614,9 @@ function main(): void {
     qrDialog.showModal();
   });
   $('closeQr').addEventListener('click', () => qrDialog.close());
-  wireSave({
-    board: () => board,
-    stage: () => host?.stage() ?? null,
-    video: () => video(),
-    toast,
-    backgrounds: (names) =>
-      names.forEach((name, page) => {
-        if (name) {
-          void host?.command({ cmd: 'background', page, name });
-        }
-      }),
-  });
+  wireSave(saveHost);
+  // The resume question must be answered: Escape does not close it.
+  $('resume').addEventListener('cancel', (e) => e.preventDefault());
   $('copyQr').addEventListener('click', () => {
     qrPng(qrCode)
       .then((png) => navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]))
@@ -599,8 +684,25 @@ function main(): void {
       say(e instanceof Error ? e.message : 'That code did not work.');
     }
   });
+  backupStore = openBackupStore();
+  // Closing or reloading the page ends the session: the browser asks first.
+  window.addEventListener('beforeunload', (e) => {
+    if (host) {
+      void backup?.flush();
+      e.preventDefault();
+      e.returnValue = ''; // older browsers need it set
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      void backup?.flush();
+    }
+  });
   // Viewers are told the session ended when the page closes.
-  window.addEventListener('pagehide', () => host?.stop());
+  window.addEventListener('pagehide', () => {
+    void backup?.flush();
+    host?.stop();
+  });
 }
 
 main();

@@ -86,6 +86,15 @@ export function download(blob: Blob, name: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
+/** The board file of `board`: its items and files, with the background of every canvas. */
+export function boardFile(
+  board: Whiteboard,
+  stage: Stage | null,
+): ReturnType<Whiteboard['saveBoard']> {
+  const backgrounds = Array.from({ length: CANVASES }, (_, i) => canvasBackground(stage, i));
+  return board.saveBoard({ backgrounds });
+}
+
 /** Saves the board as `kind`; tells the person when it cannot. */
 export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Promise<void> {
   const board = host.board();
@@ -110,8 +119,7 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
         `${name}.svg`,
       );
     } else {
-      const backgrounds = Array.from({ length: CANVASES }, (_, i) => canvasBackground(stage, i));
-      const saved = await board.saveBoard({ backgrounds });
+      const saved = await boardFile(board, stage);
       download(
         new Blob([JSON.stringify(saved)], { type: 'application/json' }),
         `${name}.inksplat.json`,

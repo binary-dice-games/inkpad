@@ -79,6 +79,7 @@ presenter on Chrome.
 | 65 | Click the pin tool, choose a star, put a pin down; press 7 again and put another; select the first and change its shape and colour from the bar | The panel lists five shapes; each pin is drawn in its shape, threads still tie to its centre |
 | 66 | Share a window; a viewer joins; both go through the canvases; on canvas 3 the presenter picks **Video**, on canvas 1 **Cork board** | Canvas 1 shows the video, 2 to 5 whiteboard, blackboard, wall, cork; then canvas 3 shows the video and canvas 1 the cork, on both; drawings stay in place |
 | 67 | Put a bare pin down, then drag it over a note, a picture, a link and a sticker, and off them | Each one it is over has a dashed outline, which goes when the pin leaves it or is dropped; dropped on one it stays on it |
+| 68 | On the presenter page in Chrome, Firefox and Safari, draw, then close the tab (and, separately, reload it); confirm; start a new session | The browser asks before leaving; the new session asks to resume, **Resume** brings the board back with its backgrounds and files, **Start new** leaves it empty and the next session does not ask |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

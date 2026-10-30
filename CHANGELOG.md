@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The presenter page asks for confirmation before it is closed, reloaded or left while a session runs, and keeps a backup of the board in the browser after every change. When a new session starts and there is a backup, it asks whether to resume it or start new (and can download it first).
+
 - A redesigned home page with the inksplat logo, a **Start presenting** button, the main features and how it works, and an **About** box with the version, licences and credits. The pages have the inksplat icon.
 
 - Each canvas has its own background, chosen by the presenter for the canvas they are on (**Background of canvas N**): the video (in a session with video), whiteboard, blackboard, wall or cork. By default canvas 1 shows the video, if there is one, and the others the whiteboard, blackboard, wall and cork in turn. Board files keep the background of every canvas.
