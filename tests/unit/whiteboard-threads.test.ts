@@ -266,7 +266,9 @@ describe('the pin and thread tools', () => {
 
       // Taking a pin down takes its threads down (and that is no undo step of its own).
       t.over(b);
-      pointer(t.board, 'contextmenu', 300, 100);
+      pointer(t.board, 'pointerdown', 300, 100);
+      pointer(t.board, 'pointerup', 300, 100);
+      keydown('Delete');
       await until(() => !t.wb.items().some((i) => i.id === thread), 'the thread went');
       expect(t.root.querySelector('.arrow-item')).toBeNull();
     } finally {
@@ -274,7 +276,7 @@ describe('the pin and thread tools', () => {
     }
   });
 
-  it('is removed by its owner with the right button', async () => {
+  it('is removed by selecting it and pressing Delete, not with the right button', async () => {
     const t = await mount();
     try {
       const a = t.wb.addPin({ x: 100, y: 100 })!;
@@ -282,6 +284,10 @@ describe('the pin and thread tools', () => {
       const thread = t.wb.addArrow(a, b)!;
       t.over(thread);
       pointer(t.board, 'contextmenu', 200, 130);
+      expect(kinds(t)).toHaveLength(3);
+      pointer(t.board, 'pointerdown', 200, 130);
+      pointer(t.board, 'pointerup', 200, 130);
+      keydown('Delete');
       expect(kinds(t)).toEqual(['pin', 'pin']);
     } finally {
       done(t);
@@ -582,7 +588,10 @@ describe('pins attached to what they are put on', () => {
           .sort();
       expect(kinds()).toEqual(['arrow', 'arrow', 'note', 'pin', 'pin']);
       t.pick.find = () => t.root.querySelector('.note-item');
-      press(t, 'contextmenu', 200, 250);
+      press(t, 'pointerdown', 200, 250);
+      press(t, 'pointerup', 200, 250);
+      t.root.querySelector('textarea')?.dispatchEvent(new Event('blur'));
+      keydown('Delete');
       await until(
         () => !kinds().includes('arrow') && kinds().length === 1,
         'all that hung on it went',

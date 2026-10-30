@@ -323,9 +323,7 @@ describe('moving, turning, scaling and removing', () => {
       expect(t.wb.items()[0]).toMatchObject({ x: 90, y: 100 });
       expect(t.wb.contentBounds()?.width).toBeGreaterThan(200);
 
-      const menu = new MouseEvent('contextmenu', { cancelable: true, bubbles: true });
-      t.board.dispatchEvent(menu);
-      expect(menu.defaultPrevented).toBe(true);
+      keydown('Delete'); // it is still selected from the drag
       expect(t.wb.items()).toHaveLength(0);
       t.wb.destroy();
     } finally {
@@ -333,13 +331,13 @@ describe('moving, turning, scaling and removing', () => {
     }
   });
 
-  it('removes with the right button what is not locked against you', async () => {
+  it('removes with Delete or Backspace what is selected and not locked against you', async () => {
     const locked = await mount();
     try {
       locked.wb.load(snapshot([{ ...sticker('other'), lock: 'owner' }]));
-      const menu = new MouseEvent('contextmenu', { cancelable: true, bubbles: true });
-      locked.board.dispatchEvent(menu);
-      expect(menu.defaultPrevented).toBe(true);
+      pointer(locked.board, 'pointerdown', 100, 100);
+      pointer(locked.board, 'pointerup', 100, 100);
+      keydown('Delete');
       expect(locked.wb.items()).toHaveLength(1);
       locked.wb.destroy();
     } finally {
@@ -347,8 +345,63 @@ describe('moving, turning, scaling and removing', () => {
     }
     const t = await mount();
     try {
-      t.wb.load(snapshot([sticker('other')]));
-      t.board.dispatchEvent(new MouseEvent('contextmenu', { cancelable: true, bubbles: true }));
+      t.wb.load(snapshot([sticker('other'), sticker('other', 'other.2')]));
+      // The right button does nothing to an element: the browser's own menu may open.
+      const menu = new MouseEvent('contextmenu', { cancelable: true, bubbles: true });
+      t.board.dispatchEvent(menu);
+      expect(menu.defaultPrevented).toBe(false);
+      expect(t.wb.items()).toHaveLength(2);
+      keydown('Delete'); // nothing selected: nothing goes
+      expect(t.wb.items()).toHaveLength(2);
+      pointer(t.board, 'pointerdown', 100, 100);
+      pointer(t.board, 'pointerup', 100, 100);
+      expect(t.node().classList.contains('selected')).toBe(true);
+      keydown('Backspace');
+      expect(t.wb.items()).toHaveLength(1);
+      t.wb.destroy();
+    } finally {
+      t.room.close();
+    }
+  });
+
+  it('selects lines and texts with the pointer and removes them with Delete', async () => {
+    const t = await mount();
+    try {
+      t.wb.load(
+        snapshot([
+          {
+            id: `${t.me}.1`,
+            author: t.me,
+            stamp: [1, t.me],
+            kind: 'ink',
+            points: [10, 10, 50, 50],
+            color: '#000000',
+            width: 3,
+          },
+        ]),
+      );
+      pointer(t.board, 'pointerdown', 20, 20);
+      pointer(t.board, 'pointerup', 20, 20);
+      keydown('Delete');
+      expect(t.wb.items()).toHaveLength(0);
+      t.wb.load(
+        snapshot([
+          {
+            id: `${t.me}.2`,
+            author: t.me,
+            stamp: [2, t.me],
+            kind: 'text',
+            x: 100,
+            y: 100,
+            size: 20,
+            text: 'hello',
+            color: '#000000',
+          },
+        ]),
+      );
+      pointer(t.board, 'pointerdown', 100, 100);
+      pointer(t.board, 'pointerup', 100, 100);
+      keydown('Delete');
       expect(t.wb.items()).toHaveLength(0);
       t.wb.destroy();
     } finally {

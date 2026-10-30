@@ -4,6 +4,7 @@
  * session state or error, what to show over the video, and which aspect the
  * board is laid out for.
  */
+import { canvasBackground } from '@inkpad/defaults';
 import type { Stage } from '@inkpad/defaults';
 
 /** The aspect used before the presenter has said anything. */
@@ -71,13 +72,14 @@ export function progressMessage(stage: string | undefined): string {
  *
  * @param stage the presenter's last `stage` message, if any
  * @param hasVideo whether a video frame has arrived
+ * @param canvas the canvas shown (0 for the first)
  */
-export function placeholder(stage: Stage | null, hasVideo: boolean): string | null {
+export function placeholder(stage: Stage | null, hasVideo: boolean, canvas = 0): string | null {
   if (stage?.state === 'ended') {
     return 'The presenter ended the session.';
   }
-  if (stage?.video === false) {
-    return null; // a board without video: nothing to wait for
+  if (canvasBackground(stage, canvas) !== 'video') {
+    return null; // a canvas without video: nothing to wait for
   }
   if (stage?.state === 'paused') {
     return 'The presenter paused the video.';

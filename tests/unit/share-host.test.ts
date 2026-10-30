@@ -132,27 +132,48 @@ describe('ShareHost', () => {
     await until(() => host.ui().viewers.length === 0, 'viewer removed');
   });
 
-  it('starts a session without video that tells viewers, and lets the presenter pick the background', async () => {
+  it('starts a session without video that tells viewers, and lets the presenter pick each canvas background', async () => {
     const host = await start({}, undefined, false);
-    expect(host.ui()).toMatchObject({ video: false, background: 'whiteboard', phase: 'live' });
+    const fallback = ['whiteboard', 'blackboard', 'wall', 'cork', 'whiteboard'];
+    expect(host.ui()).toMatchObject({ video: false, backgrounds: fallback, phase: 'live' });
     const { stages } = await join(host, 'Ana');
     await until(() => stages.length > 0, 'stage');
-    expect(stages[0]).toMatchObject({ video: false, background: 'whiteboard' });
+    expect(stages[0]).toMatchObject({ video: false, backgrounds: fallback });
 
-    await host.command({ cmd: 'background', name: 'cork' });
-    await until(() => stages.at(-1)?.background === 'cork', 'background changed');
-    expect(host.ui().background).toBe('cork');
-    await expect(host.command({ cmd: 'background', name: 'lava' })).rejects.toThrow(/background/);
-    expect(host.ui().background).toBe('cork');
+    await host.command({ cmd: 'background', page: 2, name: 'cork' });
+    await until(() => stages.at(-1)?.backgrounds?.[2] === 'cork', 'background changed');
+    expect(host.ui().backgrounds).toEqual([
+      'whiteboard',
+      'blackboard',
+      'cork',
+      'cork',
+      'whiteboard',
+    ]);
+    await expect(host.command({ cmd: 'background', page: 0, name: 'lava' })).rejects.toThrow(
+      /background/,
+    );
+    // No video to show in a session without it, and no sixth canvas.
+    await expect(host.command({ cmd: 'background', page: 0, name: 'video' })).rejects.toThrow(
+      /background/,
+    );
+    await expect(host.command({ cmd: 'background', page: 5, name: 'wall' })).rejects.toThrow(
+      /canvas/,
+    );
+    expect(host.ui().backgrounds[0]).toBe('whiteboard');
   });
 
-  it('does not say anything about video or background when there is video', async () => {
+  it('shows the video on canvas 1 and the backgrounds on the others when there is video', async () => {
     const host = await start();
     const { stages } = await join(host, 'Ana');
     await until(() => stages.length > 0, 'stage');
     expect(stages[0]).not.toHaveProperty('video');
-    expect(stages[0]).not.toHaveProperty('background');
+    expect(stages[0]?.backgrounds).toEqual(['video', 'whiteboard', 'blackboard', 'wall', 'cork']);
     expect(host.ui().video).toBe(true);
+
+    await host.command({ cmd: 'background', page: 0, name: 'wall' });
+    await host.command({ cmd: 'background', page: 3, name: 'video' });
+    await until(() => stages.at(-1)?.backgrounds?.[3] === 'video', 'backgrounds changed');
+    expect(host.ui().backgrounds).toEqual(['wall', 'whiteboard', 'blackboard', 'video', 'cork']);
   });
 
   it('issues a new link without dropping the people already there', async () => {
