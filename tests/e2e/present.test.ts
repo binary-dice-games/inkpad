@@ -315,8 +315,70 @@ describe('static presenter page', () => {
     await expect.poll(() => note.count(), { timeout: 30000 }).toBe(1);
     expect(await note.locator('tspan').first().textContent()).toContain('Remember');
     expect(await note.locator('.pin circle').count()).toBeGreaterThan(0);
-    await note.locator('rect').first().click();
+    await note.locator('tspan').first().click();
     expect(await viewer.locator('collab-whiteboard textarea').count()).toBe(0);
+  });
+
+  it('ties threads between pins and notes of different shapes with the mouse', async () => {
+    const presenter = await presenterPage();
+    const link = await site.startBoard(presenter);
+    const viewer = await joinViewer(link);
+    await viewer.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+    await expect.poll(() => viewer.locator('#page').isVisible(), { timeout: 15000 }).toBe(true);
+    const box = (await presenter.locator('#stage').boundingBox())!;
+    const at = (fx: number, fy: number) => ({
+      x: box.x + box.width * fx,
+      y: box.y + box.height * fy,
+    });
+    const click = async (fx: number, fy: number) => {
+      const p = at(fx, fy);
+      await presenter.mouse.click(p.x, p.y);
+    };
+
+    // An oval note (6 twice picks the second shape after square), a diamond, and a bare pin.
+    await presenter.keyboard.press('6');
+    await presenter.keyboard.press('6');
+    await presenter.keyboard.press('6');
+    await click(0.25, 0.4);
+    await presenter.locator('collab-whiteboard textarea.sticky').fill('Start');
+    await presenter.keyboard.press('Control+Enter');
+    await presenter.keyboard.press('6'); // back to the note tool,
+    await presenter.keyboard.press('6'); // and on to the next shape
+    await click(0.6, 0.55);
+    await presenter.locator('collab-whiteboard textarea.sticky').fill('Decide?');
+    await presenter.keyboard.press('Control+Enter');
+    await presenter.keyboard.press('Escape');
+    await presenter.keyboard.press('7');
+    await click(0.45, 0.15);
+    await expect
+      .poll(() => viewer.locator('collab-whiteboard .item').count(), { timeout: 30000 })
+      .toBe(3);
+    expect(await viewer.locator('collab-whiteboard ellipse.paper').count()).toBe(1);
+    expect(await viewer.locator('collab-whiteboard polygon.paper').count()).toBe(1);
+
+    // Threads: pin to pin by dragging, pressing 8 again changes the heads.
+    const pins = await presenter.evaluate(() => {
+      const root = document.querySelector('collab-whiteboard')!.shadowRoot!;
+      return [...root.querySelectorAll('.item')].map((g) => {
+        const pin = g.querySelector('.pin circle, circle.paper')!;
+        const r = pin.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      });
+    });
+    await presenter.keyboard.press('8');
+    await presenter.mouse.move(pins[0]!.x, pins[0]!.y);
+    await presenter.mouse.down();
+    await presenter.mouse.move(pins[1]!.x, pins[1]!.y, { steps: 5 });
+    await presenter.mouse.up();
+    await presenter.keyboard.press('8'); // both heads
+    await presenter.mouse.move(pins[1]!.x, pins[1]!.y);
+    await presenter.mouse.down();
+    await presenter.mouse.move(pins[2]!.x, pins[2]!.y, { steps: 5 });
+    await presenter.mouse.up();
+    const threads = viewer.locator('collab-whiteboard .arrow-item');
+    await expect.poll(() => threads.count(), { timeout: 30000 }).toBe(2);
+    expect(await threads.nth(0).locator('polygon').count()).toBe(1);
+    expect(await threads.nth(1).locator('polygon').count()).toBe(2);
   });
 
   it('hides the pointer when asked, and remembers the settings', async () => {

@@ -85,7 +85,7 @@ describe('sticky notes on the board', () => {
       keydown('6');
       expect((t.wb as unknown as Inside).tool).toBe('note');
       const color = (t.wb as unknown as Inside).style.color;
-      keydown('7');
+      keydown('9');
       expect((t.wb as unknown as Inside).tool).toBe('note');
       expect((t.wb as unknown as Inside).style.color).not.toBe(color);
     } finally {

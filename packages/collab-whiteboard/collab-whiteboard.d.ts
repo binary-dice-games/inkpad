@@ -71,8 +71,45 @@ export interface NoteItem extends ItemBase {
   ratio: number;
   text: string;
   color: string;
+  /** Absent: square. */
+  shape?: NoteShape;
   rot?: number;
 }
+
+/** The outlines of a sticky note. */
+export type NoteShape = 'square' | 'rounded' | 'oval' | 'diamond' | 'hexagon';
+export const NOTE_SHAPES: readonly NoteShape[];
+
+/** A bare pin, to tie threads to. */
+export interface PinItem extends ItemBase {
+  kind: 'pin';
+  x: number;
+  y: number;
+  color: string;
+}
+
+/** Which ends of a thread have a head: none, `start` (its source), `end` (its destination) or both. */
+export type ArrowHeads = 'none' | 'start' | 'end' | 'both';
+export const ARROW_HEADS: readonly ArrowHeads[];
+
+/** A thread hung from the pin of the item `from` to that of `to`. */
+export interface ArrowItem extends ItemBase {
+  kind: 'arrow';
+  from: string;
+  to: string;
+  color: string;
+  heads: ArrowHeads;
+}
+
+/** Where a thread ties to an item (its pin), in board units; null when it has no pin. */
+export function pinPoint(item: Item | undefined | null): { x: number; y: number } | null;
+
+/** The curve of a thread between two points (it hangs below the straight line); `d` is its SVG path. */
+export function threadCurve(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  seed?: number,
+): { c: { x: number; y: number }; d: string };
 
 /** A file shared on the board. */
 export interface FileInfo {
@@ -85,7 +122,8 @@ export interface Tombstone extends ItemBase {
   deleted: true;
 }
 
-export type Item = InkItem | TextItem | StickerItem | ImageItem | LinkItem | NoteItem;
+export type Item =
+  InkItem | TextItem | StickerItem | ImageItem | LinkItem | NoteItem | PinItem | ArrowItem;
 export type StoredItem = Item | Tombstone;
 
 export type Operation = { t: 'put'; item: StoredItem } | { t: 'clear'; stamp: Stamp };
@@ -251,7 +289,7 @@ export interface WhiteboardSession {
   on(event: 'peers', cb: (peers: unknown[]) => void): () => void;
 }
 
-export type Tool = 'pointer' | 'pen' | 'text' | 'sticker' | 'eraser' | 'note';
+export type Tool = 'pointer' | 'pen' | 'text' | 'sticker' | 'eraser' | 'note' | 'pin' | 'arrow';
 
 export interface WhiteboardOptions {
   session: WhiteboardSession;
@@ -304,6 +342,10 @@ export class Whiteboard {
    * read only. Only its author edits, moves, resizes or deletes it; others double click to copy it.
    */
   addNote(at?: { x: number; y: number }, text?: string): string | null;
+  /** Pins a bare pin in the current colour; null when read only. */
+  addPin(at?: { x: number; y: number }): string | null;
+  /** Ties a thread between the pins of two items; null when read only or an item has no pin. */
+  addArrow(from: string, to: string): string | null;
   /**
    * Pins a web link (a card that opens the page when clicked); null when read only.
    * @throws {WhiteboardError} when `url` is not an http or https address

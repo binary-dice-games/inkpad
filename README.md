@@ -26,10 +26,10 @@ because the page does the same and more.
 
 ## Using the board
 
-Keys 1-7 pick the tool (1 pointer, 2 line, 3 text, 4 sticker, 5 eraser, 6 sticky note, 7 colour); pressing the
+Keys 1-9 pick the tool (1 pointer, 2 line, 3 text, 4 sticker, 5 eraser, 6 sticky note, 7 pin, 8 thread, 9 colour); pressing the
 same number again goes through its options. Drag your own items to move them, right click to
 remove them; stickers and images scale with Shift+drag and turn with Ctrl+drag. The wheel zooms
-at the pointer (0 resets), and image files can be dropped on the board; web addresses pasted or dropped become cards that open the page. Sticky notes (tool 6) are written by clicking them, moved by dragging, resized from the corner and removed with the right button; others double click one to copy its text. **Ask for a turn** (lower
+at the pointer (0 resets), and image files can be dropped on the board; web addresses pasted or dropped become cards that open the page. Sticky notes (tool 6) are written by clicking them, moved by dragging, resized from the corner and removed with the right button; others double click one to copy its text. Pressing 6 again goes through the shapes of the note (square, rounded, oval, diamond, hexagon); select your note to change its shape or colour. **Threads** (8) hang between pins, like on a detective's board: press on a pin (those of notes, pictures and links too, or one from the pin tool), drag to another and let go; 8 again goes through the heads (none, source, destination, both); select a thread to change its colour or heads, right click to remove it. **Ask for a turn** (lower
 left) queues you to speak; the presenter can remove anyone. Files (up to 5 MB) dropped on the board
 are pinned as previews (the first page of a PDF, the text of an Office file) that everyone can drag
 a copy out of; **QR code** in the controls shows the link for a camera; a session can also run without video

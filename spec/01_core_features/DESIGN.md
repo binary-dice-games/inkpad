@@ -195,6 +195,18 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   fixed) or deletes it; the text is wrapped with canvas metrics so the box and the drawing agree.
   Others double click to copy the text (`copyText` option). The pin is a `g.pin[data-id]` so later
   features can attach to it. Tool numbers are now: 6 note, 7 colour.
+- **Shapes, pins and threads.** A note may carry `shape` (`square` is the default and not stored;
+  `rounded`, `oval`, `diamond`, `hexagon`), which only changes its outline and the part of it the
+  text may use (`SHAPE_INSET`); the text is centred. A `pin` item `{x, y, color}` is a bare pin. An
+  `arrow` item `{from, to, color, heads}` ties the pin of the item `from` to that of `to` (any item
+  with a pin: picture, link, note or pin item; `pinPoint`); `heads` is `none`, `start`, `end` or
+  `both`. Nothing about its shape is stored: every client draws the same quadratic curve that hangs
+  below the straight line, sagging more the longer it is (`threadCurve`), with a shadow like the
+  other pinned things. It is re-drawn when either pin changes (the node's signature includes the
+  stamps of both) and follows a pin while it is dragged. An author whose thread lost a pin takes it
+  down (`dropLooseThreads`, not an undo step). Selecting (a click on your own note, pin or thread)
+  shows a bar over it to change shape, colour or heads; only the owner sees it. Tool keys: 6 note,
+  7 pin, 8 thread, 9 colour.
 - **Tilt and links.** What is pinned (`image` and `link` items) gets a random `rot` of at most 7
   degrees when added. A `link` item is `{x, y, size, url, rot?}` with an http(s) address only
   (`cleanUrl`); it carries no picture: every client draws the card (site name, path, tooltip with

@@ -142,14 +142,14 @@ describe('numbered tools', () => {
 
       // The colour is the last number and keeps the tool.
       const before = inside.style.color;
-      keydown('7');
+      keydown('9');
       expect(inside.tool).toBe('sticker');
       expect(inside.style.color).not.toBe(before);
 
       // Pressing it on goes through every colour, white last, and round again.
       const seen = new Set([before, inside.style.color]);
       for (let i = 0; i < 7; i++) {
-        keydown('7');
+        keydown('9');
         seen.add(inside.style.color);
       }
       expect(seen.size).toBe(8);

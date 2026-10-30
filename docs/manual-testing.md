@@ -59,6 +59,9 @@ presenter on Chrome.
 | 45 | Choose the wall and cork backgrounds | plaster with soft shading and a rough surface; cork with grain and a wooden frame |
 | 46 | Press 6 and click the board; type; click away. Drag the note, drag its corner, right click it | the note keeps the text, moves, resizes from its bottom right corner and disappears |
 | 47 | On another device, double click the note, then paste in a text editor | the text of the note is pasted; the other device cannot edit, move or delete the note |
+| 48 | Press 6 repeatedly and add notes; select one and use the bar over it | the shapes cycle (square, rounded, oval, diamond, hexagon); the bar changes the shape and the colour of the selected note; the text stays centred and inside |
+| 49 | Press 7 and click; press 8, press on a pin and drag to another | a pin appears; a hanging thread with a shadow ties the two pins and follows them when they are dragged |
+| 50 | Press 8 again, tie more threads; select one; right click one | heads cycle none, source, destination, both; the bar changes colour and heads; right click removes it; removing a pin removes its threads |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

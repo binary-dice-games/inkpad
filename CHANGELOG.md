@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Sticky notes come in five shapes (square, rounded, oval, diamond, hexagon): key 6 again cycles them; select your note to change its shape or colour.
+- Pin tool (7): a bare pin on the board.
+- Thread tool (8): click a pin and drag to another to tie a hanging thread between them, with heads at none, the source, the destination or both (8 again cycles); select a thread to change its colour or heads, right click to remove it. Threads follow their pins and go when a pin is removed.
 - Sticky notes: new tool (6) pins a note in a pale version of your colour; its owner clicks it to type, drags it to move, drags the corner to resize, right clicks to delete; others double click it to copy its text.
 - Web links on the board: paste a link (Ctrl+V) or drag one from a page onto it to pin a card with its address; clicking the card opens the page in a new tab.
 - White in the colour list (the eighth colour).
@@ -42,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The colour shortcut is now key 7 (6 is the sticky note).
+- The colour shortcut is now key 9 (6 is the sticky note, 7 the pin, 8 the thread).
 - Pinned pictures and files are slightly tilted at random, as if put up by hand.
 - Wall and cork backgrounds look like painted plaster and cork, with a lit, rough surface and a wooden frame on the cork.
 
