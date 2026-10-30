@@ -34,6 +34,9 @@ left) queues you to speak; the presenter can remove anyone. Files (up to 5 MB) d
 are pinned as previews (the first page of a PDF, the text of an Office file) that everyone can drag
 a copy out of; **QR code** in the controls shows the link for a camera; a session can also run without video
 (**Start a board without video**), on a whiteboard, blackboard, wall or cork background.
+**Save...** (viewer bar, presenter controls) saves the board as a PNG picture, an SVG drawing, or a board
+file (`.inkpad.json`: items plus the files pinned on them) that a new session can open to carry on;
+everything opened becomes the opener's own, so it can be moved and changed there.
 
 ## Build and test
 

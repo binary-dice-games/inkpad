@@ -797,6 +797,8 @@ export function threadCurve(a, b, seed = 0.5) {
   return { c, d: `M${round1(a.x)} ${round1(a.y)}Q${round1(c.x)} ${round1(c.y)} ${round1(b.x)} ${round1(b.y)}` };
 }
 
+const BOARD_FORMAT = 'inkpad-board';
+
 const NOTE_FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 const NOTE_TEXT = 16; // font size, in board units
 const NOTE_PAD = 10;
@@ -1444,33 +1446,231 @@ export class Whiteboard {
   }
 
   /**
-   * The items as a standalone SVG document in content units: the viewBox
-   * is `box` ({x, y, width, height}) or the items' bounds.
+   * The area saved by default, in content units: the whole frame (when the adapter has one, as
+   * the video frame or the sheet), else the bounds of the items, else a 16:9 frame.
    */
-  toSvg(box) {
-    const items = this.model.live();
-    const b = box ?? this.bounds(items);
-    const svg = svgEl('svg', { xmlns: SVG_NS, viewBox: `${b.x} ${b.y} ${b.width} ${b.height}`, width: b.width, height: b.height });
-    const used = new Set(items.filter((i) => i.kind === 'sticker').map((i) => i.name));
-    const pictures = items.some((i) => i.kind === 'image');
-    if (used.size || pictures) {
-      const defs = svgEl('defs');
-      for (const name of used) {
-        defs.append(this.symbol(name));
-      }
-      if (pictures) {
-        defs.append(this.shadowFilter());
-      }
-      svg.append(defs);
+  exportArea() {
+    const aspect = this.adapter.aspect?.();
+    if (aspect > 0) {
+      return { x: 0, y: 0, width: FRAME_UNITS, height: FRAME_UNITS / aspect };
     }
-    for (const item of items) {
-      const node = this.itemNode(item);
-      node.querySelectorAll('.hit').forEach((h) => h.remove());
-      node.removeAttribute('class');
-      node.removeAttribute('data-id');
-      svg.append(node);
+    return this.contentBounds() ?? { x: 0, y: 0, width: FRAME_UNITS, height: (FRAME_UNITS * 9) / 16 };
+  }
+
+  /**
+   * The items as a standalone SVG document in content units: the viewBox is `box`
+   * ({x, y, width, height}) or the exported area.
+   *
+   * @param {{x: number, y: number, width: number, height: number}} [box]
+   * @param {{background?: Record<string, string>, backdrop?: string}} [options] `background` the CSS
+   *   (property to value) of a box drawn behind the items, as the board's sheet; `backdrop` a picture
+   *   (a data URL) to fill the area behind them, as the video frame
+   * @returns {string}
+   */
+  toSvg(box, options = {}) {
+    const items = this.model.live();
+    const b = box ?? this.exportArea();
+    const svg = svgEl('svg', { viewBox: `${b.x} ${b.y} ${b.width} ${b.height}`, width: b.width, height: b.height }); // the serializer adds the namespace
+    const defs = svgEl('defs');
+    for (const name of new Set(items.filter((i) => i.kind === 'sticker').map((i) => i.name))) {
+      defs.append(this.symbol(name));
+    }
+    defs.append(this.shadowFilter());
+    const style = svgEl('style');
+    style.textContent = `.item text { white-space: pre; font-family: ${NOTE_FONT}; paint-order: stroke; stroke: #ffffff; stroke-width: 0.25em; stroke-linejoin: round; }`;
+    svg.append(defs, style);
+    if (options.background) {
+      const css = Object.entries({ width: '100%', height: '100%', 'box-sizing': 'border-box', ...options.background }).map(([k, v]) => `${k}:${v}`).join(';');
+      const fo = svgEl('foreignObject', { x: b.x, y: b.y, width: b.width, height: b.height });
+      const div = document.createElementNS('http://www.w3.org/1999/xhtml', 'div');
+      div.setAttribute('style', css);
+      fo.append(div);
+      svg.append(fo);
+    }
+    if (options.backdrop && cleanImageData(options.backdrop, Infinity)) {
+      svg.append(svgEl('image', { href: options.backdrop, x: b.x, y: b.y, width: b.width, height: b.height, preserveAspectRatio: 'none' }));
+    }
+    const keep = [this.selected, this.editing];
+    this.selected = null;
+    this.editing = null;
+    try {
+      for (const item of items) {
+        const node = this.itemNode(item);
+        node.querySelectorAll('.hit, .grip').forEach((h) => h.remove()); // what only helps to use the board
+        node.querySelectorAll('[data-id]').forEach((n) => n.removeAttribute('data-id'));
+        node.removeAttribute('data-id');
+        svg.append(node);
+      }
+    } finally {
+      [this.selected, this.editing] = keep;
     }
     return new XMLSerializer().serializeToString(svg);
+  }
+
+  /**
+   * The board as a PNG picture (the same as {@link toSvg}), `width` pixels wide (at most 4096 high).
+   * When the browser will not draw the background box into a picture it is left out.
+   *
+   * @param {{box?: object, background?: Record<string, string>, backdrop?: string, width?: number}} [options]
+   * @returns {Promise<Blob>}
+   * @throws {WhiteboardError} when the browser cannot make the picture
+   */
+  async toPng({ box, background, backdrop, width = 2000 } = {}) {
+    const b = box ?? this.exportArea();
+    const scale = Math.min(width / b.width, 4096 / b.height);
+    const attempt = async (bg) => {
+      const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(this.toSvg(b, { background: bg, backdrop }))}`;
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('the picture could not be drawn'));
+        img.src = url;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(b.width * scale));
+      canvas.height = Math.max(1, Math.round(b.height * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) {
+        throw new Error('the picture could not be saved');
+      }
+      return blob;
+    };
+    try {
+      return await attempt(background);
+    } catch (first) {
+      try {
+        if (!background) {
+          throw first;
+        }
+        return await attempt(undefined);
+      } catch {
+        throw new WhiteboardError('This browser could not make a picture of the board.');
+      }
+    }
+  }
+
+  /**
+   * The board as a plain object to keep in a file: the items (and the files pinned on them, as
+   * base64) so a later session can pick it up with {@link loadBoard}. Files that have not arrived
+   * yet, or were too big to share, are left out: their pictures stay.
+   *
+   * @param {object} [meta] anything the page wants back when the file is loaded (a background)
+   */
+  async saveBoard(meta = {}) {
+    const items = this.model.live();
+    const files = [];
+    for (const item of items) {
+      const blob = item.kind === 'image' && item.file ? this.files.get(item.id) : null;
+      if (blob) {
+        files.push({ id: item.id, data: toBase64(await blobBytes(blob)) });
+      }
+    }
+    return { format: BOARD_FORMAT, version: 1, saved: new Date().toISOString(), meta, items, files };
+  }
+
+  /**
+   * Adds the contents of a saved board to this one. Everything added is the loader's: new ids, so
+   * it can be moved and changed here, and threads keep their pins. Files pinned on it are shared
+   * again with everyone; a file that is missing or does not fit (the 25 MB of the board) keeps
+   * only its picture. Not an undo step.
+   *
+   * @param {unknown} data a parsed board file
+   * @returns {Promise<{added: number, skipped: number, files: number, meta: object}>}
+   * @throws {WhiteboardError} when `data` is not a board file, or the board is read only
+   */
+  async loadBoard(data) {
+    if (this.readOnlyFlag) {
+      throw new WhiteboardError('The board is locked: nothing can be added.');
+    }
+    if (data?.format !== BOARD_FORMAT || data.version !== 1 || !Array.isArray(data.items) || data.items.length > LIMITS.items * 2) {
+      throw new WhiteboardError('That is not an inkpad board file.');
+    }
+    const bytes = new Map();
+    for (const f of Array.isArray(data.files) ? data.files : []) {
+      if (typeof f?.id === 'string' && typeof f.data === 'string' && f.data.length <= Math.ceil(LIMITS.fileBytes / 3) * 4) {
+        bytes.set(f.id, f.data);
+      }
+    }
+    const kept = data.items.map((raw) => cleanItem(raw)).filter(Boolean);
+    const ids = new Map();
+    const ops = [];
+    const files = [];
+    let skipped = data.items.length - kept.length;
+    const place = (item) => {
+      const { id, author, stamp, deleted, ...fields } = item;
+      if (this.model.live().length >= LIMITS.items || (fields.kind === 'image' && this.model.live().filter((i) => i.kind === 'image').length >= LIMITS.images)) {
+        skipped += 1;
+        return;
+      }
+      let blob = null;
+      if (fields.kind === 'image' && fields.file) {
+        try {
+          const raw = fromBase64(bytes.get(id) ?? '');
+          if (raw.length === fields.file.bytes && this.fileTotal() + files.reduce((n, f) => n + f.blob.size, 0) + raw.length <= LIMITS.filesTotal) {
+            blob = new Blob([raw], { type: fields.file.mime });
+          }
+        } catch {
+          blob = null;
+        }
+        if (!blob) {
+          delete fields.file;
+        }
+      }
+      if (fields.kind === 'arrow') {
+        const from = ids.get(fields.from);
+        const to = ids.get(fields.to);
+        if (!from || !to) {
+          skipped += 1;
+          return;
+        }
+        Object.assign(fields, { from, to });
+      }
+      this.model.counter += 1;
+      const mine = `${this.model.peerId}.${this.model.counter}`;
+      ids.set(id, mine);
+      const op = this.model.put(null, { ...fields, id: mine, author: this.model.peerId }, { record: false });
+      ops.push(op);
+      if (blob) {
+        files.push({ id: mine, blob });
+        this.files.set(mine, blob);
+      }
+    };
+    kept.filter((i) => i.kind !== 'arrow').forEach(place);
+    kept.filter((i) => i.kind === 'arrow').forEach(place);
+    this.render();
+    this.emit('change', { source: 'load' });
+    const added = ops.length;
+    this.drip(ops, files);
+    return { added, skipped, files: files.length, meta: data.meta && typeof data.meta === 'object' ? data.meta : {} };
+  }
+
+  /**
+   * @private Sends the operations of a loaded board, and then its files. A host sends them at once;
+   * a guest stays under the host's limit of operations a second.
+   */
+  drip(ops, files) {
+    const batch = this.session.role === 'host' ? Infinity : 40;
+    const next = () => {
+      if (this.destroyed) {
+        return;
+      }
+      for (const op of ops.splice(0, batch)) {
+        this.send({ t: 'op', op });
+      }
+      if (ops.length > 0) {
+        const timer = setTimeout(next, 1000);
+        this.cleanups.push(() => clearTimeout(timer));
+      } else {
+        for (const f of files) {
+          this.sendFile(f.id, f.blob);
+        }
+      }
+    };
+    next();
   }
 
   /** The drawings' bounds in content units ({x, y, width, height}), or null when there are none. */
@@ -3433,6 +3633,7 @@ export function frameAdapter(element, aspect, content) {
     },
     zoomed: () => view.scale > 1.001,
     view: () => ({ ...view }),
+    aspect: () => aspect(),
   };
 }
 

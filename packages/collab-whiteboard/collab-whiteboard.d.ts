@@ -252,6 +252,24 @@ export interface Rect {
 }
 
 /** Maps board units to the container's CSS pixels. */
+/** What is drawn behind the items of a saved picture. */
+export interface ExportOptions {
+  /** CSS (property to value) of a box behind the items, as the sheet of a board without video. */
+  background?: Record<string, string>;
+  /** A data URL of a picture to fill the area with, as the frame of the video. */
+  backdrop?: string;
+}
+
+/** A board saved in a file. */
+export interface BoardFile {
+  format: 'inkpad-board';
+  version: 1;
+  saved: string;
+  meta: Record<string, unknown>;
+  items: Item[];
+  files: { id: string; data: string }[];
+}
+
 export interface Adapter {
   element?: HTMLElement;
   transform(): Matrix | null;
@@ -263,6 +281,8 @@ export interface Adapter {
   panBy?(dx: number, dy: number): void;
   resetView?(): void;
   zoomed?(): boolean;
+  /** Width / height of the frame, when the content is a frame (the whole frame is then saved). */
+  aspect?(): number;
 }
 
 export interface FrameAdapter extends Adapter {
@@ -372,7 +392,30 @@ export class Whiteboard {
   /** Merges a snapshot (it does not replace what is here) and tells the others. */
   load(snapshot: unknown): void;
   items(): Item[];
-  toSvg(box?: Rect): string;
+  /** The area saved by default: the frame, else the bounds of the items. */
+  exportArea(): Rect;
+  /** What can go behind the items when a board is saved as a picture. */
+  toSvg(box?: Rect, options?: ExportOptions): string;
+  /**
+   * The board as a PNG, `width` pixels wide.
+   * @throws {WhiteboardError} when the browser cannot make the picture
+   */
+  toPng(options?: ExportOptions & { box?: Rect; width?: number }): Promise<Blob>;
+  /**
+   * The board as an object to save in a file (JSON): the items and the files pinned on them, as
+   * base64. `meta` comes back from {@link loadBoard}.
+   */
+  saveBoard(meta?: Record<string, unknown>): Promise<BoardFile>;
+  /**
+   * Adds a saved board to this one: all of it becomes the loader's (new ids), files are shared again.
+   * @throws {WhiteboardError} when `data` is not a board file, or the board is read only
+   */
+  loadBoard(data: unknown): Promise<{
+    added: number;
+    skipped: number;
+    files: number;
+    meta: Record<string, unknown>;
+  }>;
   contentBounds(): Rect | null;
   on(event: 'change', cb: (e: { source: 'local' | 'remote' | 'load' }) => void): () => void;
   on(event: 'tool', cb: (name: Tool) => void): () => void;

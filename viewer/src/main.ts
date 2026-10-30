@@ -27,6 +27,7 @@ import type { Stage } from '@inkpad/defaults';
 import { setToolbarFolded } from './fold';
 import { filePreview } from './previews';
 import { showSheet } from './sheet';
+import { wireSave } from './save';
 import {
   boardAspect,
   endMessage,
@@ -282,6 +283,7 @@ async function main(): Promise<void> {
     store('inkpad.color') ?? palette[Math.floor(Math.random() * palette.length)] ?? '#3e63dd';
   nameInput.value = store('inkpad.name') ?? '';
 
+  wireSave({ board: () => board, stage: () => stage, video: () => video(), toast });
   $('toolsToggle').setAttribute('aria-pressed', String(!folded));
   $('toolsToggle').addEventListener('click', () => {
     folded = !folded;

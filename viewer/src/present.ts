@@ -30,6 +30,7 @@ import { setToolbarFolded } from './fold';
 import { filePreview } from './previews';
 import { qrModules, qrPng, qrSvg } from './qr';
 import { showSheet } from './sheet';
+import { wireSave } from './save';
 import { cleanPrefs, loadPrefs, savePrefs } from './present-settings';
 import type { PresenterPrefs } from './present-settings';
 
@@ -499,6 +500,13 @@ function main(): void {
     qrDialog.showModal();
   });
   $('closeQr').addEventListener('click', () => qrDialog.close());
+  wireSave({
+    board: () => board,
+    stage: () => host?.stage() ?? null,
+    video: () => video(),
+    toast,
+    background: (name) => void host?.command({ cmd: 'background', name }),
+  });
   $('copyQr').addEventListener('click', () => {
     qrPng(qrCode)
       .then((png) => navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]))

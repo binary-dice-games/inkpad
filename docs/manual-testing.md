@@ -62,6 +62,8 @@ presenter on Chrome.
 | 48 | Press 6 repeatedly and add notes; select one and use the bar over it | the shapes cycle (square, rounded, oval, diamond, hexagon); the bar changes the shape and the colour of the selected note; the text stays centred and inside |
 | 49 | Press 7 and click; press 8, press on a pin and drag to another | a pin appears; a hanging thread with a shadow ties the two pins and follows them when they are dragged |
 | 50 | Press 8 again, tie more threads; select one; right click one | heads cycle none, source, destination, both; the bar changes colour and heads; right click removes it; removing a pin removes its threads |
+| 51 | In a session with video, draw something and press **Save...**, then PNG and SVG | the files show the video frame with the drawing over it; the SVG opens in a browser and in a vector editor |
+| 52 | Save a board file with a pinned PDF, close the session, start a new one, **Save...** then open the file (also as a viewer, if allowed to draw) | notes, threads, pictures and the pinned file come back as yours; others can drag the file out; a board without video gets its background back |
 | 19 | Pause, resume, clear and end from the presenter page | Viewers see the placeholder, the video, an empty board and the end message |
 
 ## Known untested areas (from nymph)

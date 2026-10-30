@@ -381,6 +381,92 @@ describe('static presenter page', () => {
     expect(await threads.nth(1).locator('polygon').count()).toBe(2);
   });
 
+  it('saves the board as a picture, a drawing and a board file that another session opens', async () => {
+    const presenter = await presenterPage();
+    await site.startBoard(presenter);
+    await presenter.locator('#background').selectOption('cork');
+    const box = (await presenter.locator('#stage').boundingBox())!;
+    await presenter.keyboard.press('6');
+    await presenter.mouse.click(box.x + box.width * 0.3, box.y + box.height * 0.5);
+    await presenter.locator('collab-whiteboard textarea.sticky').fill('Keep me');
+    await presenter.keyboard.press('Control+Enter');
+    await presenter.evaluate(() => {
+      const dt = new DataTransfer();
+      dt.items.add(new File(['file for later'], 'later.txt', { type: 'text/plain' }));
+      document.getElementById('stage')!.dispatchEvent(
+        new DragEvent('drop', {
+          dataTransfer: dt,
+          bubbles: true,
+          cancelable: true,
+          clientX: 700,
+          clientY: 300,
+        }),
+      );
+    });
+    await expect
+      .poll(() => presenter.locator('collab-whiteboard .item').count(), { timeout: 30000 })
+      .toBe(2);
+
+    const saved = async (id: string) => {
+      await presenter.locator('#saveBoard').click();
+      const download = presenter.waitForEvent('download');
+      await presenter.locator(id).click();
+      const file = await download;
+      const path = (await file.path())!;
+      return {
+        name: file.suggestedFilename(),
+        bytes: await import('node:fs').then((fs) => fs.readFileSync(path)),
+      };
+    };
+
+    // The picture: a real PNG of the frame, with the cork behind the items.
+    const png = await saved('#savePng');
+    expect(png.name).toMatch(/^inkpad-board-\d{4}-\d\d-\d\d-\d{4}\.png$/);
+    expect([...png.bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    const look = await presenter.evaluate(async (b64) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const g = c.getContext('2d')!;
+      g.drawImage(img, 0, 0);
+      const px = g.getImageData(img.width - 200, img.height - 120, 1, 1).data; // the cork, away from the items
+      return { width: img.width, height: img.height, r: px[0]!, g: px[1]!, b: px[2]! };
+    }, png.bytes.toString('base64'));
+    expect(look.width).toBe(2000);
+    expect(Math.abs(look.height - 2000 * (9 / 16))).toBeLessThan(40);
+    expect(look.r).toBeGreaterThan(look.b + 30); // brown, not white or grey
+
+    // The drawing: an SVG with the note's text.
+    const svg = await saved('#saveSvg');
+    expect(svg.name).toMatch(/\.svg$/);
+    const text = svg.bytes.toString('utf8');
+    expect(text.startsWith('<svg')).toBe(true);
+    expect(text).toContain('Keep me');
+
+    // The board file: another session opens it and carries on, with the file and the cork.
+    const file = await saved('#saveFile');
+    expect(file.name).toMatch(/\.inkpad\.json$/);
+    const again = await presenterPage();
+    await site.startBoard(again);
+    await again.locator('#saveBoard').click();
+    await again.locator('#openFile').setInputFiles({
+      name: file.name,
+      mimeType: 'application/json',
+      buffer: file.bytes,
+    });
+    await expect
+      .poll(() => again.locator('collab-whiteboard .item').count(), { timeout: 30000 })
+      .toBe(2);
+    await expect
+      .poll(() => again.locator('#toast').textContent())
+      .toContain('Added 2 items, 1 file');
+    await expect.poll(() => again.locator('#background').inputValue()).toBe('cork');
+    expect(await again.locator('collab-whiteboard .note-item').textContent()).toContain('Keep me');
+  });
+
   it('hides the pointer when asked, and remembers the settings', async () => {
     const presenter = await presenterPage();
     await configure(presenter, 'never');

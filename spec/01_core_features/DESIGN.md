@@ -207,6 +207,20 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   down (`dropLooseThreads`, not an undo step). Selecting (a click on your own note, pin or thread)
   shows a bar over it to change shape, colour or heads; only the owner sees it. Tool keys: 6 note,
   7 pin, 8 thread, 9 colour.
+- **Saving.** `toSvg(box, {background, backdrop})` draws the frame (`exportArea`: the adapter's
+  aspect, else the bounds of the items) with the same node builders as the screen, minus what only
+  helps to use the board (hit areas, resize grips, selection); the sheet behind a board without
+  video is a `foreignObject` box with its CSS, and the video frame a JPEG `<image>` (the page
+  takes it: `viewer/src/save.ts`). `toPng` rasterises that SVG on a canvas (2000 px wide); if the
+  browser refuses the `foreignObject` (it taints the canvas) it is retried without the sheet.
+  A *board file* (`saveBoard` / `loadBoard`, JSON, `format: 'inkpad-board'`, `version: 1`) holds the
+  live items, `meta` (the page's: the background), and the pinned files as base64, so it
+  is self-contained: files that never arrived or were too big only keep their picture. Loading
+  adds everything as the loader's own items under new ids (threads are remapped), validated by
+  `cleanItem` and the board's limits; it is not an undo step and loading twice makes a copy.
+  Files are accepted back only up to 25 MB and exactly `bytes` long, and are sent to the others like
+  a dropped file. A host sends the operations at once; a guest 40 a second, under the host's gate
+  (50 a second). Opening a file replaces nothing: that avoids a viewer wiping a shared board.
 - **Tilt and links.** What is pinned (`image` and `link` items) gets a random `rot` of at most 7
   degrees when added. A `link` item is `{x, y, size, url, rot?}` with an http(s) address only
   (`cleanUrl`); it carries no picture: every client draws the card (site name, path, tooltip with

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Save...** on the viewer and presenter pages: the board as a PNG picture or an SVG drawing (over the video frame or the chosen background), or as a board file to open in a later session and carry on (notes, threads, pictures and pinned files included; what is opened becomes yours).
 - Sticky notes come in five shapes (square, rounded, oval, diamond, hexagon): key 6 again cycles them; select your note to change its shape or colour.
 - Pin tool (7): a bare pin on the board.
 - Thread tool (8): click a pin and drag to another to tie a hanging thread between them, with heads at none, the source, the destination or both (8 again cycles); select a thread to change its colour or heads, right click to remove it. Threads follow their pins and go when a pin is removed.

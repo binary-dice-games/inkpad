@@ -151,6 +151,38 @@
         pointer-events: none;
         text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
       }
+      dialog {
+        width: min(460px, calc(100% - 24px));
+        max-height: calc(100% - 24px);
+        padding: 16px 18px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--panel);
+        color: var(--fg);
+      }
+      dialog::backdrop {
+        background: rgba(0, 0, 0, 0.5);
+      }
+      dialog h2 {
+        margin: 0 0 10px;
+        font-size: 16px;
+      }
+      .saveList {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border);
+      }
+      .actions .spacer {
+        flex: 1;
+      }
       #bar {
         position: absolute;
         right: 10px;
@@ -376,10 +408,29 @@
         <button id="people" type="button" aria-expanded="false" aria-controls="peopleList"></button>
         <button id="fullscreen" type="button">Full screen</button>
         <button id="toolsToggle" type="button" aria-pressed="true">Tools</button>
+        <button id="saveBoard" type="button">Save…</button>
       </div>
       <ul id="peopleList" hidden aria-label="People here"></ul>
       <div id="toast" role="status" hidden></div>
     </main>
+    <dialog id="save" aria-labelledby="saveTitle">
+      <h2 id="saveTitle">Save the board</h2>
+      <div class="saveList">
+        <button id="savePng" type="button">Picture (PNG)</button>
+        <button id="saveSvg" type="button">Drawing (SVG)</button>
+        <button id="saveFile" type="button">Board file, to carry on later</button>
+      </div>
+      <p class="muted">
+        A board file keeps the notes, threads, pictures and the files pinned on it (up to 25 MB).
+        Open it in a new session to carry on: everything in it becomes yours there.
+      </p>
+      <label for="openFile">Open a board file</label>
+      <input id="openFile" type="file" accept=".json,application/json" />
+      <div class="actions">
+        <span class="spacer"></span>
+        <button id="closeSave" class="primary" type="button">Close</button>
+      </div>
+    </dialog>
     <script src="viewer.js"></script>
   </body>
 </html>

@@ -34,6 +34,11 @@
         background: var(--panel);
         color: var(--fg);
       }
+      .saveList {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
       dialog::backdrop {
         background: rgba(0, 0, 0, 0.5);
       }
@@ -226,6 +231,7 @@
           <button id="pause" type="button">Pause</button>
           <button id="reshare" type="button">Share again</button>
           <button id="clear" type="button">Clear drawings</button>
+          <button id="saveBoard" type="button">Save…</button>
           <button id="settingsLive" type="button">Settings…</button>
         </div>
         <details>
@@ -242,6 +248,25 @@
       </aside>
       <div id="toast" role="status" hidden></div>
     </main>
+    <dialog id="save" aria-labelledby="saveTitle">
+      <h2 id="saveTitle">Save the board</h2>
+      <div class="saveList">
+        <button id="savePng" type="button">Picture (PNG)</button>
+        <button id="saveSvg" type="button">Drawing (SVG)</button>
+        <button id="saveFile" type="button">Board file, to carry on later</button>
+      </div>
+      <p class="muted">
+        A board file keeps the notes, threads, pictures and the files pinned on it (up to 25 MB).
+        Open it in a new session to carry on: everything in it becomes yours there.
+      </p>
+      <label for="openFile">Open a board file</label>
+      <input id="openFile" type="file" accept=".json,application/json" />
+      <div class="actions">
+        <span class="spacer"></span>
+        <button id="closeSave" class="primary" type="button">Close</button>
+      </div>
+    </dialog>
+
     <dialog id="qr" aria-labelledby="qrTitle">
       <h2 id="qrTitle">Scan to join</h2>
       <div id="qrCode" role="img" aria-label="QR code of the viewer link"></div>
