@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Open...** button next to **Save...** to load a board file (it was inside the Save dialog).
 - Every tool with options (line width, text size, stickers, note shapes, thread heads, colour) opens a panel with all of them when clicked in the toolbar; the number keys still cycle through them.
 - Pins put on a note, picture, link or sticker stay attached to it (and their threads with them) when it is moved, turned or scaled; they go when it goes.
 - Shift+dragging from a pin pulls a thread with any tool in hand, and the previous tool comes back on release; dragging a pin moves it; the pin wins over the threads and notes around it when it is clicked.
@@ -56,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The thread-heads icons in the toolbar and its options panel are drawn as filled heads along the curve.
 - Dragging a pin that is attached to a note that has been moved no longer starts its thread from the note's old place.
 - Blurry video: the shared tab is now sent at the screen's own resolution (HiDPI included, up
   to 4K) instead of being shrunk to 1280x720, and AV1 or H.264 is used instead of VP8, so

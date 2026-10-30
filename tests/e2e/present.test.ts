@@ -451,7 +451,7 @@ describe('static presenter page', () => {
     expect(file.name).toMatch(/\.inkpad\.json$/);
     const again = await presenterPage();
     await site.startBoard(again);
-    await again.locator('#saveBoard').click();
+    await again.locator('#openBoard').click({ trial: true }); // there, without a dialog to find it in
     await again.locator('#openFile').setInputFiles({
       name: file.name,
       mimeType: 'application/json',

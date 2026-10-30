@@ -2038,10 +2038,22 @@ export class Whiteboard {
       return el.outerHTML;
     }
     if (t === 'arrow') {
+      // The thread of the icon, and a filled head at an end, turned along the curve there.
       const h = this.style.heads;
-      const dot = (x, y) => `<circle cx="${x}" cy="${y}" r="2" fill="currentColor"/>`;
-      const tri = (x, y, dx, dy) => `<path d="M${x} ${y}l${dx * 5 - dy * 3} ${dy * 5 + dx * 3}M${x} ${y}l${dx * 5 + dy * 3} ${dy * 5 - dx * 3}" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>`;
-      return `<path d="M5 17Q12 22 19 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>${h === 'start' || h === 'both' ? tri(5, 17, 0.5, -0.86) : dot(5, 17)}${h === 'end' || h === 'both' ? tri(19, 7, -0.5, 0.86) : dot(19, 7)}`;
+      const A = { x: 5, y: 17 };
+      const C = { x: 12, y: 23 };
+      const B = { x: 19, y: 6 };
+      const dot = (p) => `<circle cx="${p.x}" cy="${p.y}" r="2" fill="currentColor"/>`;
+      const head = (tip, from) => {
+        const len = Math.hypot(tip.x - from.x, tip.y - from.y);
+        const ux = (tip.x - from.x) / len;
+        const uy = (tip.y - from.y) / len;
+        const bx = tip.x - ux * 7;
+        const by = tip.y - uy * 7;
+        const pts = [tip, { x: bx - uy * 3.6, y: by + ux * 3.6 }, { x: bx + uy * 3.6, y: by - ux * 3.6 }];
+        return `<polygon points="${pts.map((p) => `${round1(p.x)},${round1(p.y)}`).join(' ')}" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/>`;
+      };
+      return `<path d="M${A.x} ${A.y}Q${C.x} ${C.y} ${B.x} ${B.y}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>${h === 'start' || h === 'both' ? head(A, C) : dot(A)}${h === 'end' || h === 'both' ? head(B, C) : dot(B)}`;
     }
     if (t === 'sticker') {
       return `<use href="#sticker-${this.style.sticker}" x="1" y="1" width="22" height="22"/>`;

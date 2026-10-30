@@ -409,6 +409,8 @@
         <button id="fullscreen" type="button">Full screen</button>
         <button id="toolsToggle" type="button" aria-pressed="true">Tools</button>
         <button id="saveBoard" type="button">Save…</button>
+        <button id="openBoard" type="button">Open…</button>
+        <input id="openFile" type="file" accept=".json,application/json" hidden />
       </div>
       <ul id="peopleList" hidden aria-label="People here"></ul>
       <div id="toast" role="status" hidden></div>
@@ -422,10 +424,9 @@
       </div>
       <p class="muted">
         A board file keeps the notes, threads, pictures and the files pinned on it (up to 25 MB).
-        Open it in a new session to carry on: everything in it becomes yours there.
+        Use <strong>Open…</strong> in a new session to carry on: everything in it becomes yours
+        there.
       </p>
-      <label for="openFile">Open a board file</label>
-      <input id="openFile" type="file" accept=".json,application/json" />
       <div class="actions">
         <span class="spacer"></span>
         <button id="closeSave" class="primary" type="button">Close</button>

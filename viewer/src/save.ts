@@ -137,7 +137,7 @@ export async function openBoardFile(file: File, host: SaveHost): Promise<void> {
   }
 }
 
-/** Connects the save dialog of the page (`#save` and its buttons) to `host`. */
+/** Connects the page's Save… dialog (`#save`) and its Open… button (`#openBoard`, `#openFile`) to `host`. */
 export function wireSave(host: SaveHost): void {
   const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
   const dialog = $<HTMLDialogElement>('save');
@@ -154,11 +154,11 @@ export function wireSave(host: SaveHost): void {
     });
   }
   const input = $<HTMLInputElement>('openFile');
+  $('openBoard').addEventListener('click', () => input.click());
   input.addEventListener('change', () => {
     const file = input.files?.[0];
     input.value = '';
     if (file) {
-      dialog.close();
       void openBoardFile(file, host);
     }
   });
