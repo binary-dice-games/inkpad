@@ -817,6 +817,7 @@ describe('the options of a tool', () => {
         ['2', 3, 2, () => (t.inside.style as unknown as { width: number }).width, 8],
         ['3', 3, 0, () => (t.inside.style as unknown as { size: number }).size, 18],
         ['6', 5, 3, () => t.inside.style.shape, 'diamond'],
+        ['7', 5, 4, () => (t.inside.style as unknown as { pinShape: string }).pinShape, 'star'],
         ['8', 4, 1, () => t.inside.style.heads, 'start'],
       ];
       for (const [key, count, choose, read, expected] of cases) {
@@ -840,12 +841,12 @@ describe('the options of a tool', () => {
       expect(t.panel()).toHaveLength(8);
       t.panel()[1]!.click();
       expect(t.inside.style.color).toBe('#f5a524');
-      // The pointer, the eraser and the pin have nothing to choose: they only select.
-      for (const key of ['1', '5', '7']) {
+      // The pointer and the eraser have nothing to choose: they only select.
+      for (const key of ['1', '5']) {
         t.tool(key).click();
         expect(t.panel(), key).toHaveLength(0);
       }
-      expect(t.inside.tool).toBe('pin');
+      expect(t.inside.tool).toBe('eraser');
     } finally {
       t.wb.destroy();
       t.room.close();

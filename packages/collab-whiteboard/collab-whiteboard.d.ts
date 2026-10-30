@@ -99,10 +99,14 @@ export interface NoteItem extends ItemBase {
 /** The outlines of a sticky note. */
 export type NoteShape = 'square' | 'rounded' | 'oval' | 'diamond' | 'hexagon';
 export const NOTE_SHAPES: readonly NoteShape[];
+export type PinShape = 'round' | 'square' | 'diamond' | 'triangle' | 'star';
+export const PIN_SHAPES: readonly PinShape[];
 
 /** A bare pin, to tie threads to. */
 export interface PinItem extends ItemBase {
   kind: 'pin';
+  /** The shape of its head; absent for round. */
+  shape?: PinShape;
   /** Where it is (when it is attached to an item: where it was put on it). */
   x: number;
   y: number;
@@ -383,6 +387,7 @@ export class Whiteboard {
     size?: number;
     sticker?: string;
     shape?: NoteShape;
+    pinShape?: PinShape;
     heads?: ArrowHeads;
   }): void;
   setAdapter(adapter: Adapter): void;

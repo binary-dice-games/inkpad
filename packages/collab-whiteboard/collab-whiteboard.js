@@ -48,6 +48,8 @@ const IMAGE_DATA = /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/
 const TOOL_NAMES = new Set(['pointer', 'pen', 'text', 'sticker', 'eraser', 'note', 'pin', 'arrow']);
 /** The shapes of a sticky note, and the heads of a thread (none, at its source, at its destination, both). */
 export const NOTE_SHAPES = Object.freeze(['square', 'rounded', 'oval', 'diamond', 'hexagon']);
+/** The shapes of a pin's head (`round` is the usual one and is not stored). */
+export const PIN_SHAPES = Object.freeze(['round', 'square', 'diamond', 'triangle', 'star']);
 export const ARROW_HEADS = Object.freeze(['none', 'start', 'end', 'both']);
 /** How an element is locked: absent (anybody may change it), `owner` (only its author), `all` (nobody, but its author may unlock it). */
 export const LOCKS = Object.freeze(['owner', 'all']);
@@ -155,7 +157,8 @@ export function cleanItem(item) {
   }
   if (item.kind === 'pin') {
     const on = ID.test(item.on ?? '') && finite(item.u, -3, 3) && finite(item.v, -3, 3) ? { on: item.on, u: item.u, v: item.v } : {};
-    return finite(item.x) && finite(item.y) && COLOR.test(item.color ?? '') ? { ...base, x: item.x, y: item.y, color: item.color, ...on } : null;
+    const shape = PIN_SHAPES.includes(item.shape) && item.shape !== 'round' ? { shape: item.shape } : {};
+    return finite(item.x) && finite(item.y) && COLOR.test(item.color ?? '') ? { ...base, x: item.x, y: item.y, color: item.color, ...shape, ...on } : null;
   }
   if (item.kind === 'arrow') {
     if (!ID.test(item.from ?? '') || !ID.test(item.to ?? '') || item.from === item.to || !COLOR.test(item.color ?? '') || !ARROW_HEADS.includes(item.heads)) {
@@ -841,6 +844,28 @@ function fromCentre(item, c, rot) {
   return { x: c.x - k * Math.sin(a), y: c.y - k * (1 - Math.cos(a)) };
 }
 
+/** The head of a pin in the given shape, centred at (x, y) and about `r` from the centre to its edge. */
+function pinHead(shape, x, y, r, attrs) {
+  const poly = (pts) => svgEl('polygon', { points: pts.map(([px, py]) => `${round1(x + px * r)},${round1(y + py * r)}`).join(' '), 'stroke-linejoin': 'round', ...attrs });
+  if (shape === 'square') {
+    return svgEl('rect', { x: x - r * 0.85, y: y - r * 0.85, width: r * 1.7, height: r * 1.7, rx: r * 0.2, ...attrs });
+  }
+  if (shape === 'diamond') {
+    return poly([[0, -1.2], [1.2, 0], [0, 1.2], [-1.2, 0]]);
+  }
+  if (shape === 'triangle') {
+    return poly([[0, -1.15], [1.1, 0.9], [-1.1, 0.9]]);
+  }
+  if (shape === 'star') {
+    return poly(Array.from({ length: 10 }, (_, i) => {
+      const a = (i * Math.PI) / 5 - Math.PI / 2;
+      const k = i % 2 === 0 ? 1.25 : 0.55;
+      return [Math.cos(a) * k, Math.sin(a) * k];
+    }));
+  }
+  return svgEl('circle', { cx: x, cy: y, r, ...attrs });
+}
+
 /** How far along the diagonal to the corner a shape reaches, by shape (so a grip can sit inside it). */
 const GRIP_REACH = { square: 1, rounded: 0.92, oval: 0.7071, diamond: 0.5, hexagon: 0.735 };
 
@@ -1071,6 +1096,7 @@ const STRINGS = {
   shapeNames: { square: 'Square', rounded: 'Rounded', oval: 'Oval', diamond: 'Diamond', hexagon: 'Hexagon' },
   headNames: { none: 'No heads', start: 'Head at the source', end: 'Head at the destination', both: 'Heads at both ends' },
   shapeLabel: 'Shape',
+  pinShapeNames: { round: 'Round', square: 'Square', diamond: 'Diamond', triangle: 'Triangle', star: 'Star' },
   lockNames: {
     open: 'Unlocked: anybody can change it (click to lock it for the others)',
     owner: 'Locked: only its owner can change it (click to lock it for everybody)',
@@ -1294,7 +1320,7 @@ export class Whiteboard {
     this.listeners = new Map();
     this.tool = 'pointer';
     const own = this.session.me.color;
-    this.style = { color: COLOR.test(own ?? '') ? own : PALETTE[0], width: WIDTHS[1], size: SIZES[1], sticker: 'check', shape: 'square', heads: 'end' };
+    this.style = { color: COLOR.test(own ?? '') ? own : PALETTE[0], width: WIDTHS[1], size: SIZES[1], sticker: 'check', shape: 'square', pinShape: 'round', heads: 'end' };
     this.readOnlyFlag = !!options.readOnly;
     this.nodes = new Map(); // item id -> SVG node
     this.liveInk = new Map(); // `${peer}:${id}` -> {node, points, seq}
@@ -1386,6 +1412,11 @@ export class Whiteboard {
       this.style.shape = shape;
       this.renderToolbar();
       this.flash(`${s.shapeLabel}: ${s.shapeNames[shape]}`);
+    } else if (what === 'pin') {
+      const shape = PIN_SHAPES[(PIN_SHAPES.indexOf(this.style.pinShape) + 1) % PIN_SHAPES.length];
+      this.style.pinShape = shape;
+      this.renderToolbar();
+      this.flash(`${s.shapeLabel}: ${s.pinShapeNames[shape]}`);
     } else if (what === 'arrow') {
       const heads = ARROW_HEADS[(ARROW_HEADS.indexOf(this.style.heads) + 1) % ARROW_HEADS.length];
       this.style.heads = heads;
@@ -1500,7 +1531,7 @@ export class Whiteboard {
     if (this.readOnlyFlag) {
       return null;
     }
-    const op = this.local(() => this.model.add({ kind: 'pin', x: round1(at.x), y: round1(at.y), color: this.style.color, ...this.attachment(at, null) }));
+    const op = this.local(() => this.model.add({ kind: 'pin', x: round1(at.x), y: round1(at.y), color: this.style.color, ...(this.style.pinShape === 'round' ? {} : { shape: this.style.pinShape }), ...this.attachment(at, null) }));
     return op ? op.item.id : null;
   }
 
@@ -1595,7 +1626,7 @@ export class Whiteboard {
     this.adapter.resetView?.();
   }
 
-  /** The style of new items: {color, width, size, sticker, shape, heads}. */
+  /** The style of new items: {color, width, size, sticker, shape, pinShape, heads}. */
   setStyle(style) {
     if (style.color && COLOR.test(style.color)) {
       this.style.color = style.color;
@@ -1610,6 +1641,9 @@ export class Whiteboard {
     }
     if (NOTE_SHAPES.includes(style.shape)) {
       this.style.shape = style.shape;
+    }
+    if (PIN_SHAPES.includes(style.pinShape)) {
+      this.style.pinShape = style.pinShape;
     }
     if (ARROW_HEADS.includes(style.heads)) {
       this.style.heads = style.heads;
@@ -2310,6 +2344,9 @@ export class Whiteboard {
       const el = shapeElement(this.style.shape, 4, 4, 16, 16, { fill: pastel(this.style.color), stroke: 'currentColor', 'stroke-width': 1.8 });
       return el.outerHTML;
     }
+    if (t === 'pin') {
+      return `${pinHead(this.style.pinShape, 12, 9, 5, { fill: 'currentColor' }).outerHTML}<path d="M12 15v7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`;
+    }
     if (t === 'arrow') {
       // The thread of the icon, and a filled head at an end, turned along the curve there.
       const h = this.style.heads;
@@ -2355,6 +2392,9 @@ export class Whiteboard {
     }
     if (kind === 'note') {
       return NOTE_SHAPES.map((shape) => ({ label: `${s.shapeLabel}: ${s.shapeNames[shape]}`, icon: shapeElement(shape, 3, 4, 18, 16, { fill: pastel(style.color), stroke: 'currentColor', 'stroke-width': 1.8 }).outerHTML, pressed: style.shape === shape, run: () => this.setStyle({ shape }) }));
+    }
+    if (kind === 'pin') {
+      return PIN_SHAPES.map((shape) => ({ label: `${s.shapeLabel}: ${s.pinShapeNames[shape]}`, icon: pinHead(shape, 12, 12, 7, { fill: style.color, stroke: 'currentColor', 'stroke-width': 1.6 }).outerHTML, pressed: style.pinShape === shape, run: () => this.setStyle({ pinShape: shape }) }));
     }
     if (kind === 'arrow') {
       return ARROW_HEADS.map((heads) => {
@@ -2720,7 +2760,7 @@ export class Whiteboard {
       const shadow = svgEl('g', { filter: 'url(#wb-shadow)' });
       shadow.append(
         svgEl('ellipse', { cx: at.x + 4, cy: at.y + 6, rx: PIN_RADIUS * 0.95, ry: PIN_RADIUS * 0.6, fill: 'rgba(0,0,0,0.3)' }),
-        svgEl('circle', { class: 'paper', cx: at.x, cy: at.y, r: PIN_RADIUS, fill: item.color, stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8 }),
+        pinHead(item.shape ?? 'round', at.x, at.y, PIN_RADIUS, { class: 'paper', fill: item.color, stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8 }),
         svgEl('circle', { cx: at.x - PIN_RADIUS * 0.3, cy: at.y - PIN_RADIUS * 0.32, r: PIN_RADIUS * 0.3, fill: 'rgba(255,255,255,0.6)' }),
       );
       g.append(svgEl('circle', { class: 'hit', cx: at.x, cy: at.y, r: PIN_RADIUS + 4, fill: 'transparent' }), shadow);
@@ -3629,6 +3669,11 @@ export class Whiteboard {
         rule();
         swatches(PALETTE, item.color, 'color');
       } else if (editable && item.kind === 'pin') {
+        for (const shape of PIN_SHAPES) {
+          const icon = pinHead(shape, 12, 12, 7, { fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8 }).outerHTML;
+          parts.push(button(`${s.shapeLabel}: ${s.pinShapeNames[shape]}`, `<svg viewBox="0 0 24 24">${icon}</svg>`, (item.shape ?? 'round') === shape, () => change({ shape: shape === 'round' ? undefined : shape })));
+        }
+        rule();
         swatches(PALETTE, item.color, 'color');
       }
       if (mine) {

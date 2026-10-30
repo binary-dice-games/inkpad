@@ -201,7 +201,7 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   features can attach to it. Tool numbers are now: 6 note, 7 colour.
 - **Shapes, pins and threads.** A note may carry `shape` (`square` is the default and not stored;
   `rounded`, `oval`, `diamond`, `hexagon`), which only changes its outline and the part of it the
-  text may use (`SHAPE_INSET`); the text is centred. A `pin` item `{x, y, color}` is a bare pin. An
+  text may use (`SHAPE_INSET`); the text is centred. A `pin` item `{x, y, color, shape?}` is a bare pin (`shape` one of `PIN_SHAPES`, absent for round; only its head is drawn differently). An
   `arrow` item `{from, to, color, heads}` ties the pin of the item `from` to that of `to` (any item
   with a pin: picture, link, note or pin item; `pinPoint`); `heads` is `none`, `start`, `end` or
   `both`. Nothing about its shape is stored: every client draws the same quadratic curve that hangs
