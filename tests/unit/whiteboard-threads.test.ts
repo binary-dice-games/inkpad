@@ -326,6 +326,49 @@ describe('the pin and thread tools', () => {
     }
   });
 
+  it('starts from a new pin when pressed on an element, put only if the thread is tied', async () => {
+    const t = await mount();
+    try {
+      const a = t.wb.addNote({ x: 200, y: 200 })!;
+      const b = t.wb.addNote({ x: 500, y: 300 })!;
+      const bare = t.wb.addPin({ x: 700, y: 100 })!;
+      const count = t.wb.items().length;
+      t.wb.setTool('arrow');
+
+      // Let go over the board, or over the element it started on: nothing is left behind.
+      pointer(t.board, 'pointerdown', 210, 220);
+      expect(t.root.querySelector('.live circle.pending-pin')).not.toBeNull(); // the pin to be
+      pointer(t.board, 'pointermove', 350, 50);
+      pointer(t.board, 'pointerup', 350, 50);
+      expect(t.root.querySelector('.live circle.pending-pin')).toBeNull();
+      pointer(t.board, 'pointerdown', 210, 220);
+      pointer(t.board, 'pointermove', 190, 230);
+      pointer(t.board, 'pointerup', 190, 230);
+      expect(t.wb.items()).toHaveLength(count);
+
+      // Element to element: a pin on each, tied together.
+      pointer(t.board, 'pointerdown', 210, 220);
+      pointer(t.board, 'pointermove', 520, 310);
+      pointer(t.board, 'pointerup', 520, 310);
+      const pins = () => t.wb.items().filter((i) => i.kind === 'pin' && i.id !== bare);
+      expect(pins()).toMatchObject([
+        { x: 210, y: 220, on: a },
+        { x: 520, y: 310, on: b },
+      ]);
+      const threads = () => t.wb.items().filter((i): i is ArrowItem => i.kind === 'arrow');
+      expect(threads().map((x) => [x.from, x.to])).toEqual([[pins()[0]!.id, pins()[1]!.id]]);
+
+      // Element to a pin: a pin on the element, tied to that pin.
+      pointer(t.board, 'pointerdown', 190, 180);
+      pointer(t.board, 'pointermove', 700, 100);
+      pointer(t.board, 'pointerup', 700, 100);
+      expect(pins()[2]).toMatchObject({ x: 190, y: 180, on: a });
+      expect(threads()[1]).toMatchObject({ from: pins()[2]!.id, to: bare });
+    } finally {
+      done(t);
+    }
+  });
+
   it('refuses a thread to something without a pin, and everything on a read-only board', async () => {
     const t = await mount();
     try {
