@@ -192,10 +192,3 @@ export async function makeZip(entries: ZipEntry[]): Promise<Blob> {
   e.setUint32(16, offset, true);
   return new Blob([...chunks, ...central, end] as BlobPart[], { type: 'application/zip' });
 }
-
-/** Whether `bytes` start like a zip. */
-export function looksLikeZip(bytes: Uint8Array): boolean {
-  return (
-    bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 3 && bytes[3] === 4
-  );
-}

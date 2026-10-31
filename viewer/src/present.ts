@@ -334,10 +334,7 @@ function askResume(info: BackupInfo): Promise<'resume' | 'new'> {
     `item${info.items === 1 ? '' : 's'}. Resume it in this session, or start with an empty ` +
     'board? Starting new replaces the backup.';
   $('resumeDownload').onclick = () =>
-    download(
-      info.file,
-      `inksplat-backup-${fileStamp(info.saved ?? new Date())}.inksplat.${info.zip ? 'zip' : 'json'}`,
-    );
+    download(info.file, `inksplat-backup-${fileStamp(info.saved ?? new Date())}.inksplat.zip`);
   return new Promise((resolve) => {
     $('resumeYes').onclick = () => dialog.close('resume');
     $('resumeNo').onclick = () => dialog.close('new');

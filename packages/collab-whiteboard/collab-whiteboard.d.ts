@@ -302,8 +302,8 @@ export interface BoardFile {
   saved: string;
   meta: Record<string, unknown>;
   items: Item[];
-  /** The files pinned on images: base64, or bytes when saved with `binary`. */
-  files: { id: string; data: string | Uint8Array }[];
+  /** The files pinned on images, as bytes. */
+  files: { id: string; data: Uint8Array }[];
 }
 
 export interface Adapter {
@@ -462,14 +462,14 @@ export class Whiteboard {
    */
   toPng(options?: ExportOptions & { box?: Rect; width?: number }): Promise<Blob>;
   /**
-   * The board as an object to save in a file (JSON): the items and the files pinned on them, as
-   * base64, or as bytes with `binary` (to keep them apart from the JSON). `meta` comes back from
+   * The board as an object to save in a file: the items and the files pinned on them, as
+   * bytes (the page keeps them apart from the JSON, in a zip). `meta` comes back from
    * {@link loadBoard}.
    */
-  saveBoard(meta?: Record<string, unknown>, options?: { binary?: boolean }): Promise<BoardFile>;
+  saveBoard(meta?: Record<string, unknown>): Promise<BoardFile>;
   /**
    * Adds a saved board to this one: all of it becomes the loader's (new ids), files are shared again.
-   * Its files may be base64 or bytes.
+   * Its files are bytes.
    * @throws {WhiteboardError} when `data` is not a board file, or the board is read only
    */
   loadBoard(data: unknown): Promise<{

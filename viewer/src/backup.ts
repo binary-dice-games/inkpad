@@ -3,13 +3,12 @@
  * @file The presenter's backup of the board (spec/06_static_presenter/DESIGN.md, Backup): a board
  * file (the zip of `board-archive.ts`) kept in the browser's own storage for this site, written a
  * moment after every change, so a closed tab, a crash or a reload does not lose the work. The next
- * session offers to resume it. Backups written before boards were zips (JSON) still resume.
+ * session offers to resume it.
  *
  * The file goes in the origin private file system (OPFS) where the browser can write files
  * there, else in IndexedDB; with neither there is no backup.
  */
 import { readArchiveManifest } from './board-archive';
-import { looksLikeZip } from './zip';
 
 /** Where a backup is kept: one file. */
 export interface BackupStore {
@@ -23,15 +22,9 @@ export interface BackupStore {
 
 /** The name of the backup file. */
 export const BACKUP_NAME = 'board-backup.inksplat.zip';
-/** The name of the backup before boards were zips: read when there is no other, removed on write. */
-export const LEGACY_BACKUP_NAME = 'board-backup.inksplat.json';
-
-const asBlob = (value: unknown): Blob | null =>
-  value instanceof Blob ? value : typeof value === 'string' ? new Blob([value]) : null;
-
 /** A store in memory (for tests, and a page whose browser has no storage). */
-export function memoryStore(initial: Blob | string | null = null): BackupStore {
-  let file = asBlob(initial);
+export function memoryStore(initial: Blob | null = null): BackupStore {
+  let file = initial;
   return {
     read: () => Promise.resolve(file),
     write: (next) => {
@@ -51,37 +44,30 @@ async function opfsStore(): Promise<BackupStore | null> {
   if (!dir || !('createWritable' in FileSystemFileHandle.prototype)) {
     return null;
   }
-  const missing = (e: unknown) => e instanceof DOMException && e.name === 'NotFoundError';
-  const readFile = async (name: string): Promise<Blob | null> => {
-    try {
-      return await (await dir.getFileHandle(name)).getFile();
-    } catch (e) {
-      if (missing(e)) {
-        return null;
-      }
-      throw e;
-    }
-  };
-  const removeFile = async (name: string): Promise<void> => {
-    try {
-      await dir.removeEntry(name);
-    } catch (e) {
-      if (!missing(e)) {
+  return {
+    read: async () => {
+      try {
+        return await (await dir.getFileHandle(BACKUP_NAME)).getFile();
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'NotFoundError') {
+          return null;
+        }
         throw e;
       }
-    }
-  };
-  return {
-    read: async () => (await readFile(BACKUP_NAME)) ?? (await readFile(LEGACY_BACKUP_NAME)),
+    },
     write: async (file) => {
       const out = await (await dir.getFileHandle(BACKUP_NAME, { create: true })).createWritable();
       await out.write(file);
       await out.close();
-      await removeFile(LEGACY_BACKUP_NAME);
     },
     remove: async () => {
-      await removeFile(BACKUP_NAME);
-      await removeFile(LEGACY_BACKUP_NAME);
+      try {
+        await dir.removeEntry(BACKUP_NAME);
+      } catch (e) {
+        if (!(e instanceof DOMException && e.name === 'NotFoundError')) {
+          throw e;
+        }
+      }
     },
   };
 }
@@ -110,17 +96,12 @@ function indexedDbStore(): BackupStore | null {
     });
   };
   return {
-    read: async () =>
-      asBlob(await run<unknown>('readonly', (s) => s.get(BACKUP_NAME))) ??
-      asBlob(await run<unknown>('readonly', (s) => s.get(LEGACY_BACKUP_NAME))),
-    write: async (file) => {
-      await run('readwrite', (s) => s.put(file, BACKUP_NAME));
-      await run('readwrite', (s) => s.delete(LEGACY_BACKUP_NAME));
+    read: async () => {
+      const file = await run<unknown>('readonly', (s) => s.get(BACKUP_NAME));
+      return file instanceof Blob ? file : null;
     },
-    remove: async () => {
-      await run('readwrite', (s) => s.delete(BACKUP_NAME));
-      await run('readwrite', (s) => s.delete(LEGACY_BACKUP_NAME));
-    },
+    write: (file) => run('readwrite', (s) => s.put(file, BACKUP_NAME)),
+    remove: () => run('readwrite', (s) => s.delete(BACKUP_NAME)),
   };
 }
 
@@ -147,51 +128,24 @@ export interface BackupInfo {
   saved: Date | null;
   /** How many items it holds (at least one). */
   items: number;
-  /** The board file, to open or download. */
+  /** The board zip, to open or download. */
   file: Blob;
-  /** Whether it is a zip (else an older JSON board file): `.inksplat.zip` or `.inksplat.json`. */
-  zip: boolean;
 }
 
-/** What a backup holds, or null when `file` is not a board file or the board was empty. */
+/** What a backup holds, or null when `file` is not a board zip or the board was empty. */
 export async function backupInfo(file: Blob | null): Promise<BackupInfo | null> {
   if (!file) {
     return null;
   }
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  if (looksLikeZip(bytes)) {
-    const manifest = await readArchiveManifest(bytes);
-    if (!manifest || typeof manifest.items !== 'number' || manifest.items < 1) {
-      return null;
-    }
-    const saved = typeof manifest.saved === 'string' ? new Date(manifest.saved) : null;
-    return {
-      saved: saved && !Number.isNaN(saved.getTime()) ? saved : null,
-      items: manifest.items,
-      file,
-      zip: true,
-    };
-  }
-  let data: unknown;
-  try {
-    data = JSON.parse(new TextDecoder().decode(bytes));
-  } catch {
+  const manifest = await readArchiveManifest(new Uint8Array(await file.arrayBuffer()));
+  if (!manifest || typeof manifest.items !== 'number' || manifest.items < 1) {
     return null;
   }
-  const board = data as { format?: unknown; items?: unknown; saved?: unknown };
-  if (
-    board?.format !== 'inksplat-board' ||
-    !Array.isArray(board.items) ||
-    board.items.length === 0
-  ) {
-    return null;
-  }
-  const saved = typeof board.saved === 'string' ? new Date(board.saved) : null;
+  const saved = typeof manifest.saved === 'string' ? new Date(manifest.saved) : null;
   return {
     saved: saved && !Number.isNaN(saved.getTime()) ? saved : null,
-    items: board.items.length,
+    items: manifest.items,
     file,
-    zip: false,
   };
 }
 

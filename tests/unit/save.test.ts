@@ -91,8 +91,7 @@ describe('saving', () => {
         calls.push(o);
         return '<svg/>';
       },
-      saveBoard: async (meta: unknown, options: unknown) => {
-        calls.push(options);
+      saveBoard: async (meta: unknown) => {
         return { format: 'inksplat-board', version: 1, saved: '', meta, items: [], files: [] };
       },
     };
@@ -107,9 +106,8 @@ describe('saving', () => {
     ]);
     expect(downloads[1]!.blob.type).toBe('image/svg+xml');
     expect(downloads[2]!.blob.type).toBe('application/zip');
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(2);
     expect((calls[0] as { background: object }).background).toBeDefined();
-    expect(calls[2]).toEqual({ binary: true }); // the files go in the zip as they are
     // The board file remembers the backgrounds of all canvases, for the session that opens it.
     const parts = zipParts(await bytesOf(downloads[2]!.blob));
     expect(parts.has('manifest.json')).toBe(true);
@@ -138,12 +136,22 @@ describe('saving', () => {
 });
 
 describe('opening a board file', () => {
-  const fileOf = (content: string | Uint8Array) => {
-    const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
-    const file = new File([bytes as BlobPart], 'b.json');
+  const enc = (text: string) => new TextEncoder().encode(text);
+  const fileOf = (bytes: Uint8Array) => {
+    const file = new File([bytes as BlobPart], 'b.inksplat.zip');
     // jsdom's File has no arrayBuffer().
     return Object.assign(file, { arrayBuffer: async () => bytes.slice().buffer });
   };
+  /** A board zip with nothing but its manifest and settings. */
+  const boardZip = async () =>
+    fileOf(
+      await bytesOf(
+        await makeZip([
+          { name: 'manifest.json', data: enc('{"format":"inksplat-board-zip","version":1}') },
+          { name: 'settings.json', data: enc('{"backgrounds":["cork"]}') },
+        ]),
+      ),
+    );
 
   it('adds it, says how much, and gives the presenter its backgrounds', async () => {
     let loaded: unknown;
@@ -161,35 +169,7 @@ describe('opening a board file', () => {
         },
       },
     );
-    await openBoardFile(fileOf('{"format":"inksplat-board"}'), p.host);
-    expect(loaded).toEqual({ format: 'inksplat-board' });
-    expect(p.toasts).toEqual(['Added 3 items, 2 files (1 left out).']);
-    // No video in this session: that canvas, like the unknown one, stays as it is.
-    expect(p.backgrounds).toEqual([['cork', undefined, undefined, 'wall', 'wall']]);
-  });
-
-  it('opens a board zip', async () => {
-    let loaded: unknown;
-    const p = setup(
-      {},
-      {
-        loadBoard: async (data: unknown) => {
-          loaded = data;
-          return { added: 1, skipped: 0, files: 0, meta: {} };
-        },
-      },
-    );
-    const zip = await makeZip([
-      {
-        name: 'manifest.json',
-        data: new TextEncoder().encode('{"format":"inksplat-board-zip","version":1}'),
-      },
-      {
-        name: 'settings.json',
-        data: new TextEncoder().encode('{"backgrounds":["cork"]}'),
-      },
-    ]);
-    await openBoardFile(fileOf(await bytesOf(zip)), p.host);
+    await openBoardFile(await boardZip(), p.host);
     expect(loaded).toMatchObject({
       format: 'inksplat-board',
       version: 1,
@@ -197,15 +177,17 @@ describe('opening a board file', () => {
       items: [],
       files: [],
     });
-    expect(p.toasts).toEqual(['Added 1 item.']);
+    expect(p.toasts).toEqual(['Added 3 items, 2 files (1 left out).']);
+    // No video in this session: that canvas, like the unknown one, stays as it is.
+    expect(p.backgrounds).toEqual([['cork', undefined, undefined, 'wall', 'wall']]);
   });
 
-  it('reads the single background of older files, and keeps unknown ones out', () => {
+  it('keeps unknown backgrounds out', () => {
     const none = stage({ video: false });
-    expect(fileBackgrounds({ background: 'cork' }, none)).toEqual(Array(5).fill('cork'));
-    expect(fileBackgrounds({ background: 'cork' }, stage())).toBeUndefined(); // the video stays
-    expect(fileBackgrounds({ background: 'lava' }, none)).toBeUndefined();
+    expect(fileBackgrounds({}, none)).toBeUndefined();
+    expect(fileBackgrounds({ background: 'cork' }, none)).toBeUndefined(); // not a setting of ours
     expect(fileBackgrounds({ backgrounds: ['lava'] }, none)).toBeUndefined();
+    expect(fileBackgrounds({ backgrounds: ['video'] }, none)).toBeUndefined(); // no video here
     expect(fileBackgrounds({ backgrounds: ['video'] }, stage())).toEqual([
       'video',
       undefined,
@@ -218,34 +200,41 @@ describe('opening a board file', () => {
   it('keeps a background that is not one of ours out, and speaks of one item as one', async () => {
     const p = setup(
       {},
-      { loadBoard: async () => ({ added: 1, skipped: 0, files: 1, meta: { background: 'lava' } }) },
+      {
+        loadBoard: async () => ({
+          added: 1,
+          skipped: 0,
+          files: 1,
+          meta: { backgrounds: ['lava'] },
+        }),
+      },
     );
-    await openBoardFile(fileOf('{}'), p.host);
+    await openBoardFile(await boardZip(), p.host);
     expect(p.toasts).toEqual(['Added 1 item, 1 file.']);
     expect(p.backgrounds).toEqual([]);
   });
 
-  it('refuses what is not JSON, what the board refuses, and what is too large', async () => {
+  it('refuses what is not a board zip, what the board refuses, and what is too large', async () => {
     const p = setup(
       {},
       {
         loadBoard: async () => {
-          throw new Error('That is not an inksplat board file.');
+          throw new Error('The board is locked: nothing can be added.');
         },
       },
     );
-    await openBoardFile(fileOf('not json'), p.host);
-    await openBoardFile(fileOf('{}'), p.host);
+    await openBoardFile(fileOf(enc('{"format":"inksplat-board","version":1}')), p.host);
+    await openBoardFile(await boardZip(), p.host);
     expect(p.toasts).toEqual([
       'That is not an inksplat board file.',
-      'That is not an inksplat board file.',
+      'The board is locked: nothing can be added.',
     ]);
-    const big = fileOf('{}');
+    const big = await boardZip();
     Object.defineProperty(big, 'size', { value: 100 * 1024 * 1024 });
     await openBoardFile(big, p.host);
     expect(p.toasts[2]).toBe('That file is too large to be a board.');
     const nothing = setup({}, null);
-    await openBoardFile(fileOf('{}'), nothing.host);
+    await openBoardFile(await boardZip(), nothing.host);
     expect(nothing.toasts).toEqual(['Join a session first.']);
   });
 });

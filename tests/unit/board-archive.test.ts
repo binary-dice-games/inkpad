@@ -8,7 +8,7 @@ import {
   readBoardArchive,
   writeBoardArchive,
 } from '../../viewer/src/board-archive';
-import { crc32, looksLikeZip, makeZip, zipParts } from '../../viewer/src/zip';
+import { crc32, makeZip, zipParts } from '../../viewer/src/zip';
 
 const PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -55,7 +55,7 @@ function board(): BoardFile {
     ] as unknown as BoardFile['items'],
     files: [
       { id: 'p.2', data: new Uint8Array([1, 2, 3]) },
-      { id: 'p.3', data: 'BAU=' }, // base64 is written as bytes too
+      { id: 'p.3', data: new Uint8Array([4, 5]) },
     ],
   };
 }
@@ -74,7 +74,6 @@ describe('zip files', () => {
     ]);
     const bytes = await bytesOf(blob);
     expect(blob.type).toBe('application/zip');
-    expect(looksLikeZip(bytes)).toBe(true);
     const parts = zipParts(bytes);
     expect([...parts.keys()]).toEqual(['a.json', 'files/ñ.bin']);
     expect(await parts.get('a.json')!()).toEqual(json);
@@ -149,7 +148,7 @@ describe('board zips', () => {
     const p3 = back.items.find((i) => i.id === 'p.3') as unknown as Record<string, unknown>;
     expect(p3).toMatchObject({ page: 2, data: PNG, file: { name: 'report.pdf', bytes: 2 } });
     expect((p3.file as object) ?? {}).not.toHaveProperty('path');
-    expect(back.files.map((f) => [f.id, [...(f.data as Uint8Array)]])).toEqual([
+    expect(back.files.map((f) => [f.id, [...f.data]])).toEqual([
       ['p.2', [1, 2, 3]],
       ['p.3', [4, 5]],
     ]);

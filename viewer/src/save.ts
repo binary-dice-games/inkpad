@@ -2,22 +2,15 @@
 /**
  * @file Saving the board from the viewer and the presenter page: a picture (PNG), a drawing (SVG), or
  * a board file that a later session opens to carry on (a zip of the items, one JSON file per canvas,
- * and the pictures and files on them: see `board-archive.ts`). Older board files (one JSON file)
- * still open. Both pages share it; each gives the board, the stage and a way to tell the person
- * what happened.
+ * and the pictures and files on them: see `board-archive.ts`). Both pages share it; each gives the
+ * board, the stage and a way to tell the person what happened.
  */
 import type { Whiteboard } from '@inksplat/collab-whiteboard';
-import {
-  CANVASES,
-  canvasBackground,
-  cleanBackground,
-  cleanCanvasBackground,
-} from '@inksplat/defaults';
+import { CANVASES, canvasBackground, cleanCanvasBackground } from '@inksplat/defaults';
 import type { CanvasBackground, Stage } from '@inksplat/defaults';
 import { readBoardArchive, writeBoardArchive } from './board-archive';
 import type { BoardArchive } from './board-archive';
 import { BACKGROUND_STYLES } from './sheet';
-import { looksLikeZip } from './zip';
 
 /** What a page gives the save dialog. */
 export interface SaveHost {
@@ -33,7 +26,7 @@ export interface SaveHost {
   backgrounds?(names: (CanvasBackground | undefined)[]): void;
 }
 
-/** The largest board file that is read (the files in it are at most 25 MB; 4/3 of that in older, base64 ones). */
+/** The largest board file that is read (the files in it are at most 25 MB). */
 export const MAX_BOARD_FILE = 48 * 1024 * 1024;
 
 /**
@@ -94,24 +87,7 @@ export function download(blob: Blob, name: string): void {
 /** The board file (a zip) of `board`: its items and files, with the background of every canvas. */
 export async function boardArchive(board: Whiteboard, stage: Stage | null): Promise<BoardArchive> {
   const backgrounds = Array.from({ length: CANVASES }, (_, i) => canvasBackground(stage, i));
-  return writeBoardArchive(await board.saveBoard({ backgrounds }, { binary: true }));
-}
-
-/**
- * The board in a board file, for `loadBoard`: a zip, or an older JSON file.
- *
- * @throws {Error} when it is neither
- */
-export async function readBoardFile(file: Blob): Promise<unknown> {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  if (looksLikeZip(bytes)) {
-    return readBoardArchive(bytes);
-  }
-  try {
-    return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
-  } catch {
-    throw new Error('That is not an inksplat board file.');
-  }
+  return writeBoardArchive(await board.saveBoard({ backgrounds }));
 }
 
 /** Saves the board as `kind`; tells the person when it cannot. */
@@ -147,25 +123,23 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
 
 /**
  * The canvas backgrounds a board file names, for the session in `stage`: its `backgrounds` (the
- * video only where this session has video), or the single `background` of older files (every
- * canvas, in a session without video). Undefined when it names none.
+ * video only where this session has video). Undefined when it names none.
  */
 export function fileBackgrounds(
   meta: Record<string, unknown>,
   stage: Stage | null,
 ): (CanvasBackground | undefined)[] | undefined {
-  const video = stage?.video !== false;
-  if (Array.isArray(meta.backgrounds)) {
-    const list = Array.from({ length: CANVASES }, (_, i) =>
-      cleanCanvasBackground((meta.backgrounds as unknown[])[i], video),
-    );
-    return list.some((b) => b !== undefined) ? list : undefined;
+  if (!Array.isArray(meta.backgrounds)) {
+    return undefined;
   }
-  const single = cleanBackground(meta.background);
-  return single && !video ? Array.from({ length: CANVASES }, () => single) : undefined;
+  const video = stage?.video !== false;
+  const list = Array.from({ length: CANVASES }, (_, i) =>
+    cleanCanvasBackground((meta.backgrounds as unknown[])[i], video),
+  );
+  return list.some((b) => b !== undefined) ? list : undefined;
 }
 
-/** Adds the board in `file` (a zip, or an older JSON file) to the current one, and says what came of it. */
+/** Adds the board in `file` (a board zip) to the current one, and says what came of it. */
 export async function openBoardFile(file: Blob, host: SaveHost): Promise<void> {
   const board = host.board();
   if (!board) {
@@ -177,7 +151,9 @@ export async function openBoardFile(file: Blob, host: SaveHost): Promise<void> {
     return;
   }
   try {
-    const r = await board.loadBoard(await readBoardFile(file));
+    const r = await board.loadBoard(
+      await readBoardArchive(new Uint8Array(await file.arrayBuffer())),
+    );
     const backgrounds = fileBackgrounds(r.meta, host.stage());
     if (backgrounds) {
       host.backgrounds?.(backgrounds);

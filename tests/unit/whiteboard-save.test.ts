@@ -34,6 +34,16 @@ async function prepare(file: File): Promise<PreparedFile> {
   };
 }
 
+/** The board file in a board zip (read with FileReader: jsdom's Blob has no arrayBuffer()). */
+const throughZip = async (zip: Blob) =>
+  readBoardArchive(
+    await new Promise<Uint8Array>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+      reader.readAsArrayBuffer(zip);
+    }),
+  );
+
 const bytesOf = async (blob: Blob): Promise<string> =>
   await new Promise((resolve) => {
     const reader = new FileReader();
@@ -151,8 +161,8 @@ describe('saving a board', () => {
       expect(saved.items).toHaveLength(5);
       expect(saved.files.map((f) => f.id)).toEqual([file]);
 
-      // Through a file (JSON), into a new session where somebody else is the host, and Ana joins.
-      const text = JSON.stringify(saved);
+      // Through a file (a zip), into a new session where somebody else is the host, and Ana joins.
+      const zip = (await writeBoardArchive(saved)).blob;
       const room = new TestRoom();
       try {
         const host2 = await room.start();
@@ -169,7 +179,7 @@ describe('saving a board', () => {
           session: ana,
           adapter: frameAdapter(anaStage, () => 16 / 9),
         });
-        const result = await next.loadBoard(JSON.parse(text));
+        const result = await next.loadBoard(await throughZip(zip));
         expect(result).toMatchObject({
           added: 5,
           skipped: 0,
@@ -196,7 +206,7 @@ describe('saving a board', () => {
         next.undo();
         expect(next.items()).toHaveLength(5);
         // Loading it again adds it again (a copy).
-        await next.loadBoard(JSON.parse(text));
+        await next.loadBoard(await throughZip(zip));
         expect(next.items()).toHaveLength(10);
         anaBoard.destroy();
         next.destroy();
@@ -239,24 +249,17 @@ describe('saving a board', () => {
     }
   });
 
-  it('saves the files as bytes for a zip, and loads them back from bytes', async () => {
+  it('saves the files as bytes, and loads them back from a zip with the canvases', async () => {
     const p = await party();
     try {
       const wb = p.hostBoard;
       await wb.addFile(new File(['zip me'], 'z.txt', { type: 'text/plain' }));
       wb.setPage(2);
       wb.addNote({ x: 10, y: 10 }, 'on canvas 3');
-      const saved = await wb.saveBoard({}, { binary: true });
+      const saved = await wb.saveBoard();
       expect(saved.files).toHaveLength(1);
       expect(saved.files[0]!.data).toBeInstanceOf(Uint8Array);
-      const zip = (await writeBoardArchive(saved)).blob;
-      const board = await readBoardArchive(
-        await new Promise<Uint8Array>((resolve) => {
-          const reader = new FileReader(); // jsdom's Blob has no arrayBuffer()
-          reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
-          reader.readAsArrayBuffer(zip);
-        }),
-      );
+      const board = await throughZip((await writeBoardArchive(saved)).blob);
       const second = p.make(await p.room.join('Zed'));
       expect(await second.loadBoard(board)).toMatchObject({ added: 2, files: 1 });
       const image = second.items().find((i) => i.kind === 'image')!;

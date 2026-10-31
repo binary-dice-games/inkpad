@@ -97,15 +97,9 @@ function uniqueName(name: string, taken: Set<string>): string {
   return candidate;
 }
 
-/**
- * The zip of a saved board (from `saveBoard(meta, { binary: true })`; base64 files are decoded
- * too).
- */
+/** The zip of a saved board (from the whiteboard's `saveBoard`). */
 export async function writeBoardArchive(board: BoardFile): Promise<BoardArchive> {
-  const fileData = new Map<string, Uint8Array>();
-  for (const f of board.files) {
-    fileData.set(f.id, typeof f.data === 'string' ? fromBase64(f.data) : f.data);
-  }
+  const fileData = new Map(board.files.map((f) => [f.id, f.data]));
   const canvases: Record<string, unknown>[][] = Array.from({ length: CANVASES }, () => []);
   const pictures: ZipEntry[] = [];
   const documents: ZipEntry[] = [];

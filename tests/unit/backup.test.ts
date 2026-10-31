@@ -1,5 +1,5 @@
 // MIT License © 2026 Binary Dice Games
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BoardFile } from '@inksplat/collab-whiteboard';
 import { BackupWriter, backupInfo, memoryStore } from '../../viewer/src/backup';
 import type { BackupStore } from '../../viewer/src/backup';
@@ -17,10 +17,7 @@ const ink = (id: string) => ({
 });
 const boardOf = (items: unknown[], saved = SAVED) =>
   ({ format: 'inksplat-board', version: 1, saved, meta: {}, items, files: [] }) as BoardFile;
-/** An older backup: the board file as JSON. */
-const legacy = (items: unknown[], saved = SAVED) =>
-  new Blob([JSON.stringify(boardOf(items, saved))]);
-/** A backup as written now: the board zip. */
+/** A backup: the board zip. */
 const zipped = async (items: unknown[], saved = SAVED) =>
   (await writeBoardArchive(boardOf(items, saved))).blob;
 
@@ -28,39 +25,28 @@ describe('what a backup holds', () => {
   it('reads the time and the number of items of a board zip', async () => {
     const info = await backupInfo(await zipped([ink('a'), ink('b')]));
     expect(info?.items).toBe(2);
-    expect(info?.zip).toBe(true);
-    expect(info?.saved?.toISOString()).toBe(SAVED);
-  });
-
-  it('still reads a backup written as JSON', async () => {
-    const info = await backupInfo(legacy([{ id: 'a' }, { id: 'b' }]));
-    expect(info?.items).toBe(2);
-    expect(info?.zip).toBe(false);
     expect(info?.saved?.toISOString()).toBe(SAVED);
   });
 
   it('has nothing to resume for no file, another file or an empty board', async () => {
     expect(await backupInfo(null)).toBeNull();
-    expect(await backupInfo(new Blob(['not json']))).toBeNull();
-    expect(
-      await backupInfo(new Blob([JSON.stringify({ format: 'other', items: [{}] })])),
-    ).toBeNull();
-    expect(await backupInfo(legacy([]))).toBeNull();
+    expect(await backupInfo(new Blob(['not a zip']))).toBeNull();
+    expect(await backupInfo(new Blob([JSON.stringify(boardOf([ink('a')]))]))).toBeNull();
     expect(await backupInfo(await zipped([]))).toBeNull();
   });
 
   it('keeps a board whose time is missing', async () => {
-    expect((await backupInfo(legacy([{}], 'nonsense')))?.saved).toBeNull();
     expect((await backupInfo(await zipped([ink('a')], 'nonsense')))?.saved).toBeNull();
-  });
-
-  it('reads an older backup kept as text in the store', async () => {
-    const store = memoryStore(JSON.stringify(boardOf([{ id: 'a' }])));
-    expect((await backupInfo(await store.read()))?.items).toBe(1);
   });
 });
 
 describe('writing the backup', () => {
+  /** The zips of a board with one item and of an empty one, made before the timers are faked. */
+  const zips = new Map<number, Blob>();
+  beforeAll(async () => {
+    zips.set(0, await zipped([]));
+    zips.set(1, await zipped([ink('a')]));
+  });
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
@@ -72,8 +58,7 @@ describe('writing the backup', () => {
       delayMs: 1000,
       make: () => {
         state.made += 1;
-        // Not a zip: compression streams do not run under fake timers, and the writer keeps any file.
-        return Promise.resolve({ blob: legacy(state.items), items: state.items.length });
+        return Promise.resolve({ blob: zips.get(state.items.length)!, items: state.items.length });
       },
     });
     return { writer, store, state };
@@ -106,7 +91,7 @@ describe('writing the backup', () => {
   });
 
   it('removes the backup when the board is empty', async () => {
-    const { writer, store } = setup([], memoryStore(legacy([{ id: 'old' }])));
+    const { writer, store } = setup([], memoryStore(zips.get(1)!));
     writer.schedule();
     await writer.flush();
     expect(await store.read()).toBeNull();

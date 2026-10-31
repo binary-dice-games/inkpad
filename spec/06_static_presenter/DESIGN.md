@@ -109,8 +109,7 @@ changes in between go in the next), and flushed when the page is hidden or close
 the browser's storage for the site, not in Downloads: a file in the origin private file system
 (`board-backup.inksplat.zip`), or an IndexedDB record (a Blob) where the browser cannot write
 OPFS files; with neither there is no backup. An empty board removes the backup. **End session**
-keeps it. A backup written before boards were zips (`board-backup.inksplat.json`, or a text
-record) is still offered, and removed by the first write.
+keeps it.
 
 When a session starts and a backup holds items, a dialog asks: **Resume** adds it to the new
 board (as **Open...** does, `openBoardFile`: everything becomes the presenter's), **Start new**
@@ -125,7 +124,7 @@ the presenter's side, and a viewer that leaves loses nothing.
 **Save... > Board file** writes a zip, `inksplat-board-<date>.inksplat.zip`
 (`viewer/src/board-archive.ts`, written and read by `viewer/src/zip.ts` without a library), so
 anyone can look into it with any zip tool and the pictures and documents on the board are kept
-as they are, not as base64 in a JSON file:
+as they are:
 
 | Part | Contents |
 |---|---|
@@ -136,14 +135,13 @@ as they are, not as base64 in a JSON file:
 | `files/<name>` | the document pinned on an image, under its own name (`name (2).pdf` when two share one); its `file.path` says where |
 
 JSON parts are deflated (CompressionStream; stored where the browser cannot), pictures and
-documents stored as they are. The whiteboard's `saveBoard(meta, {binary: true})` gives the
-documents as bytes, and its `loadBoard` takes bytes as well as base64, so nothing is encoded
-twice; `readBoardArchive` turns the zip back into the whiteboard's board file (pictures as data
+documents stored as they are. The whiteboard's `saveBoard` gives the documents as bytes and its
+`loadBoard` takes them so; `readBoardArchive` turns the zip back into the whiteboard's board file (pictures as data
 URLs again). A zip edited by hand opens with whatever it still holds: a missing or oversized
 picture or document drops only that part, and the whiteboard checks every item as before. A
 newer `version` is refused with a message; all the parts together may unfold to 64 MB at most.
-**Open...** tells a zip from the older JSON board files (`.inksplat.json`, version 1 of the
-whiteboard's format, files in base64) by its first bytes, and still opens those.
+This is the only board file format: the single JSON files of earlier versions (`.inksplat.json`)
+are not read.
 
 `present.html?tr=wss://...` (repeatable) replaces the public trackers, and the viewer
 link then carries them (the same `tr` rule as `spec/01_core_features/DESIGN.md`).
@@ -179,8 +177,7 @@ backgrounds in order (without video, the four in order from canvas 1, starting a
 and lays it out again when the person changes canvas; the sheet has the frame's aspect, so the
 drawings keep their place whichever background a canvas shows. The video is sent whatever
 canvas people are on. Board files keep `backgrounds` in their `meta`; opening one sets them
-(the `video` only where the session has video; older files with a single `background` set every
-canvas of a board without video).
+(the `video` only where the session has video).
 
 ### Link lifetime
 

@@ -18,8 +18,8 @@
  * element is dragged or a thread pulled). A note can be dragged
  * out to its size with the note tool, and a thread pressed on or let go over an element gets a new
  * pin there. A sticker catches the pointer over its whole square (WebKit missed its <use>).
- * `saveBoard` can give the files as bytes and `loadBoard` takes them so (the page saves boards
- * as zips).
+ * `saveBoard` gives the files as bytes and `loadBoard` takes them so (the page saves boards as
+ * zips, with the files apart from the JSON).
  *
  *   import { createWhiteboard } from './collab-whiteboard.js';
  *   const wb = createWhiteboard(container, { session, adapter });
@@ -1928,21 +1928,18 @@ export class Whiteboard {
 
   /**
    * The board as a plain object to keep in a file: the items (and the files pinned on them, as
-   * base64) so a later session can pick it up with {@link loadBoard}. Files that have not arrived
+   * bytes: a Uint8Array) so a later session can pick it up with {@link loadBoard}. Files that have not arrived
    * yet, or were too big to share, are left out: their pictures stay.
    *
    * @param {object} [meta] anything the page wants back when the file is loaded (a background)
-   * @param {{binary?: boolean}} [options] `binary`: the files as bytes (a Uint8Array), for a page
-   *   that keeps them apart from the JSON (a zip), instead of base64
    */
-  async saveBoard(meta = {}, { binary = false } = {}) {
+  async saveBoard(meta = {}) {
     const items = this.model.live();
     const files = [];
     for (const item of items) {
       const blob = item.kind === 'image' && item.file ? this.files.get(item.id) : null;
       if (blob) {
-        const bytes = await blobBytes(blob);
-        files.push({ id: item.id, data: binary ? bytes : toBase64(bytes) });
+        files.push({ id: item.id, data: await blobBytes(blob) });
       }
     }
     return { format: BOARD_FORMAT, version: 1, saved: new Date().toISOString(), meta, items, files };
@@ -1954,7 +1951,7 @@ export class Whiteboard {
    * again with everyone; a file that is missing or does not fit (the 25 MB of the board) keeps
    * only its picture. Not an undo step.
    *
-   * @param {unknown} data a parsed board file (its files as base64 or as bytes, a Uint8Array)
+   * @param {unknown} data a board file (its files as bytes, a Uint8Array)
    * @returns {Promise<{added: number, skipped: number, files: number, meta: object}>}
    * @throws {WhiteboardError} when `data` is not a board file, or the board is read only
    */
@@ -1967,9 +1964,7 @@ export class Whiteboard {
     }
     const bytes = new Map();
     for (const f of Array.isArray(data.files) ? data.files : []) {
-      if (typeof f?.id === 'string' && typeof f.data === 'string' && f.data.length <= Math.ceil(LIMITS.fileBytes / 3) * 4) {
-        bytes.set(f.id, f.data);
-      } else if (typeof f?.id === 'string' && f.data instanceof Uint8Array && f.data.length <= LIMITS.fileBytes) {
+      if (typeof f?.id === 'string' && f.data instanceof Uint8Array && f.data.length <= LIMITS.fileBytes) {
         bytes.set(f.id, f.data);
       }
     }
@@ -1986,14 +1981,9 @@ export class Whiteboard {
       }
       let blob = null;
       if (fields.kind === 'image' && fields.file) {
-        try {
-          const kept = bytes.get(id) ?? '';
-          const raw = kept instanceof Uint8Array ? kept : fromBase64(kept);
-          if (raw.length === fields.file.bytes && this.fileTotal() + files.reduce((n, f) => n + f.blob.size, 0) + raw.length <= LIMITS.filesTotal) {
-            blob = new Blob([raw], { type: fields.file.mime });
-          }
-        } catch {
-          blob = null;
+        const raw = bytes.get(id);
+        if (raw && raw.length === fields.file.bytes && this.fileTotal() + files.reduce((n, f) => n + f.blob.size, 0) + raw.length <= LIMITS.filesTotal) {
+          blob = new Blob([raw], { type: fields.file.mime });
         }
         if (!blob) {
           delete fields.file;
