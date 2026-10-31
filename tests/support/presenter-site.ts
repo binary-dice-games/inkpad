@@ -80,30 +80,7 @@ export class PresenterSite {
   ): Promise<Page> {
     const page = await (await this.context()).newPage();
     page.on('pageerror', (e) => console.error('[presenter]', e.message));
-    await page.addInitScript(
-      ([displaySurface, w, h]: [string, number, number]) => {
-        navigator.mediaDevices.getDisplayMedia = async (asked) => {
-          (window as unknown as { asked: unknown }).asked = asked;
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const g = canvas.getContext('2d')!;
-          let n = 0;
-          setInterval(() => {
-            n += 1;
-            g.fillStyle = n % 2 ? '#206040' : '#604020';
-            g.fillRect(0, 0, w, h);
-          }, 50);
-          const stream = canvas.captureStream(15);
-          const track = stream.getVideoTracks()[0]!;
-          const real = track.getSettings.bind(track);
-          track.getSettings = () => ({ ...real(), displaySurface }) as MediaTrackSettings;
-          (window as unknown as { shared: MediaStreamTrack }).shared = track;
-          return stream;
-        };
-      },
-      [surface, size.width, size.height] as [string, number, number],
-    );
+    await fakeDisplay(page, surface, size);
     // `tracker: false` points the session at a dead tracker (viewers must join with a code).
     const tracker = options.tracker === false ? 'ws://127.0.0.1:1' : this.tracker.url;
     const query = `?tr=${encodeURIComponent(tracker)}`;
@@ -111,22 +88,27 @@ export class PresenterSite {
     return page;
   }
 
-  /** Starts sharing on a presenter page; returns the viewer link. */
+  /** Starts a session on a presenter page and shares its fake screen; returns the viewer link. */
   async startSharing(page: Page): Promise<string> {
+    const link = await this.startSession(page);
+    await shareScreen(page);
+    return link;
+  }
+
+  /** Starts a session on a presenter page (nothing shared); returns the viewer link. */
+  async startSession(page: Page): Promise<string> {
     await configure(page);
-    await page.locator('#startShare').click();
+    await page.locator('#startSession').click();
     await page.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
     await expect.poll(() => page.locator('#link').inputValue()).toMatch(/#inksplat=/);
     return page.locator('#link').inputValue();
   }
 
-  /** Starts a session without video on a presenter page; returns the viewer link. */
+  /** A session to draw on: started, with a whiteboard on canvas 1 instead of the screen. */
   async startBoard(page: Page): Promise<string> {
-    await configure(page);
-    await page.locator('#startBoard').click();
-    await page.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
-    await expect.poll(() => page.locator('#link').inputValue()).toMatch(/#inksplat=/);
-    return page.locator('#link').inputValue();
+    const link = await this.startSession(page);
+    await page.locator('#background').selectOption('whiteboard');
+    return link;
   }
 
   /** Opens a viewer link in a fresh context (or `page`) and joins with `name`. */
@@ -138,6 +120,60 @@ export class PresenterSite {
     await viewer.locator('#joinForm button[type=submit]').click();
     return viewer;
   }
+}
+
+/**
+ * Gives `page` a `getDisplayMedia` that returns a canvas of `size` (default 640x360) whose surface
+ * kind is `surface`, as a chosen window would: it alternates two shades of `color` (default
+ * green). The options of the last call are in `window.asked`, the shared track in `window.shared`.
+ */
+export async function fakeDisplay(
+  page: Page,
+  surface = 'window',
+  size = { width: 640, height: 360 },
+  color: [string, string] = ['#206040', '#604020'],
+): Promise<void> {
+  await page.addInitScript(
+    ([displaySurface, w, h, a, b]: [string, number, number, string, string]) => {
+      if (!navigator.mediaDevices) return;
+      navigator.mediaDevices.getDisplayMedia = async (asked) => {
+        (window as unknown as { asked: unknown }).asked = asked;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const g = canvas.getContext('2d')!;
+        let n = 0;
+        setInterval(() => {
+          n += 1;
+          g.fillStyle = n % 2 ? a : b;
+          g.fillRect(0, 0, w, h);
+        }, 50);
+        const stream = canvas.captureStream(15);
+        const track = stream.getVideoTracks()[0]!;
+        const real = track.getSettings.bind(track);
+        track.getSettings = () => ({ ...real(), displaySurface }) as MediaTrackSettings;
+        (window as unknown as { shared: MediaStreamTrack }).shared = track;
+        return stream;
+      };
+    },
+    [surface, size.width, size.height, color[0], color[1]] as [
+      string,
+      number,
+      number,
+      string,
+      string,
+    ],
+  );
+}
+
+/** Presses Share screen on `page` (either page), past the one-time notice. */
+export async function shareScreen(page: Page): Promise<void> {
+  await page.locator('#share').click();
+  const notice = page.locator('#shareNotice button[value=continue]');
+  if (await notice.isVisible()) {
+    await notice.click();
+  }
+  await expect.poll(() => page.locator('#share').textContent()).toBe('Stop sharing');
 }
 
 /** Saves the name (and, optionally, the pointer mode) through the settings dialog. */

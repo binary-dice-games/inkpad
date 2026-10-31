@@ -1,8 +1,8 @@
 // MIT License © 2026 Binary Dice Games
 /**
- * @file The board of a canvas without video: a sheet in the shape of the shared frame, with one
- * of a few backgrounds (whiteboard, blackboard, wall, cork), for the viewer and the presenter
- * page. Each canvas has its own background (the stage's `backgrounds`). The backgrounds are drawn with CSS and inline SVG, so there are no image files.
+ * @file The background of a canvas, for the viewer and the presenter page: the screen (the
+ * active stream, letterboxed on black in the board frame) or a sheet in the shape of the frame
+ * with one of a few backgrounds (whiteboard, blackboard, wall, cork). Each canvas has its own background (the stage's `backgrounds`). The backgrounds are drawn with CSS and inline SVG, so there are no image files.
  */
 import { letterbox } from '@inksplat/collab-whiteboard';
 import { canvasBackground } from '@inksplat/defaults';
@@ -106,10 +106,10 @@ export const BACKGROUND_STYLES: Readonly<
 };
 
 /**
- * Shows the canvas `canvas` (0 for the first) as the video or as a sheet: when its background
- * ({@link canvasBackground}) is not the video, the `video` is hidden and `page` is laid out as the
- * largest sheet of the frame's aspect that fits in `box`, with that background; otherwise the
- * sheet is hidden and the video shows.
+ * Shows the canvas `canvas` (0 for the first) with its background ({@link canvasBackground}):
+ * for `screen` the `video` is laid over the frame (the largest box of `aspect` that fits in
+ * `box`; the video keeps its own shape inside it, on black) and the sheet is hidden; for the
+ * others the video is hidden and `page` is laid out over the frame with that background.
  *
  * @param aspect the width / height of the frame, as the board uses it
  */
@@ -121,19 +121,23 @@ export function showSheet(
 ): void {
   const { video, page, box } = elements;
   const background = canvasBackground(stage, canvas);
-  const sheet = background !== 'video';
-  video.hidden = sheet;
-  page.hidden = !sheet;
-  if (background === 'video') {
-    return;
-  }
-  const style = BACKGROUND_STYLES[background];
+  const screen = background === 'screen';
+  video.hidden = !screen;
+  page.hidden = screen;
   const r = letterbox(box.clientWidth, box.clientHeight, aspect);
-  Object.assign(page.style, {
+  const rect = {
     left: `${r.x}px`,
     top: `${r.y}px`,
     width: `${r.width}px`,
     height: `${r.height}px`,
+  };
+  if (screen) {
+    Object.assign(video.style, { ...rect, right: 'auto', bottom: 'auto', background: '#000' });
+    return;
+  }
+  const style = BACKGROUND_STYLES[background];
+  Object.assign(page.style, {
+    ...rect,
     background: style.background,
     backgroundBlendMode: style.blend ?? '',
     boxShadow: style.shadow ?? '',

@@ -2,14 +2,22 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readArchiveManifest } from '../../viewer/src/board-archive';
 import { zipParts } from '../../viewer/src/zip';
-import { PresenterSite, configure, draw, items } from '../support/presenter-site';
+import {
+  PresenterSite,
+  configure,
+  draw,
+  items,
+  shareScreen,
+  videoWidth,
+} from '../support/presenter-site';
 import { makePdf } from '../support/pdf';
 import { makeZip } from '../support/zip';
 
-// The static presenter page (spec/06_static_presenter) in Chrome: it starts a session from a
-// "screen" (a canvas stream standing in for the picker, which automation cannot drive), a
-// viewer joins through the site's viewer page over real WebRTC, video arrives, drawings go
-// both ways, and pause, a lost source and the end reach the viewer.
+// The static presenter page (spec/06_static_presenter, spec/07_participant_streaming) in
+// Chrome: it starts a session and shares a "screen" (a canvas stream standing in for the
+// picker, which automation cannot drive), a viewer joins through the site's viewer page over
+// real WebRTC, video arrives, drawings go both ways, and None, a lost source and the end reach
+// the viewer.
 
 let site: PresenterSite;
 beforeAll(async () => {
@@ -25,7 +33,13 @@ const joinViewer = (link: string) => site.joinViewer(link);
 describe('static presenter page', () => {
   it('is linked from the viewer page and shows the start screen', async () => {
     const page = await presenterPage();
-    await expect.poll(() => page.locator('#startShare').isVisible()).toBe(true);
+    await expect.poll(() => page.locator('#startSession').isVisible()).toBe(true);
+    // The start page only starts a session: sharing happens in it.
+    expect(await page.locator('#startBoard').count()).toBe(0);
+    expect(await page.locator('#start button').allTextContents()).toEqual([
+      'Start session',
+      'Settings…',
+    ]);
     const ctx = await site.context();
     const landing = await ctx.newPage();
     await landing.goto(`${site.origin}/`);
@@ -55,7 +69,7 @@ describe('static presenter page', () => {
     await expect.poll(() => home.locator('#about').isVisible()).toBe(true);
   });
 
-  it('shares a source: video reaches a viewer, drawings go both ways, pause and end follow', async () => {
+  it('shares a source: video reaches a viewer, drawings go both ways, None and end follow', async () => {
     const presenter = await presenterPage();
     const link = await startSharing(presenter);
     expect(link.startsWith(`${site.origin}/#inksplat=`)).toBe(true);
@@ -85,11 +99,12 @@ describe('static presenter page', () => {
     await presenter.locator('#drawing').check();
     await expect.poll(pen, { timeout: 10000 }).toBe(false);
 
-    // Pause shows on the viewer; resume brings the video back.
-    await presenter.locator('#pause').click();
-    await expect.poll(() => viewer.locator('#notice').textContent()).toMatch(/paused/);
-    await presenter.locator('#pause').click();
-    await expect.poll(() => viewer.locator('#notice').textContent()).toBe('');
+    // None blacks the screen out for the viewer; Show brings the video back.
+    await presenter.locator('#streams button[aria-label="Show nothing to everybody"]').click();
+    await expect.poll(() => videoWidth(viewer), { timeout: 15000 }).toBe(0);
+    await presenter.locator('#streams button[aria-label="Show your screen to everybody"]').click();
+    await expect.poll(() => videoWidth(viewer), { timeout: 15000 }).toBe(640);
+    expect(await presenter.locator('#shareStatus').textContent()).toBe('On screen for everybody');
 
     // Clear removes the drawings everywhere.
     presenter.once('dialog', (d) => void d.accept());
@@ -97,7 +112,7 @@ describe('static presenter page', () => {
     await expect.poll(() => items(viewer), { timeout: 15000 }).toBe(0);
     await expect.poll(() => items(presenter), { timeout: 15000 }).toBe(0);
 
-    // Canvas 1 shows the video and canvas 2 a whiteboard, until the presenter gives it the video.
+    // Canvas 1 shows the screen and canvas 2 a whiteboard, until the presenter gives it the screen.
     const canvasButton = (page: typeof viewer, n: number) =>
       page.locator(`collab-whiteboard .pages button[aria-label^="Canvas ${n},"]`);
     await canvasButton(viewer, 2).click();
@@ -108,18 +123,24 @@ describe('static presenter page', () => {
       .poll(() => presenter.locator('#backgroundLabel').textContent())
       .toBe('Background of canvas 2');
     expect(await presenter.locator('#background').inputValue()).toBe('whiteboard');
-    await presenter.locator('#background').selectOption('video');
+    expect(await presenter.locator('#screenHere').isVisible()).toBe(true);
+    await presenter.locator('#screenHere').click();
+    await expect.poll(() => presenter.locator('#background').inputValue()).toBe('screen');
     await expect.poll(() => viewer.locator('#video').isVisible(), { timeout: 15000 }).toBe(true);
     expect(await viewer.locator('#page').isVisible()).toBe(false);
     await canvasButton(viewer, 1).click();
     await canvasButton(presenter, 1).click();
 
-    // The user stops sharing in the browser: the session stays, paused, with a way back.
+    // The user stops sharing in the browser: the session stays, the screen goes black, and the
+    // button shares again.
     await presenter.evaluate(() =>
       (window as unknown as { shared: MediaStreamTrack }).shared.dispatchEvent(new Event('ended')),
     );
-    await expect.poll(() => presenter.locator('#warning').textContent()).toMatch(/Sharing stopped/);
-    await expect.poll(() => viewer.locator('#notice').textContent()).toMatch(/paused/);
+    await expect.poll(() => presenter.locator('#share').textContent()).toBe('Share screen');
+    await expect.poll(() => videoWidth(viewer), { timeout: 15000 }).toBe(0);
+    expect(await presenter.locator('#streams li').count()).toBe(1); // None alone
+    await shareScreen(presenter);
+    await expect.poll(() => videoWidth(viewer), { timeout: 15000 }).toBe(640);
 
     // End: the viewer is told, the presenter sees the end screen.
     presenter.once('dialog', (d) => void d.accept());
@@ -129,7 +150,7 @@ describe('static presenter page', () => {
     await expect.poll(() => viewer.locator('#wait').isVisible()).toBe(true);
   });
 
-  it('starts a board without video: backgrounds, files pinned with previews, copies dragged out', async () => {
+  it('starts a board with nothing shared: backgrounds, files pinned with previews, copies dragged out', async () => {
     const presenter = await presenterPage();
     const link = await site.startBoard(presenter);
     const viewer = await joinViewer(link);
@@ -139,7 +160,7 @@ describe('static presenter page', () => {
     await expect.poll(() => viewer.locator('#page').isVisible(), { timeout: 15000 }).toBe(true);
     expect(await viewer.locator('#video').isVisible()).toBe(false);
     expect(await viewer.locator('#notice').textContent()).toBe('');
-    expect(await presenter.locator('#pause').isVisible()).toBe(false);
+    expect(await presenter.locator('#share').isVisible()).toBe(true);
 
     // The presenter changes the background for everyone.
     const frame = (page: typeof viewer) =>
@@ -856,8 +877,9 @@ describe('static presenter page', () => {
     const presenter = await presenterPage();
     await configure(presenter, 'never');
     await expect.poll(() => presenter.locator('#summary').textContent()).toMatch(/Pat.*hidden/);
-    await presenter.locator('#startShare').click();
+    await presenter.locator('#startSession').click();
     await presenter.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
+    await shareScreen(presenter);
     const asked = await presenter.evaluate(
       () => (window as unknown as { asked: { video: { cursor?: string } } }).asked,
     );
@@ -901,7 +923,7 @@ describe('static presenter page', () => {
     await presenter.reload();
 
     // The next session offers the backup; Resume brings the board back.
-    await presenter.locator('#startBoard').click();
+    await presenter.locator('#startSession').click();
     await presenter.locator('#resume').waitFor({ state: 'visible', timeout: 30000 });
     expect(await presenter.locator('#resumeText').textContent()).toMatch(/2 items/);
     await presenter.keyboard.press('Escape'); // it must be answered
@@ -913,7 +935,7 @@ describe('static presenter page', () => {
     presenter.once('dialog', (d) => void d.accept());
     await presenter.locator('#end').click();
     await presenter.locator('#again').click();
-    await presenter.locator('#startBoard').click();
+    await presenter.locator('#startSession').click();
     await presenter.locator('#resume').waitFor({ state: 'visible', timeout: 30000 });
     await presenter.locator('#resumeNo').click();
     expect(await items(presenter)).toBe(0);
@@ -948,7 +970,7 @@ describe('static presenter page', () => {
     // Remembered across a reload (the next session starts folded).
     presenter.once('dialog', (d) => void d.accept());
     await presenter.reload();
-    await presenter.locator('#startShare').click();
+    await presenter.locator('#startSession').click();
     await presenter.locator('#app').waitFor({ state: 'visible', timeout: 30000 });
     await expect.poll(() => presenter.locator('#panel').isVisible()).toBe(false);
     await expect.poll(() => toolbar.isVisible()).toBe(false);
@@ -997,8 +1019,11 @@ describe('static presenter page', () => {
         Promise.reject(new DOMException('no', 'NotAllowedError'));
     });
     await page.goto(`${site.origin}/present.html`);
-    await page.locator('#startShare').click();
-    await expect.poll(() => page.locator('#startProblem').textContent()).toMatch(/cancelled/);
-    expect(await page.locator('#app').isVisible()).toBe(false);
+    await site.startSession(page);
+    await page.locator('#share').click();
+    await page.locator('#shareNotice button[value=continue]').click();
+    await expect.poll(() => page.locator('#toast').textContent()).toMatch(/cancelled/);
+    expect(await page.locator('#share').textContent()).toBe('Share screen');
+    expect(await page.locator('#streams li').count()).toBe(1); // None alone
   });
 });

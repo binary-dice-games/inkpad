@@ -5,6 +5,7 @@
  * and the pictures and files on them: see `board-archive.ts`). Both pages share it; each gives the
  * board, the stage and a way to tell the person what happened.
  */
+import { letterbox } from '@inksplat/collab-whiteboard';
 import type { Whiteboard } from '@inksplat/collab-whiteboard';
 import { CANVASES, canvasBackground, cleanCanvasBackground } from '@inksplat/defaults';
 import type { CanvasBackground, Stage } from '@inksplat/defaults';
@@ -31,14 +32,14 @@ export const MAX_BOARD_FILE = 48 * 1024 * 1024;
 
 /**
  * The CSS of the sheet's background of canvas `canvas` for a saved picture, or undefined when
- * that canvas shows the video.
+ * that canvas shows the screen.
  */
 export function exportBackground(
   stage: Stage | null,
   canvas = 0,
 ): Record<string, string> | undefined {
   const background = canvasBackground(stage, canvas);
-  if (background === 'video') {
+  if (background === 'screen') {
     return undefined;
   }
   const style = BACKGROUND_STYLES[background];
@@ -50,16 +51,26 @@ export function exportBackground(
   };
 }
 
-/** The current frame of a video as a JPEG data URL, or null (no frame yet, or the browser refuses). */
-export function videoFrame(video: HTMLVideoElement | null): string | null {
+/**
+ * The current frame of a video as a JPEG data URL, letterboxed on black into a frame of `aspect`
+ * (width / height; default the video's own), or null (no frame yet, or the browser refuses).
+ */
+export function videoFrame(video: HTMLVideoElement | null, aspect?: number): string | null {
   if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
     return null;
   }
   try {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const a = aspect && aspect > 0 ? aspect : vw / vh;
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d')!.drawImage(video, 0, 0);
+    canvas.width = Math.round(Math.max(vw, vh * a));
+    canvas.height = Math.round(canvas.width / a);
+    const g = canvas.getContext('2d')!;
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, canvas.width, canvas.height);
+    const r = letterbox(canvas.width, canvas.height, vw / vh);
+    g.drawImage(video, r.x, r.y, r.width, r.height);
     return canvas.toDataURL('image/jpeg', 0.92);
   } catch {
     return null;
@@ -99,10 +110,12 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
   }
   const stage = host.stage();
   const canvas = board.currentPage();
-  const background = exportBackground(stage, canvas);
+  const sheet = exportBackground(stage, canvas);
+  // The screen: its current frame, or black when nothing is shared.
+  const frame = sheet ? null : videoFrame(host.video(), stage?.aspect);
   const options = {
-    background,
-    backdrop: background ? undefined : (videoFrame(host.video()) ?? undefined),
+    background: sheet ?? (frame ? undefined : { background: '#000' }),
+    backdrop: frame ?? undefined,
   };
   const name = `inksplat-board-${fileStamp()}`;
   try {
@@ -122,19 +135,17 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
 }
 
 /**
- * The canvas backgrounds a board file names, for the session in `stage`: its `backgrounds` (the
- * video only where this session has video). Undefined when it names none.
+ * The canvas backgrounds a board file names (`video` of earlier versions read as `screen`).
+ * Undefined when it names none.
  */
 export function fileBackgrounds(
   meta: Record<string, unknown>,
-  stage: Stage | null,
 ): (CanvasBackground | undefined)[] | undefined {
   if (!Array.isArray(meta.backgrounds)) {
     return undefined;
   }
-  const video = stage?.video !== false;
   const list = Array.from({ length: CANVASES }, (_, i) =>
-    cleanCanvasBackground((meta.backgrounds as unknown[])[i], video),
+    cleanCanvasBackground((meta.backgrounds as unknown[])[i]),
   );
   return list.some((b) => b !== undefined) ? list : undefined;
 }
@@ -154,7 +165,7 @@ export async function openBoardFile(file: Blob, host: SaveHost): Promise<void> {
     const r = await board.loadBoard(
       await readBoardArchive(new Uint8Array(await file.arrayBuffer())),
     );
-    const backgrounds = fileBackgrounds(r.meta, host.stage());
+    const backgrounds = fileBackgrounds(r.meta);
     if (backgrounds) {
       host.backgrounds?.(backgrounds);
     }

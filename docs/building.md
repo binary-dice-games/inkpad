@@ -31,7 +31,7 @@ Without CMake, from the repository root:
 ```
 npm run check          # eslint, tsc, prettier --check
 npm run build:viewer     # viewer/dist (the viewer and presenter pages)
-npm run build:site       # site/ (viewer, presenter page, /v1/ copy, 404, privacy policy)
+npm run build:site       # site/ (viewer, presenter page, /v2/ copy, 404, privacy policy)
 npm test               # unit tests (Vitest, project "unit")
 npm run test:e2e       # browser tests (project "e2e"), needs Chrome
 ```

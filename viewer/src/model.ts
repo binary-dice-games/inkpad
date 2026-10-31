@@ -1,14 +1,14 @@
 // MIT License © 2026 Binary Dice Games
 /**
  * @file The viewer's decisions that need no DOM: what to tell the user for a
- * session state or error, what to show over the video, and which aspect the
+ * session state or error, what to show over the screen, and which aspect the
  * board is laid out for.
  */
-import { canvasBackground } from '@inksplat/defaults';
+import { STAGE_ASPECT, canvasBackground } from '@inksplat/defaults';
 import type { Stage } from '@inksplat/defaults';
 
 /** The aspect used before the presenter has said anything. */
-export const DEFAULT_ASPECT = 16 / 9;
+export const DEFAULT_ASPECT = STAGE_ASPECT;
 
 /** The text for a session that ended (`reason` from the session's `state` event). */
 export function endMessage(reason: string | undefined): string {
@@ -68,33 +68,34 @@ export function progressMessage(stage: string | undefined): string {
 }
 
 /**
- * The message over the video, or null when the video should just show.
+ * The message over the screen, or null when the background should just show.
  *
  * @param stage the presenter's last `stage` message, if any
- * @param hasVideo whether a video frame has arrived
+ * @param hasVideo whether a frame of the active stream has arrived
  * @param canvas the canvas shown (0 for the first)
+ * @param me this person's peer id: the owner of the active stream sees it at once
  */
-export function placeholder(stage: Stage | null, hasVideo: boolean, canvas = 0): string | null {
+export function placeholder(
+  stage: Stage | null,
+  hasVideo: boolean,
+  canvas = 0,
+  me?: string,
+): string | null {
   if (stage?.state === 'ended') {
     return 'The presenter ended the session.';
   }
-  if (canvasBackground(stage, canvas) !== 'video') {
-    return null; // a canvas without video: nothing to wait for
+  if (canvasBackground(stage, canvas) !== 'screen' || !stage?.screen) {
+    return null; // another background, or nothing shared: plain black
   }
-  if (stage?.state === 'paused') {
-    return 'The presenter paused the video.';
+  if (hasVideo || stage.screen.owner === me) {
+    return null;
   }
-  return hasVideo ? null : 'Waiting for the presenter’s video…';
+  const who = stage.screen.name || 'the presenter';
+  return `Waiting for the screen of ${who}…`;
 }
 
-/**
- * The frame's aspect (width / height) for laying the board out: the video's own
- * when a frame has arrived, else the stage's, else {@link DEFAULT_ASPECT}.
- */
-export function boardAspect(video: { width: number; height: number }, stage: Stage | null): number {
-  if (video.width > 0 && video.height > 0) {
-    return video.width / video.height;
-  }
+/** The frame's aspect (width / height) for laying the board out: the stage's, else 16:9. */
+export function boardAspect(stage: Stage | null): number {
   return stage && stage.aspect > 0 ? stage.aspect : DEFAULT_ASPECT;
 }
 

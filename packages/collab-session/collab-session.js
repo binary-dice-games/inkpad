@@ -5,9 +5,12 @@
  *
  * Provenance: copied from binary-dice-games/nymph, web/collab/collab-session.js
  * at commit 13de939afdd5b52f35b1bbd8ef90cd677c3ae844 (2026-10). Changes:
- * invite fragment `inksplat=`, protocol `inksplat/1`, presenter wording, and
- * video (`setMedia`, `mediaParams`, the `track` event); see
- * spec/01_core_features/DESIGN.md section 4.1. It imports nothing.
+ * invite fragment `inksplat=`, protocol `inksplat/2`, presenter wording, and
+ * video (`setMedia`, `mediaParams`, the `track` event; see
+ * spec/01_core_features/DESIGN.md section 4.1), and streams of guests: the uplink
+ * transceiver, `setUplink`, `uplinkParams`, `uplink`, `setRelay`, `FrameRouter` and the
+ * `up`/`key` control messages (spec/07_participant_streaming/DESIGN.md sections 4 and 6).
+ * It imports nothing.
  *
  *   import { createSession } from './collab-session.js';
  *   const host = await createSession({ role: 'host', me: { name: 'Ana', color: '#e5484d' },
@@ -470,10 +473,222 @@ function gathered(pc, ms = 3000) {
 }
 
 /**
- * The video of a session. The host holds one MediaStream and puts its video
- * track on a transceiver of every link; a guest asks for video by adding a
- * receive-only transceiver to each offer. Links without a RTCPeerConnection
- * (memory, broadcast) carry no video.
+ * Routes encoded video frames from the active source to every output, as they arrive (no
+ * decoding, no jitter buffer): the host's relay of spec/07_participant_streaming/DESIGN.md
+ * section 4.2. Free of WebRTC objects so it is unit tested: frames only need `type` and
+ * `getMetadata().rtpTimestamp`, and `copy(frame, rtpTimestamp)` makes the frame to write.
+ *
+ * - Frames of the source go to every output except the source's own (it has the original).
+ * - Each output starts on a key frame of the source, so no decoder gets deltas of another
+ *   encoder; until then it is waiting, and key frames are asked of the source
+ *   (`requestKeyFrame`), at most one request per `retryMs`, again while an output waits, at most
+ *   `maxTries` times in a row.
+ * - Each output's RTP timestamps go on from where they were: every source has its own random
+ *   base, and a viewer drops frames whose timestamps jump back.
+ * (inksplat addition)
+ */
+export class FrameRouter {
+  /**
+   * @param {{
+   *   requestKeyFrame: (source: string) => void,
+   *   copy: (frame: any, rtpTimestamp: number) => any,
+   *   retryMs?: number, maxTries?: number,
+   *   setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (t: any) => void,
+   * }} options
+   */
+  constructor(options) {
+    this.requestKeyFrame = options.requestKeyFrame;
+    this.copy = options.copy;
+    this.retryMs = options.retryMs ?? 500;
+    this.maxTries = options.maxTries ?? 20;
+    this.setTimer = options.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
+    this.clearTimer = options.clearTimer ?? ((t) => clearTimeout(t));
+    /** The peer id whose frames are forwarded, or null. */
+    this.source = null;
+    this.outputs = new Map(); // key -> {id, write, waiting, offset, last}
+    this.timer = null;
+    this.again = false;
+    this.tries = 0;
+  }
+
+  /** Forwards the frames of `source` (a peer id) from now on; null forwards nothing. */
+  setSource(source) {
+    if (source === this.source) {
+      return;
+    }
+    this.source = source;
+    for (const out of this.outputs.values()) {
+      out.waiting = true;
+    }
+    this.want();
+  }
+
+  /** An output (a viewer's sender): `id` is its peer id (null until known), `write(frame)`. */
+  addOutput(key, id, write) {
+    this.outputs.set(key, { id, write, waiting: true, offset: 0, last: undefined });
+    if (id !== null) {
+      this.want();
+    }
+  }
+
+  /** Names an output once its peer is known; it then waits for a key frame. */
+  setOutputId(key, id) {
+    const out = this.outputs.get(key);
+    if (out) {
+      out.id = id;
+      out.waiting = true;
+      this.want();
+    }
+  }
+
+  removeOutput(key) {
+    this.outputs.delete(key);
+  }
+
+  /** Whether an output is waiting for a key frame of the source. */
+  waiting() {
+    return [...this.outputs.values()].some((o) => o.waiting && o.id !== null && o.id !== this.source);
+  }
+
+  /** A frame from peer `from` (its uplink); forwarded when `from` is the source. */
+  input(from, frame) {
+    if (from === null || from !== this.source) {
+      return;
+    }
+    for (const out of this.outputs.values()) {
+      if (out.id !== null && out.id !== from) {
+        this.deliver(out, frame);
+      }
+    }
+  }
+
+  /** A frame of the output `key`'s own encoder: forwarded to it when `self` is the source. */
+  own(key, self, frame) {
+    const out = this.outputs.get(key);
+    if (out && out.id !== null && this.source !== null && this.source === self) {
+      this.deliver(out, frame);
+    }
+  }
+
+  /** A viewer lost frames (it asked the sender for a key frame). */
+  keyFrameWanted() {
+    this.want();
+  }
+
+  stop() {
+    this.clearTimer(this.timer);
+    this.timer = null;
+    this.outputs.clear();
+  }
+
+  /** @private */
+  deliver(out, frame) {
+    const meta = frame.getMetadata();
+    if (out.waiting) {
+      if (frame.type !== 'key') {
+        return;
+      }
+      out.waiting = false;
+      // 3000 ticks of the 90 kHz clock: one frame at 30 fps after the last one.
+      out.offset = out.last === undefined ? 0 : out.last + 3000 - meta.rtpTimestamp;
+    }
+    const ts = (meta.rtpTimestamp + out.offset) >>> 0;
+    out.last = ts;
+    try {
+      out.write(this.copy(frame, ts));
+    } catch (e) {
+      dbg('relay: frame not forwarded:', e?.message ?? e);
+    }
+  }
+
+  /** @private Asks the source for a key frame now, or after the current wait. */
+  want() {
+    this.tries = 0;
+    this.kick();
+  }
+
+  /** @private */
+  kick() {
+    if (this.source === null) {
+      return;
+    }
+    if (this.timer !== null) {
+      this.again = true;
+      return;
+    }
+    this.requestKeyFrame(this.source);
+    this.timer = this.setTimer(() => {
+      this.timer = null;
+      const again = this.again || this.waiting();
+      this.again = false;
+      if (again && this.tries++ < this.maxTries) {
+        this.kick();
+      }
+    }, this.retryMs);
+  }
+}
+
+/** Whether this browser can forward encoded frames between peer connections (Chrome). */
+function canForwardFrames() {
+  return (
+    typeof RTCRtpSender === 'function' &&
+    typeof RTCRtpSender.prototype.createEncodedStreams === 'function' &&
+    typeof RTCEncodedVideoFrame === 'function' &&
+    typeof MediaStreamTrackGenerator === 'function'
+  );
+}
+
+/** Codecs without a picture of their own (retransmission, redundancy, error correction). */
+const AUX_CODEC = /^video\/(rtx|red|ulpfec|flexfec-03)$/i;
+
+/** Reads every chunk of `readable` into `cb`, until it ends. */
+async function pump(readable, cb) {
+  const reader = readable.getReader();
+  for (;;) {
+    let r;
+    try {
+      r = await reader.read();
+    } catch {
+      return;
+    }
+    if (r.done) {
+      return;
+    }
+    try {
+      cb(r.value);
+    } catch (e) {
+      dbg('video frame dropped:', e?.message ?? e);
+    }
+  }
+}
+
+/** Toggles the first encoding of `sender` off and on: Chrome then sends a key frame. */
+async function forceKeyFrame(sender) {
+  try {
+    for (const active of [false, true]) {
+      const p = sender.getParameters();
+      if (!p.encodings?.length) {
+        return;
+      }
+      p.encodings[0].active = active;
+      await sender.setParameters(p);
+    }
+  } catch {
+    // the link is closing
+  }
+}
+
+/**
+ * The video of a session (spec/07_participant_streaming/DESIGN.md section 4). Every guest offer
+ * carries two video transceivers: the **downlink** (host to guest, `recvonly` at the guest) and
+ * the **uplink** (guest to host, `sendonly` at the guest, nothing sent until the host asks).
+ * Nothing is renegotiated: tracks change with `replaceTrack`.
+ *
+ * The host sends on every downlink the **source** (`setRelay`): its own stream (`setMedia`,
+ * the default) or a guest's uplink, whose encoded frames it forwards as they arrive
+ * (`FrameRouter`) where the browser can (Chrome: `createEncodedStreams`, VP8 on every link);
+ * elsewhere it sends the received track, which the browser decodes and encodes again. Links
+ * without a RTCPeerConnection (memory, broadcast) carry no video.
  */
 class MediaController {
   constructor(role, emit) {
@@ -481,7 +696,42 @@ class MediaController {
     this.emit = emit;
     this.stream = null;
     this.params = {};
-    this.senders = new Set();
+    // host
+    /** pc -> {pc, peerId, sender, upTrack, pli} */
+    this.links = new Map();
+    /** The host's own peer id: as the source, the host's own stream. */
+    this.self = null;
+    this.relay = null;
+    this.relaySet = false;
+    this.encoded = false;
+    this.router = null;
+    this.placeholderTrack = null;
+    this.pliTimer = null;
+    /** Sends a control message to a guest (set by the session). */
+    this.sendTo = () => {};
+    // guest
+    this.uplinkStream = null;
+    this.uplinkSenders = new Set();
+    this.uplink = { active: false };
+  }
+
+  /** Host: turns frame forwarding on where the browser can; called once, before any link. */
+  enableForwarding(on) {
+    this.encoded = this.role === 'host' && on && canForwardFrames();
+    if (this.encoded) {
+      this.router = new FrameRouter({
+        requestKeyFrame: (source) => this.keyFrameOf(source),
+        copy: (frame, rtpTimestamp) =>
+          new RTCEncodedVideoFrame(frame, { metadata: { ...frame.getMetadata(), rtpTimestamp } }),
+      });
+      this.router.setSource(this.source());
+    }
+    dbg('video relay:', this.encoded ? 'forward' : 'reencode');
+  }
+
+  /** Extra RTCPeerConnection settings. */
+  pcConfig() {
+    return this.encoded ? { encodedInsertableStreams: true } : {};
   }
 
   /** Guest: before createOffer. */
@@ -492,10 +742,24 @@ class MediaController {
     const transceiver = pc.addTransceiver('video', { direction: 'recvonly' });
     this.offerOrder(transceiver);
     pc.addEventListener('track', (e) => {
-      if (e.track.kind === 'video') {
+      if (e.track.kind === 'video' && e.transceiver === transceiver) {
         this.emit('track', e.streams[0] ?? new MediaStream([e.track]));
       }
     });
+    // The uplink: nothing is sent until the host asks (encodings inactive).
+    const up = pc.addTransceiver('video', { direction: 'sendonly', sendEncodings: [{ active: false }] });
+    const sender = up.sender;
+    this.uplinkSenders.add(sender);
+    pc.addEventListener('connectionstatechange', () => {
+      if (pc.connectionState === 'closed' || pc.connectionState === 'failed') {
+        this.uplinkSenders.delete(sender);
+      }
+    });
+    const track = this.uplinkTrack();
+    if (track) {
+      sender.replaceTrack(track).catch(() => {});
+    }
+    this.applyUplink(sender);
   }
 
   /** Host: after setRemoteDescription(offer), before createAnswer. */
@@ -503,37 +767,189 @@ class MediaController {
     if (this.role !== 'host') {
       return;
     }
-    const transceiver = pc.getTransceivers().find((t) => t.receiver.track.kind === 'video');
-    if (!transceiver) {
+    const videos = pc.getTransceivers().filter((t) => t.receiver.track.kind === 'video');
+    const [down, up] = videos;
+    if (!down) {
       return;
     }
-    transceiver.direction = 'sendonly';
-    const { sender } = transceiver;
-    this.senders.add(sender);
+    down.direction = 'sendonly';
+    const rec = { pc, peerId: null, sender: down.sender, upTrack: null, pli: 0 };
+    this.links.set(pc, rec);
+    this.codecs(down);
+    if (this.encoded) {
+      const { readable, writable } = down.sender.createEncodedStreams();
+      const writer = writable.getWriter();
+      this.router.addOutput(rec, null, (frame) => writer.write(frame).catch(() => {}));
+      pump(readable, (frame) => this.router.own(rec, this.self, frame));
+    }
+    if (up) {
+      up.direction = 'recvonly';
+      this.codecs(up);
+      rec.upTrack = up.receiver.track;
+      if (this.encoded) {
+        const { readable, writable } = up.receiver.createEncodedStreams();
+        const writer = writable.getWriter();
+        pump(readable, (frame) => {
+          this.router.input(rec.peerId, frame);
+          writer.write(frame).catch(() => {}); // on to the host's own decoder
+        });
+      }
+    }
     pc.addEventListener('connectionstatechange', () => {
       if (pc.connectionState === 'closed' || pc.connectionState === 'failed') {
-        this.senders.delete(sender);
+        this.dropped(pc);
       }
     });
-    this.codecs(transceiver);
-    sender.replaceTrack(this.track()).catch(() => {});
-    this.apply(sender);
+    down.sender.replaceTrack(this.trackFor(rec)).catch(() => {});
+    this.apply(down.sender);
+  }
+
+  /** Host: the link of `pc` belongs to guest `peerId` (after its hello). */
+  named(pc, peerId) {
+    const rec = this.links.get(pc);
+    if (!rec) {
+      return;
+    }
+    rec.peerId = peerId;
+    this.router?.setOutputId(rec, peerId);
+    rec.sender.replaceTrack(this.trackFor(rec)).catch(() => {});
+  }
+
+  /** Host: the link of `pc` is gone. */
+  dropped(pc) {
+    const rec = this.links.get(pc);
+    if (rec) {
+      this.links.delete(pc);
+      this.router?.removeOutput(rec);
+    }
+  }
+
+  /** Host: what a guest sends on its uplink (a stream with its track), or null. */
+  uplinkOf(peerId) {
+    for (const rec of this.links.values()) {
+      if (rec.peerId === peerId && rec.upTrack) {
+        return new MediaStream([rec.upTrack]);
+      }
+    }
+    return null;
+  }
+
+  /** @private The peer id whose video goes out: the host's own unless `setRelay` said other. */
+  source() {
+    return this.relaySet ? this.relay : this.self;
+  }
+
+  /** @private What the downlink of `rec` carries now. */
+  trackFor(rec) {
+    const source = this.source();
+    if (source !== null && source === this.self) {
+      return this.track() ?? this.placeholder();
+    }
+    if (this.encoded || source === null || source === rec.peerId) {
+      return this.placeholder();
+    }
+    for (const other of this.links.values()) {
+      if (other.peerId === source) {
+        return other.upTrack;
+      }
+    }
+    return this.placeholder();
+  }
+
+  /** @private A track that never has a frame: keeps a forwarding sender running (null elsewhere). */
+  placeholder() {
+    if (!this.encoded) {
+      return null;
+    }
+    this.placeholderTrack ??= new MediaStreamTrackGenerator({ kind: 'video' });
+    return this.placeholderTrack;
   }
 
   track() {
     return this.stream?.getVideoTracks()[0] ?? null;
   }
 
-  /** Host: the stream to send, or null to send nothing. */
+  /** Host: its own stream, sent while it is the source; null sends nothing. */
   setMedia(stream) {
     this.stream = stream;
     const track = this.track();
     if (track && this.params.contentHint) {
       track.contentHint = this.params.contentHint;
     }
-    for (const sender of this.senders) {
-      sender.replaceTrack(track).catch(() => {});
+    this.retrack();
+  }
+
+  /**
+   * Host: the source of every downlink: a guest's peer id (its uplink), the host's own id (its
+   * stream), or null (nothing).
+   */
+  setRelay(source) {
+    this.relaySet = true;
+    this.relay = source;
+    this.router?.setSource(source);
+    this.retrack();
+    this.watchLoss();
+  }
+
+  /** @private */
+  retrack() {
+    for (const rec of this.links.values()) {
+      rec.sender.replaceTrack(this.trackFor(rec)).catch(() => {});
     }
+  }
+
+  /** @private Asks `source` for a key frame: the host's own encoders, or a guest's uplink. */
+  keyFrameOf(source) {
+    if (source === this.self) {
+      for (const rec of this.links.values()) {
+        void forceKeyFrame(rec.sender);
+      }
+      return;
+    }
+    this.sendTo(source, { t: 'key' });
+  }
+
+  /**
+   * @private While a guest's frames are forwarded, a viewer that loses some asks the host's
+   * sender for a key frame (PLI/FIR) and the host's code never hears it: the counters in the
+   * sender's stats tell, once a second.
+   */
+  watchLoss() {
+    const remote = this.encoded && this.relay !== null && this.relay !== this.self;
+    if (!remote) {
+      clearInterval(this.pliTimer);
+      this.pliTimer = null;
+      return;
+    }
+    this.pliTimer ??= setInterval(async () => {
+      let lost = false;
+      for (const rec of this.links.values()) {
+        try {
+          const report = await rec.sender.getStats();
+          let n = 0;
+          report.forEach((r) => {
+            if (r.type === 'outbound-rtp') {
+              n += (r.pliCount ?? 0) + (r.firCount ?? 0);
+            }
+          });
+          lost ||= n > rec.pli;
+          rec.pli = n;
+        } catch {
+          // closing
+        }
+      }
+      if (lost) {
+        this.router?.keyFrameWanted();
+      }
+    }, 1000);
+  }
+
+  /** Ends timers and forwarding. */
+  close() {
+    clearInterval(this.pliTimer);
+    this.pliTimer = null;
+    this.router?.stop();
+    this.placeholderTrack?.stop();
   }
 
   /** Host: {fps, maxBitrate, scale, contentHint}, applied to every sender now and later. */
@@ -543,8 +959,8 @@ class MediaController {
     if (track && this.params.contentHint) {
       track.contentHint = this.params.contentHint;
     }
-    for (const sender of this.senders) {
-      this.apply(sender);
+    for (const rec of this.links.values()) {
+      this.apply(rec.sender);
     }
   }
 
@@ -559,6 +975,69 @@ class MediaController {
     if (fps) enc.maxFramerate = fps;
     if (maxBitrate) enc.maxBitrate = maxBitrate;
     if (scale) enc.scaleResolutionDownBy = Math.max(1, scale);
+    p.degradationPreference = 'maintain-resolution';
+    sender.setParameters(p).catch(() => {});
+  }
+
+  // ── Guest uplink ──────────────────────────────────────────────────────
+
+  /** @private */
+  uplinkTrack() {
+    return this.uplinkStream?.getVideoTracks()[0] ?? null;
+  }
+
+  /** Guest: the stream to offer the host (sent only while the host asks); null stops it. */
+  setUplink(stream) {
+    this.uplinkStream = stream;
+    const track = this.uplinkTrack();
+    if (track && this.uplink.contentHint) {
+      track.contentHint = this.uplink.contentHint;
+    }
+    for (const sender of this.uplinkSenders) {
+      sender.replaceTrack(track).catch(() => {});
+    }
+  }
+
+  /** Guest: the host's `up` control message: whether to send, and with which limits. */
+  hostUplink(m) {
+    const num = (v, lo, hi) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : undefined);
+    this.uplink = {
+      active: m.active === true,
+      fps: num(m.fps, 0.1, 60),
+      maxBitrate: num(m.maxBitrate, 10_000, 50_000_000),
+      scale: num(m.scale, 1, 16),
+      contentHint: ['detail', 'text', 'motion'].includes(m.contentHint) ? m.contentHint : undefined,
+    };
+    const track = this.uplinkTrack();
+    if (track && this.uplink.contentHint) {
+      track.contentHint = this.uplink.contentHint;
+    }
+    for (const sender of this.uplinkSenders) {
+      this.applyUplink(sender);
+    }
+  }
+
+  /** Guest: the host asks for a key frame of the uplink. */
+  hostKeyFrame() {
+    if (this.uplink.active && this.uplinkTrack()) {
+      for (const sender of this.uplinkSenders) {
+        void forceKeyFrame(sender);
+      }
+    }
+  }
+
+  /** @private */
+  applyUplink(sender) {
+    const { active, fps, maxBitrate, scale } = this.uplink;
+    const p = sender.getParameters();
+    if (!p.encodings?.length) {
+      return; // before negotiation: the transceiver's own (inactive) encoding stays
+    }
+    const enc = p.encodings[0];
+    enc.active = active;
+    if (fps) enc.maxFramerate = fps;
+    if (maxBitrate) enc.maxBitrate = maxBitrate;
+    if (scale) enc.scaleResolutionDownBy = scale;
     p.degradationPreference = 'maintain-resolution';
     sender.setParameters(p).catch(() => {});
   }
@@ -584,20 +1063,33 @@ class MediaController {
     }
   }
 
-  /** @private Preferred codecs by MIME type (e.g. 'video/VP9'), the rest after. */
+  /**
+   * @private Host: the codecs of a transceiver's answer. Forwarded frames decode only when every
+   * link uses one codec, so with forwarding the answer offers VP8 alone (with its helpers);
+   * otherwise the preferred codecs by MIME type (e.g. 'video/VP9') come first.
+   */
   codecs(transceiver) {
-    const wanted = this.params.codecs;
-    if (!wanted?.length || typeof RTCRtpSender?.getCapabilities !== 'function') {
+    if (typeof RTCRtpSender?.getCapabilities !== 'function') {
       return;
     }
     const all = RTCRtpSender.getCapabilities('video')?.codecs ?? [];
-    const rank = (c) => {
-      const i = wanted.findIndex((m) => m.toLowerCase() === c.mimeType.toLowerCase());
-      return i < 0 ? wanted.length : i;
-    };
+    let list;
+    if (this.encoded) {
+      list = all.filter((c) => /^video\/vp8$/i.test(c.mimeType) || AUX_CODEC.test(c.mimeType));
+    } else {
+      const wanted = this.params.codecs;
+      if (!wanted?.length) {
+        return;
+      }
+      const rank = (c) => {
+        const i = wanted.findIndex((m) => m.toLowerCase() === c.mimeType.toLowerCase());
+        return i < 0 ? wanted.length : i;
+      };
+      list = [...all].sort((a, b) => rank(a) - rank(b));
+    }
     try {
-      transceiver.setCodecPreferences([...all].sort((a, b) => rank(a) - rank(b)));
-      dbg('video codec preference:', wanted.join(', '));
+      transceiver.setCodecPreferences(list);
+      dbg('video codec preference:', this.encoded ? 'video/VP8 (forwarding)' : this.params.codecs.join(', '));
     } catch (e) {
       // unsupported: the browser's own order stays
       dbg('video codec preference not applied:', e?.message ?? e);
@@ -617,7 +1109,7 @@ async function makeOffer(iceServers, gatherMs, media) {
 
 /** The answering side of `offerSdp`: its link and its full answer SDP. */
 async function makeAnswer(iceServers, offerSdp, gatherMs, media) {
-  const pc = new RTCPeerConnection({ iceServers });
+  const pc = new RTCPeerConnection({ iceServers, ...media?.pcConfig() });
   const link = new WebRtcLink(pc);
   await pc.setRemoteDescription({ type: 'offer', sdp: offerSdp });
   media?.prepareAnswer(pc);
@@ -1118,7 +1610,7 @@ export class Session {
     this.role = options.role;
     this.token = options.token;
     this.keys = keys;
-    this.protocol = options.protocol ?? 'inksplat/1';
+    this.protocol = options.protocol ?? 'inksplat/2';
     this.iceServers = options.iceServers ?? [];
     this.accept = options.accept ?? (() => true);
     this.me = { id: options.peerId ?? randomId(8), ...cleanPresence(options.me), role: this.role };
@@ -1143,6 +1635,59 @@ export class Session {
     this.manual = null;
     this.media = new MediaController(this.role, (event, detail) => this.emit(event, detail));
     this.media.videoCodecs = options.videoCodecs;
+    this.media.self = this.me.id;
+    this.media.sendTo = (peerId, m) => {
+      const entry = this.links.get(peerId);
+      if (entry) {
+        this.sendControlTo(entry, m);
+      }
+    };
+    this.media.enableForwarding(this.role === 'host' && options.forwardFrames !== false);
+  }
+
+  /**
+   * Host: what every viewer is sent: the uplink of guest `source`, the host's own stream when it
+   * is the host's own id (the default), or nothing (null). A guest's stream is not sent back to
+   * it. (inksplat addition)
+   */
+  setRelay(source) {
+    this.hostOnly();
+    this.media.setRelay(source);
+  }
+
+  /** Host: the video a guest sends on its uplink (only while asked), or null. (inksplat addition) */
+  uplink(peerId) {
+    this.hostOnly();
+    return this.media.uplinkOf(peerId);
+  }
+
+  /**
+   * Host: whether guest `peerId` sends its uplink (`active`), and with which limits (as
+   * `mediaParams`). (inksplat addition)
+   */
+  uplinkParams(peerId, params) {
+    this.hostOnly();
+    const entry = this.links.get(peerId);
+    if (entry) {
+      const { active, fps, maxBitrate, scale, contentHint } = params ?? {};
+      this.sendControlTo(entry, { t: 'up', active: active === true, fps, maxBitrate, scale, contentHint });
+    }
+  }
+
+  /**
+   * Guest: the stream offered to the host; it is sent only while the host asks
+   * (`uplinkParams`). Null stops it. (inksplat addition)
+   */
+  setUplink(stream) {
+    if (this.role !== 'guest') {
+      throw new SessionError('role', 'only a guest has an uplink');
+    }
+    this.media.setUplink(stream);
+  }
+
+  /** How the host sends a guest's video: `forward` (encoded frames) or `reencode`. */
+  get relayMode() {
+    return this.media.encoded ? 'forward' : 'reencode';
   }
 
   /**
@@ -1395,6 +1940,9 @@ export class Session {
     dbg('link closed:', reason ?? '(no reason)', entry.peer ? `peer ${short(entry.peer.id)}` : '(before hello)');
     clearTimeout(entry.helloTimer);
     this.unnamed.delete(entry);
+    if (entry.link.pc) {
+      this.media.dropped(entry.link.pc);
+    }
     if (reason === 'ice-failed') {
       this.lastLinkFailure = 'answer';
     }
@@ -1554,6 +2102,16 @@ export class Session {
         this.locked = !!m.on;
         this.emit('state', { state: this.state, locked: this.locked });
         break;
+      case 'up':
+        if (entry.peer?.role === 'host') {
+          this.media.hostUplink(m);
+        }
+        break;
+      case 'key':
+        if (entry.peer?.role === 'host') {
+          this.media.hostKeyFrame();
+        }
+        break;
       default:
         break;
     }
@@ -1598,6 +2156,9 @@ export class Session {
     entry.instance = typeof m.instance === 'string' ? m.instance.slice(0, 40) : '';
     entry.peer = { id: m.id, ...cleanPresence(m), role: 'guest', path: null };
     this.links.set(m.id, entry);
+    if (entry.link.pc) {
+      this.media.named(entry.link.pc, m.id);
+    }
     this.roster.set(m.id, { ...entry.peer });
     this.sendControlTo(entry, { t: 'welcome', host: this.roster.get(this.me.id), peers: this.peers(), locked: this.locked });
     this.broadcastRoster();
@@ -1747,6 +2308,7 @@ export class Session {
     clearTimeout(this.connectTimer);
     clearTimeout(this.reconnectTimer);
     clearInterval(this.pathTimer);
+    this.media.close();
     const finish = () => {
       for (const r of this.rendezvous) {
         r.stop();

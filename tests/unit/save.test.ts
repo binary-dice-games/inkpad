@@ -44,16 +44,18 @@ describe('what is saved of a board', () => {
     expect(fileStamp(new Date(2026, 9, 30, 7, 5))).toBe('2026-10-30-0705');
   });
 
-  it('puts the sheet behind a canvas without video, and nothing behind video', () => {
+  it('puts the sheet behind a canvas without the screen, and nothing behind the screen', () => {
     expect(exportBackground(stage())).toBeUndefined();
     expect(exportBackground(null)).toBeUndefined();
     expect(exportBackground(stage(), 1)!.background).toContain('#f6f7f8'); // canvas 2: whiteboard
-    const cork = exportBackground(stage({ video: false, backgrounds: ['cork'] }))!;
+    const cork = exportBackground(stage({ backgrounds: ['cork'] }))!;
     expect(cork.background).toContain('#bd9467');
     expect(cork['background-blend-mode']).toContain('multiply');
     expect(cork.border).toContain('solid');
     expect(cork['box-shadow']).toContain('inset');
-    expect(exportBackground(stage({ video: false }))!.background).toContain('#f6f7f8'); // whiteboard
+    expect(exportBackground(stage({ backgrounds: ['whiteboard'] }))!.background).toContain(
+      '#f6f7f8',
+    );
   });
 
   it('has no frame to take from a video that has not started', () => {
@@ -95,7 +97,7 @@ describe('saving', () => {
         return { format: 'inksplat-board', version: 1, saved: '', meta, items: [], files: [] };
       },
     };
-    const p = setup({ video: false, backgrounds: ['wall'] }, board);
+    const p = setup({ backgrounds: ['wall'] }, board);
     await saveAs('png', p.host);
     await saveAs('svg', p.host);
     await saveAs('board', p.host);
@@ -112,7 +114,7 @@ describe('saving', () => {
     const parts = zipParts(await bytesOf(downloads[2]!.blob));
     expect(parts.has('manifest.json')).toBe(true);
     expect(JSON.parse(new TextDecoder().decode(await parts.get('settings.json')!()))).toEqual({
-      backgrounds: ['wall', 'blackboard', 'wall', 'cork', 'whiteboard'],
+      backgrounds: ['wall', 'whiteboard', 'blackboard', 'wall', 'cork'],
     });
     expect(p.toasts).toEqual([]);
   });
@@ -156,7 +158,7 @@ describe('opening a board file', () => {
   it('adds it, says how much, and gives the presenter its backgrounds', async () => {
     let loaded: unknown;
     const p = setup(
-      { video: false },
+      {},
       {
         loadBoard: async (data: unknown) => {
           loaded = data;
@@ -178,18 +180,16 @@ describe('opening a board file', () => {
       files: [],
     });
     expect(p.toasts).toEqual(['Added 3 items, 2 files (1 left out).']);
-    // No video in this session: that canvas, like the unknown one, stays as it is.
-    expect(p.backgrounds).toEqual([['cork', undefined, undefined, 'wall', 'wall']]);
+    // The old video is the screen; the unknown one stays as it is.
+    expect(p.backgrounds).toEqual([['cork', 'screen', undefined, 'wall', 'wall']]);
   });
 
   it('keeps unknown backgrounds out', () => {
-    const none = stage({ video: false });
-    expect(fileBackgrounds({}, none)).toBeUndefined();
-    expect(fileBackgrounds({ background: 'cork' }, none)).toBeUndefined(); // not a setting of ours
-    expect(fileBackgrounds({ backgrounds: ['lava'] }, none)).toBeUndefined();
-    expect(fileBackgrounds({ backgrounds: ['video'] }, none)).toBeUndefined(); // no video here
-    expect(fileBackgrounds({ backgrounds: ['video'] }, stage())).toEqual([
-      'video',
+    expect(fileBackgrounds({})).toBeUndefined();
+    expect(fileBackgrounds({ background: 'cork' })).toBeUndefined(); // not a setting of ours
+    expect(fileBackgrounds({ backgrounds: ['lava'] })).toBeUndefined();
+    expect(fileBackgrounds({ backgrounds: ['video'] })).toEqual([
+      'screen',
       undefined,
       undefined,
       undefined,

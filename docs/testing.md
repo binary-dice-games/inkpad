@@ -33,14 +33,14 @@ of WebRTC.
 | `display_capture` | `tests/unit/display-capture.test.ts` | The size reduction for the encoder and the whole-screen warning |
 | `share_host` | `tests/unit/share-host.test.ts` | The presenter's side: links, stage messages, drawing lock, pause, removal, and that viewers cannot command or impersonate the host |
 | `viewer_model` | `tests/unit/viewer-model.test.ts` | The viewer's messages and decisions that need no page |
-| `site_build` | `tests/unit/site-build.test.ts` | The Pages site: both pages at the root and under `/v1/`, bundle sizes, the 404 page, the smoke check |
+| `site_build` | `tests/unit/site-build.test.ts` | The Pages site: both pages at the root and under `/v2/` (the protocol major), bundle sizes, the 404 page, the smoke check |
 
 Browser tests drive real Chrome with real WebRTC over a local fake tracker.
 
 | ctest name | File | What it checks |
 |---|---|---|
 | `webrtc` | `tests/e2e/webrtc.test.ts` | Video and board over real WebRTC; trackers that drop big announces; codec preference; nothing secret in the tracker traffic or the logs |
-| `site` | `tests/e2e/site.test.ts` | The site served like GitHub Pages: viewer at `/` and `/v1/`, a 404 that keeps an invite, the privacy page |
+| `site` | `tests/e2e/site.test.ts` | The site served like GitHub Pages: viewer at `/` and `/v2/`, a 404 that keeps an invite, the privacy page |
 | `present` | `tests/e2e/present.test.ts` | The presenter page: starting from a (fake) screen, video to a viewer, drawing both ways, pause, a lost source, end, the whole-screen warning, the pointer option, settings, folding |
 | `viewer` | `tests/e2e/viewer.test.ts` | The viewer app with the presenter page as host: drawings land at the same place of the frame in windows of different shapes, accessibility (axe-core), who is here, touch on a phone-sized screen, joining with a code, removal, folding the tools |
 

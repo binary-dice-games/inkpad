@@ -6,7 +6,7 @@
  */
 
 /** Wire protocol id; changes only on incompatible changes. */
-export const PROTOCOL = 'inksplat/1';
+export const PROTOCOL = 'inksplat/2';
 
 /** Where the viewer is served by default (GitHub Pages of this repository). */
 export const DEFAULT_VIEWER_BASE = 'https://binary-dice-games.github.io/inksplat/';
@@ -128,11 +128,26 @@ export const UPLINK_WARNING_KBPS = 4000;
 
 // ── Stage message ─────────────────────────────────────────────────────────────
 
-export type StageState = 'live' | 'paused' | 'ended';
+export type StageState = 'live' | 'ended';
+
+/** The board frame's fixed size and aspect: every stream is letterboxed into it. */
+export const STAGE_W = 1280;
+export const STAGE_H = 720;
+export const STAGE_ASPECT = STAGE_W / STAGE_H;
+
+/** The stream on the screen background (spec/07_participant_streaming/DESIGN.md section 5.2). */
+export interface ScreenInfo {
+  /** Peer id of the person who shares it (the host's own id for the host's stream). */
+  owner: string;
+  name: string;
+  /** The captured size, for the letterbox before the first frame. */
+  w: number;
+  h: number;
+}
 
 /** What the host tells viewers about the shared frame (channel `stage`). */
 export interface Stage {
-  /** Frame width / height. */
+  /** Frame width / height: fixed for the session ({@link STAGE_ASPECT}). */
   aspect: number;
   w: number;
   h: number;
@@ -140,23 +155,25 @@ export interface Stage {
   state: StageState;
   /** Whether viewers may draw. */
   drawing: boolean;
-  /** `false` for a session without video (only the board); absent otherwise. */
-  video?: false;
   /**
    * What each canvas shows behind the board, one entry per canvas (index 0 is canvas 1); absent:
-   * {@link defaultBackgrounds}. `video` appears only in a session with video.
+   * {@link defaultBackgrounds}.
    */
   backgrounds?: CanvasBackground[];
+  /** The active stream, absent when none is (the screen background is black). */
+  screen?: ScreenInfo;
+  /** Peer id of the stream the host previews, absent when none (tells its owner). */
+  preview?: string;
   title?: string;
 }
 
-/** The backgrounds drawn behind a canvas instead of the video. */
+/** The backgrounds drawn behind a canvas instead of the screen. */
 export const BACKGROUNDS = ['whiteboard', 'blackboard', 'wall', 'cork'] as const;
 export type Background = (typeof BACKGROUNDS)[number];
 export const DEFAULT_BACKGROUND: Background = 'whiteboard';
 
-/** What a canvas shows behind the board: the shared video, or one of {@link BACKGROUNDS}. */
-export type CanvasBackground = Background | 'video';
+/** What a canvas shows behind the board: the active stream (`screen`), or one of {@link BACKGROUNDS}. */
+export type CanvasBackground = Background | 'screen';
 
 /** How many canvases a board has (the whiteboard's `PAGES`). */
 export const CANVASES = 5;
@@ -167,39 +184,38 @@ export function cleanBackground(value: unknown): Background | undefined {
 }
 
 /**
- * The canvas background if `value` is `video` (only when `video` is allowed) or one of
- * {@link BACKGROUNDS}, else undefined.
+ * The canvas background if `value` is `screen` or one of {@link BACKGROUNDS}, else undefined.
+ * `video`, the name of earlier versions (stages, board files), is read as `screen`.
  */
-export function cleanCanvasBackground(
-  value: unknown,
-  video: boolean,
-): CanvasBackground | undefined {
-  return video && value === 'video' ? 'video' : cleanBackground(value);
+export function cleanCanvasBackground(value: unknown): CanvasBackground | undefined {
+  return value === 'screen' || value === 'video' ? 'screen' : cleanBackground(value);
 }
 
 /**
- * The backgrounds of the canvases when nobody has chosen: with video, canvas 1 shows the video
- * and the others the backgrounds in order; without, the backgrounds in order, starting again
- * when they run out.
+ * The backgrounds of the canvases when nobody has chosen: canvas 1 shows the screen and the
+ * others the backgrounds in order.
  */
-export function defaultBackgrounds(video: boolean): CanvasBackground[] {
-  const order: CanvasBackground[] = video ? ['video', ...BACKGROUNDS] : [...BACKGROUNDS];
+export function defaultBackgrounds(): CanvasBackground[] {
+  const order: CanvasBackground[] = ['screen', ...BACKGROUNDS];
   return Array.from({ length: CANVASES }, (_, i) => order[i % order.length]!);
 }
 
-/**
- * What canvas `page` (0 for the first) shows behind the board in `stage`; before any stage, the
- * defaults of a session with video.
- */
+/** What canvas `page` (0 for the first) shows behind the board in `stage`. */
 export function canvasBackground(stage: Stage | null, page: number): CanvasBackground {
-  const video = stage?.video !== false;
-  const chosen = cleanCanvasBackground(stage?.backgrounds?.[page], video);
-  return chosen ?? defaultBackgrounds(video)[page] ?? (video ? 'video' : DEFAULT_BACKGROUND);
+  const chosen = cleanCanvasBackground(stage?.backgrounds?.[page]);
+  return chosen ?? defaultBackgrounds()[page] ?? DEFAULT_BACKGROUND;
 }
 
 export const STAGE_CHANNEL = 'stage';
 
 const MAX_TITLE = 120;
+const MAX_NAME = 40;
+const PEER_ID = /^[A-Za-z0-9_-]{4,40}$/;
+
+/** `text` without control characters, at most `max` long. */
+const printable = (text: string, max: number): string =>
+  // eslint-disable-next-line no-control-regex
+  text.replace(/[\u0000-\u001f]/g, '').slice(0, max);
 
 /** The stage if the message is well formed, else null; unknown fields are dropped. */
 export function cleanStage(message: unknown): Stage | null {
@@ -217,7 +233,7 @@ export function cleanStage(message: unknown): Stage | null {
   ) {
     return null;
   }
-  if (m.state !== 'live' && m.state !== 'paused' && m.state !== 'ended') {
+  if (m.state !== 'live' && m.state !== 'ended') {
     return null;
   }
   if (typeof m.drawing !== 'boolean') {
@@ -231,21 +247,70 @@ export function cleanStage(message: unknown): Stage | null {
     state: m.state,
     drawing: m.drawing,
   };
-  if (m.video === false) {
-    stage.video = false;
-  }
   if (Array.isArray(m.backgrounds)) {
-    const video = stage.video !== false;
-    const fallback = defaultBackgrounds(video);
-    stage.backgrounds = fallback.map(
-      (d, i) => cleanCanvasBackground((m.backgrounds as unknown[])[i], video) ?? d,
+    stage.backgrounds = defaultBackgrounds().map(
+      (d, i) => cleanCanvasBackground((m.backgrounds as unknown[])[i]) ?? d,
     );
   }
+  const sc = m.screen as Record<string, unknown> | undefined;
+  if (
+    typeof sc === 'object' &&
+    sc !== null &&
+    typeof sc.owner === 'string' &&
+    PEER_ID.test(sc.owner) &&
+    finite(sc.w, 1, 16384) &&
+    finite(sc.h, 1, 16384)
+  ) {
+    stage.screen = {
+      owner: sc.owner,
+      name: typeof sc.name === 'string' ? printable(sc.name, MAX_NAME) : '',
+      w: sc.w,
+      h: sc.h,
+    };
+  }
+  if (typeof m.preview === 'string' && PEER_ID.test(m.preview)) {
+    stage.preview = m.preview;
+  }
   if (typeof m.title === 'string' && m.title.length > 0) {
-    // eslint-disable-next-line no-control-regex
-    stage.title = m.title.replace(/[\u0000-\u001f]/g, '').slice(0, MAX_TITLE);
+    stage.title = printable(m.title, MAX_TITLE);
   }
   return stage;
+}
+
+// ── Screen channel (spec/07_participant_streaming/DESIGN.md section 5.1) ──────
+
+/** Point-to-point messages about streams between a guest and the host. */
+export const SCREEN_CHANNEL = 'screen';
+
+/** The surface a stream shows (`displaySurface`). */
+export type ScreenSurface = 'browser' | 'window' | 'monitor' | 'unknown';
+
+/** A guest tells the host it captures (`offer`, again on a size change) or stopped (`withdraw`). */
+export type ScreenMessage =
+  { cmd: 'offer'; surface: ScreenSurface; w: number; h: number } | { cmd: 'withdraw' };
+
+/** The screen message if well formed, else null; unknown fields are dropped. */
+export function cleanScreenMessage(message: unknown): ScreenMessage | null {
+  if (typeof message !== 'object' || message === null) {
+    return null;
+  }
+  const m = message as Record<string, unknown>;
+  if (m.cmd === 'withdraw') {
+    return { cmd: 'withdraw' };
+  }
+  if (m.cmd !== 'offer') {
+    return null;
+  }
+  const size = (n: unknown): n is number =>
+    typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= 16384;
+  if (!size(m.w) || !size(m.h)) {
+    return null;
+  }
+  const surface: ScreenSurface =
+    m.surface === 'browser' || m.surface === 'window' || m.surface === 'monitor'
+      ? m.surface
+      : 'unknown';
+  return { cmd: 'offer', surface, w: m.w, h: m.h };
 }
 
 // ── Invite links ──────────────────────────────────────────────────────────────
