@@ -69,9 +69,10 @@ A **Screen** section in the host panel:
 - The active row is highlighted; **Show** on another row switches.
 - The preview appears as a small video in the panel.
 
-When a stream becomes active and the canvas the host is on does not show **screen**, the panel
-offers a one-click "Show the screen on this canvas" (it does not change backgrounds by itself,
-the host may want the stream on another canvas).
+**Show** on a previewed stream ends its preview (it is on the screen now). When a stream is
+active and the canvas the host is on does not show **screen**, the panel
+offers a one-click "Show the screen on this canvas" (**Show the screen on this canvas**; it does
+not change backgrounds by itself, the host may want the stream on another canvas).
 
 Automatic choices (the host can always change them):
 
@@ -135,60 +136,64 @@ refuses mismatches; one Pages site serves both pages, so a mismatch is a stale t
 ### 4.2 The relay: encoded frames, forwarded
 
 WebRTC in a browser does not expose RTP packets, but it does expose **encoded frames** through
-encoded transforms (`RTCRtpScriptTransform` in a worker where available, else Chrome's
-`createEncodedStreams()`, which needs `encodedInsertableStreams: true` on the
-`RTCPeerConnection`). Frames reach the receiver transform once the packets of a frame are
-assembled, before the jitter buffer and the decoder, and leave the sender transform to the
-packetizer and pacer: this is the closest the platform comes to forwarding packets, and it adds
-no decode, encode or buffering delay. On the host:
+encoded transforms. Frames reach a receiver's transform once the packets of a frame are
+assembled, before the jitter buffer and the decoder, and leave a sender's transform to the
+packetizer and pacer: the closest the platform comes to forwarding packets, with no decode,
+encode or buffering delay. What the spike (plan step 1, Chrome 153) found decides the API:
 
-- **Receiver transform** on every uplink: each frame of the *active* stream is copied to every
-  downlink's sender transform (except the source's own link) and then written on to the host's
-  own decoder (which drives the host's screen and preview). Frames of a previewed stream go only
-  to the decoder.
-- **Sender transform** on every downlink: in *local* mode it passes the host's own encoder
-  frames (the host's stream is active); in *relay* mode it drops them and writes the forwarded
-  ones; with no active stream it writes nothing.
-- A downlink needs a track for its transform to run: in relay mode it carries a cheap
-  placeholder track (a still 2x2 track whose frames are dropped). The spike (plan step 1) picks
-  the placeholder that keeps the sender running in a background tab without timers (candidates:
-  `VideoTrackGenerator`/`MediaStreamTrackGenerator` written from the transform worker, a
-  `captureStream` of a static canvas, the received track itself).
+- `RTCRtpScriptTransform` accepts frames written from another peer connection's receiver and
+  **never sends them** (no packets leave). Chrome's older `createEncodedStreams()` (the peer
+  connection needs `encodedInsertableStreams: true` from its construction) sends them and they
+  decode. So the relay uses `createEncodedStreams()` on the host's peer connections, in the page.
+- A downlink needs a track for frames to flow after a source switch: a sender without one
+  sends the packets but the viewer stops decoding. The placeholder is a
+  `MediaStreamTrackGenerator` that is never written, so it costs no encoding and needs no
+  timer.
+- Every source has its own random RTP timestamp base, and a viewer drops frames whose
+  timestamp jumps back: about one switch in two froze before each output got its own offset,
+  so each output's timestamps go on from the last one sent (`rtpTimestamp` may be changed in a
+  frame copy; the SSRC and payload type may not, and need not be).
+- Each output (viewer) waits for a key frame of the source before it gets anything, after a
+  switch and when it joins.
 
-Rules the relay keeps:
+On the host (`MediaController` in `collab-session.js`, `FrameRouter` for the routing):
 
-- **One codec.** Forwarded frames are only decodable if every leg uses the same codec. The host
-  answers every transceiver of every link with the session codec first: the first entry of the
-  host's codec setting both sides support, **VP8 by default** (VP9 and AV1 frames carry
-  dependency descriptors and scalability metadata that the spike must prove survive forwarding
-  before they are allowed). A link that ends up with another codec gets the fallback below.
-- **Switch on a key frame.** When the active stream changes (to or from the host's own stream as
-  well), each downlink drops frames until the first key frame of the new source, so no decoder
-  is fed deltas of another encoder. The host requests that key frame at once (4.3).
-- **Metadata.** Forwarded frames are written with the downlink's own SSRC, payload type and a
-  continuous RTP timestamp base (`setMetadata` where needed); the spike confirms what Chrome
-  rewrites itself.
+- **Receiver side** of every uplink: each frame of the *active* stream is copied (with the
+  output's timestamp) to every downlink except the source's own, then written on to the host's
+  own decoder (its screen and preview). Frames of a previewed stream go only to the decoder.
+- **Sender side** of every downlink: while the host's own stream is the source its own encoder's
+  frames pass (with the output's timestamp); otherwise its track is the placeholder and the
+  forwarded frames are written instead; with no source nothing is written.
+- **One codec.** Forwarded frames decode only if every leg uses the same codec. With forwarding
+  the host answers both video transceivers of every link with **VP8 alone** (and its
+  retransmission and error-correction helpers), so the guests' codec order does not matter.
+  VP9 and AV1 were not tried (their dependency descriptors and scalability metadata would need
+  their own check); the host's own stream is VP8 too while forwarding is on.
 
-**Fallback** (no encoded transforms, a codec mismatch, or the spike shows a blocker on a
-browser): the host attaches the received track to the downlink with `replaceTrack` and the
-browser decodes and re-encodes it. It works everywhere and costs one decode, one encode per link
-and a jitter buffer; the relay mode is chosen per link and logged (`relay: forward|reencode`).
+**Fallback** (no `createEncodedStreams`, `RTCEncodedVideoFrame` or `MediaStreamTrackGenerator`:
+Firefox and Safari as hosts, or `forwardFrames: false`): the host attaches the received track to
+the downlinks and the browser decodes and encodes it again. It works everywhere and costs one
+decode, one encode per link and a jitter buffer. `Session.relayMode` says which
+(`forward` | `reencode`), and the log has a `video relay:` line.
 
 ### 4.3 Key frames
 
-A decoder needs a key frame to start: when a guest begins receiving the active stream (it
-joined, the active stream changed, or it lost packets and its browser sent a PLI). The host
-cannot make the source's encoder produce one through the forwarding, so:
+A decoder needs a key frame to start: when a viewer joins, when the active stream changes, and
+after it lost packets (its browser sends a PLI to the host's sender). The forwarding host cannot
+make the source's encoder produce one, so it asks:
 
-- The host's sender transform hears key frame requests (`keyframerequest` on
-  `RTCRtpScriptTransformer`, where available) and forwards them to the source: on its uplink
-  receiver (`sendKeyFrameRequest()`), or, where that is missing, as a `keyframe` message on the
-  `screen` channel (section 5) to which the source answers with `generateKeyFrame()` or by
-  toggling its encoding `active` off and on (both make Chrome send a key frame).
-- A viewer whose screen shows no decoded frame 1 s after the active stream changed or it joined
-  asks the host the same way (covers browsers that do not surface the PLI).
-- Requests to a source are coalesced: at most one per 500 ms, so one lossy viewer cannot flood
-  the source and, through it, everybody else with key frames.
+- **Asking a guest**: the session control message `{t: 'key'}` to the source, which toggles its
+  uplink encoding off and on (`setParameters`): Chrome then sends a key frame.
+  `generateKeyFrame()` is not implemented in Chrome 153 and `sendKeyFrameRequest()` belongs to
+  the script transform API that cannot forward (4.2). **Asking the host's own encoders**: the
+  same toggle on its downlink senders.
+- `FrameRouter` asks when an output starts waiting (a join, a switch, the peer becomes known),
+  at most once per 500 ms, and again every 500 ms while an output still waits, at most 20 times
+  in a row; one request covers all outputs.
+- **Losses**: a viewer's PLI never reaches the host's code with `createEncodedStreams`, so while
+  a guest's stream is forwarded the host reads the PLI and FIR counters of its downlink senders'
+  stats once a second and asks the source when one grew. A lossy viewer can thus cost the source
+  a key frame per 500 ms at most.
 
 ### 4.4 Rate and quality
 
@@ -206,17 +211,22 @@ per-link encoders.
 
 | Message | Direction | Meaning |
 |---|---|---|
-| `{cmd: 'offer', surface, w, h}` | guest -> host | I am capturing (surface `browser\|window\|monitor`). Repeated on size change. |
-| `{cmd: 'withdraw'}` | guest -> host | I stopped. Also implied when the guest leaves. |
-| `{cmd: 'send', on, params}` | host -> one guest | Start (`on: true`) or stop sending on your uplink, with the host's `MediaParams`. |
-| `{cmd: 'keyframe'}` | host -> one guest | Send a key frame now (fallback of 4.3). |
-| `{cmd: 'keyframe'}` | guest -> host | I need a key frame of the active stream. |
+| `{cmd: 'offer', surface, w, h}` | guest -> host | I am capturing (surface `browser\|window\|monitor`). Repeated on size change and on a new link to the host. |
+| `{cmd: 'withdraw'}` | guest -> host | I stopped. Also implied when the guest leaves (a viewer page closes its session on `pagehide`, so that is at once). |
 
-The host's `accept` filter (`ShareHost.accept`, today `wb` only) also lets `screen` through,
-checked: only the five shapes above, only from the sender's own id, an `offer` only within the
-size limits. The host never relays `screen` messages (they are point to point). A guest's
-`offer` gives it no power: only the host's `send` makes its uplink carry anything, and only the
-host chooses the active stream.
+What the host asks of a guest's uplink is not app data but session control, next to `hello`
+and `removed` (`collab-session`):
+
+| Control message | Direction | Meaning |
+|---|---|---|
+| `{t: 'up', active, fps, maxBitrate, scale, contentHint}` | host -> one guest | Send on your uplink (`active`) or not, with these limits (`Session.uplinkParams`). |
+| `{t: 'key'}` | host -> one guest | Send a key frame now (4.3). |
+
+The host's `accept` filter (`ShareHost.accept`) takes `screen` messages itself, checked
+(`cleanScreenMessage`: only the two shapes above, sizes within limits, from a guest it knows by
+the id the session stamped), and returns false: they are never delivered elsewhere nor relayed,
+even when a guest sends them to everybody. A guest's `offer` gives it no power: only the host's
+`up` makes its uplink carry anything, and only the host chooses the active stream.
 
 ### 5.2 Stage
 
@@ -235,7 +245,7 @@ host chooses the active stream.
 
 | Stream state | Owner's uplink | Host downlinks |
 |---|---|---|
-| Offered | track attached, encoding `active: false` (nothing on the wire) | - |
+| Offered | track attached, encoding `active: false` (nothing on the wire; offers carry the uplink with `active: false` from the start) | - |
 | Previewed | `active: true` | - |
 | Active | `active: true` | forwarded frames, except to the owner |
 
@@ -247,48 +257,49 @@ the host asks. Switching from offered to sending costs one message round trip an
 
 | Piece | Where | Change |
 |---|---|---|
-| `MediaController` | `packages/collab-session/collab-session.js` (nymph copy) | Uplink transceiver in guest offers; host receives uplinks; encoded-transform hooks; record in the header |
+| `MediaController`, `FrameRouter` | `packages/collab-session/collab-session.js` (nymph copy) | Uplink transceiver in guest offers; host receives uplinks; forwarding of encoded frames; `up`/`key` control; recorded in the header |
 | `Session` API | `collab-session.d.ts` | New calls below |
-| Relay | `viewer/src/relay.ts` (+ `relay-worker.ts` for `RTCRtpScriptTransform`) | Frame forwarding, key frame gating and coalescing, mode per link |
-| `ShareHost` | `viewer/src/share-host.ts` | Streams list, active / preview state, `screen` channel, stage changes |
-| Stream sharing (both pages) | `viewer/src/share-button.ts` (new) | Button, picker, owner status, `screen` messages on the guest side |
-| Backgrounds | `packages/defaults`, `viewer/src/sheet.ts` | `screen`, black fill, fixed aspect |
-| Pages | `present.ts`/`.html`, `main.ts`/`index.html` | Start page reduced, share button, host Screen panel |
+| Stage, `screen` channel | `packages/defaults` | `screen` background, `Stage.screen`/`preview`, fixed frame, `cleanScreenMessage`, `inksplat/2` |
+| `ShareHost` | `viewer/src/share-host.ts` | Streams list, active / preview state, `screen` messages, what each guest is asked to send, stage |
+| Share button (both pages) | `viewer/src/share-button.ts` | Button, notice, picker, owner status |
+| Backgrounds | `viewer/src/sheet.ts`, `viewer/src/model.ts`, `viewer/src/save.ts` | `screen`, black fill, fixed aspect, saved pictures letterboxed |
+| Pages | `present.ts`/`.html`, `main.ts`/`index.html` | Start page reduced, share button, host Screen panel, the screen shown from the right source |
 
-New `Session` API (contract; the d.ts gets TSDoc):
+`Session` API as built (TSDoc in the d.ts):
 
 ```ts
 // guest
-setUplink(stream: MediaStream | null): void;            // own capture on the uplink, paused
-uplinkParams(params: MediaParams & { active: boolean }): void;
+setUplink(stream: MediaStream | null): void;    // offered on the uplink, sent only when asked
 // host
-on(event: 'uplink', cb: (peerId: string, stream: MediaStream | null) => void): () => void;
-setRelay(source: { peerId: string } | { local: true } | null): void; // what downlinks carry
-requestKeyFrame(peerId: string): void;
-// both
-on(event: 'keyframe-request', cb: (from: string) => void): () => void;
+setRelay(source: string | null): void;          // a guest's id, the host's own id, or nothing
+uplink(peerId: string): MediaStream | null;     // a guest's uplink, for the host's own view
+uplinkParams(peerId: string, p: UplinkParams): void; // {active, fps, maxBitrate, scale, contentHint}
+readonly relayMode: 'forward' | 'reencode';
+// createSession option
+forwardFrames?: boolean;                        // default true (tests force the fallback)
 ```
 
-`setMedia(stream)` stays as the host's local capture (used when `setRelay({local: true})`).
-`createSession` gains `encodedTransforms?: boolean` (default on where supported) so tests can
-force the fallback.
+`setMedia(stream)` stays the host's own capture; until `setRelay` is called it is the source,
+so code that only calls `setMedia` (nymph's tests, `room.html`) behaves as before. `ShareHost`
+calls `setRelay(null)` at once and then follows the active stream. No events were needed: the
+host learns of offers from the `screen` channel and key frames are handled inside the session.
 
-### Why the relay code lives in the session package
+### Why the relay lives in the session package
 
-The transforms have to be attached when the transceivers are created (Chrome's legacy API needs
-the peer connection flag at construction and `createEncodedStreams()` before any frame), which
-only `MediaController` sees. The forwarding logic itself (which source, key frame gating) is
-inksplat's and sits in `viewer/src/relay.ts`, passed to the session as a small interface, so the
-change to the copied file stays small.
+The forwarding has to be set up when the peer connections and transceivers are made (the
+`encodedInsertableStreams` flag at construction, `createEncodedStreams()` before any frame),
+which only `MediaController` sees; the routing (`FrameRouter`) is exported from the same file so
+it is unit tested with fake frames. The copied file stays the only place that knows about
+transceivers.
 
 ## 7. Platform notes
 
 - Picker: desktop Chrome, Edge, Firefox, Safari. Phones and tablets have no `getDisplayMedia`:
   the share button is hidden there (feature check, not user agent), they still watch and draw.
-- Encoded transforms: `RTCRtpScriptTransform` in Firefox and Safari, and in recent Chrome; older
-  Chrome only has `createEncodedStreams()`. Only the host needs them for forwarding; sources and
-  viewers need nothing special (they send and receive normal VP8), except the fallback key frame
-  path. A host without either uses the re-encode fallback.
+- Forwarding needs Chrome's `createEncodedStreams()` (4.2) on the **host** only; sources and
+  viewers send and receive plain VP8 (or, with the fallback, any codec). A Firefox or Safari
+  host re-encodes. Whether their `RTCRtpScriptTransform` can forward between peer connections
+  was not tested.
 - Background throttling: the relay is event driven (frames arrive, frames are written); no timers
   on the frame path, in line with `spec/06` section 3.
 
@@ -332,20 +343,25 @@ stream and to None (black); A stops and the screen goes black; a guest joining l
 picture (key frame path); the forwarding mode is `forward` with transforms and `reencode` when
 forced off, and both deliver video. A latency check: frame stamps drawn into the canvas source
 are read back at guest B and compared between forward and reencode (forward must not be slower).
+As built, the browser cases are `tests/e2e/streams.test.ts` (session level, both modes, late
+joiner, nothing sent before asked) and `tests/e2e/participant-streaming.test.ts` (the built
+site); the latency comparison was not automated (frame clocks in a headless browser are too
+noisy for a stable bound) and is on the manual checklist.
 
 Manual (`docs/manual-testing.md`): real picker on each desktop OS, two networks, a lossy viewer
 (key frames coalesced, others unaffected), Firefox and Safari as host.
 
 ## 11. Risks and open questions
 
-Risks (settled by plan step 1, the spike):
+Risks, as settled by the spike (4.2, 4.3) and still open:
 
-- Writing a frame received on one peer connection into a sender of another: supported by Chrome
-  for its own transform API; payload type, SSRC and timestamp handling must be confirmed per
-  browser.
-- Keeping a downlink sender running with a placeholder track in a background tab.
-- Key frame request APIs differ per browser (`keyframerequest`, `sendKeyFrameRequest`,
-  `generateKeyFrame`); the data channel fallback covers the gaps.
+- Chrome may retire `createEncodedStreams()` for `RTCRtpScriptTransform` before the latter can
+  forward between peer connections; `tests/e2e/relay-spike.test.ts` checks the browser's
+  behaviour, and the fallback keeps sessions working.
+- The toggle that forces a key frame is a Chrome behaviour, not a contract; the retries hide a
+  missed one, at the cost of a slower switch.
+- Untested by hand: a host page in a background tab while forwarding (the path has no timers
+  except the once-a-second loss check), real networks with loss.
 
 Open questions (default in brackets, used unless the user decides otherwise):
 

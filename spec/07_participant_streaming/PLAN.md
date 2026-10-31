@@ -17,6 +17,13 @@ different approach) before step 2.
 **Tests:** `tests/e2e/relay-spike.test.ts` (Chrome): the viewer decodes frames of the source's
 colour; after a switch to a second source it decodes the second colour with no corrupt frames;
 added under `inksplat_add_test(... PROJECT e2e)`.
+**Result:** done; the approach holds with these changes (DESIGN 4.2, 4.3): `RTCRtpScriptTransform`
+accepts frames from another peer connection but never sends them, so the relay uses
+`createEncodedStreams()`; the placeholder is a `MediaStreamTrackGenerator` (no track breaks
+switches); each output's RTP timestamps are rewritten (without it one switch in two froze);
+`generateKeyFrame()` is missing in Chrome 153, so key frames are forced by toggling the sender's
+encoding, with retries. VP9 and AV1 were not tried: forwarding uses VP8. The page is
+`tests/e2e/pages/relay-spike.html`, kept with its test as a check of the browser.
 
 ## 2. Stage, backgrounds and the `screen` channel
 
@@ -26,6 +33,8 @@ added under `inksplat_add_test(... PROJECT e2e)`.
 message types and `cleanScreenMessage`; board files read `video` as `screen`.
 **Tests:** `tests/unit/defaults.test.ts` and `tests/unit/board-archive.test.ts` extended: cleaning,
 defaults, old values mapped.
+**Result:** done. `video` of stages and board files is read as `screen`; the `paused` state is
+refused (None replaces it).
 
 ## 3. Uplink transceiver in the session
 
@@ -37,6 +46,10 @@ host `uplink` event; `collab-session.d.ts` with TSDoc.
 **Tests:** `tests/e2e/session-uplink.test.ts` (Chrome, fake tracker): a guest's canvas stream
 arrives at the host with the guest's id; `active: false` stops it; `setUplink(null)` ends it; a
 `inksplat/1` peer is refused.
+**Result:** done, with step 4 (one `MediaController`). The session API differs from the
+design's first draft (no `uplink` event; `uplink(peerId)` and `uplinkParams(peerId, ...)`), see
+DESIGN section 6. The `inksplat/1` refusal is the existing protocol check, not a new test.
+Tests: `tests/e2e/streams.test.ts`.
 
 ## 4. Relay in the session and `viewer/src/relay.ts`
 
@@ -48,6 +61,10 @@ worker (forwarding, key frame gating on switch, request coalescing, per-link mod
 **Tests:** `tests/unit/relay.test.ts` (fake frames: fan-out except the source, drop until key
 frame, coalescing at 500 ms, mode choice); `tests/e2e/relay.test.ts` (host + two guests: forward
 and forced re-encode both deliver; late joiner gets a picture; local/relay switch).
+**Result:** done. `FrameRouter` lives in `collab-session.js` (exported), not in
+`viewer/src/relay.ts`, see DESIGN section 6; there is no `requestKeyFrame` API or
+`keyframe-request` event: key frames are asked with the `key` control message and losses are
+read from stats (DESIGN 4.3). Tests: `tests/unit/relay.test.ts`, `tests/e2e/streams.test.ts`.
 
 ## 5. ShareHost: streams, preview, active
 
@@ -57,6 +74,8 @@ host's own stream, withdraw on leave and removal, `send` messages with the host'
 accept filter for `screen`, stage `screen` field; Pause and Share again removed.
 **Tests:** `tests/unit/share-host.test.ts` extended: every transition of the table in DESIGN 5.3,
 the accept filter refusing forged or malformed `screen` messages, stage contents.
+**Result:** done. **Show** on the previewed stream ends its preview (found by the end-to-end
+test).
 
 ## 6. Share button and owner status (both pages)
 
@@ -66,6 +85,8 @@ one-time notice, picker, surface warning, owner status from the stage, local vie
 active stream, hidden without `getDisplayMedia`.
 **Tests:** `tests/unit/share-button.test.ts` (status text from stage and own id, hidden without
 the API); e2e in step 8.
+**Result:** done. Viewers close their session on `pagehide`, so a stream on the screen goes
+black at once when its owner closes the tab.
 
 ## 7. Pages: start page, Screen panel, screen background
 
@@ -76,6 +97,9 @@ Preview, Show, None, preview video, "show the screen on this canvas"), toasts fo
 Save as PNG/SVG of a screen canvas.
 **Tests:** `tests/e2e/present.test.ts` updated (the start page has one start action; the
 removed buttons are gone); `tests/unit/sheet.test.ts` for the letterbox inside the fixed frame.
+**Result:** done. The board tests of `present.test.ts` pick the whiteboard for canvas 1 first
+(`PresenterSite.startBoard`), since canvas 1 now shows the black screen; the frame adapter now
+zooms `#zoom` (the screen and the sheet) instead of the video alone.
 
 ## 8. End-to-end and docs
 
@@ -85,6 +109,9 @@ including the latency comparison); `docs/manual-testing.md` checklist items; REA
 works" and "Using the board" sections; `spec/06_static_presenter/DESIGN.md` pointers to this
 project where it is superseded; CHANGELOG entries; `spec/INDEX.md` status.
 **Tests:** the new e2e file; the whole suite green on Linux, macOS and Windows CI.
+**Result:** done, except the automated latency comparison (manual checklist item 72 instead,
+see DESIGN section 10). CI on macOS and Windows not run from here; the suite passes on Linux
+(36 ctest entries).
 
 ## Completion Criteria
 

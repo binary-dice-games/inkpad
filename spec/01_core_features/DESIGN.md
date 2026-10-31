@@ -123,6 +123,8 @@ Media hooks (contract, details in `spec/03_tab_streaming/DESIGN.md`):
   every link (current and future) via `RTCRtpTransceiver`/`replaceTrack`.
   `session.mediaParams({fps,maxBitrate,scale})` sets sender parameters live.
 - Guest: `session.on('track', (stream) => ...)`.
+- Guests' streams (an uplink per guest, `setRelay`, forwarding of encoded frames): see
+  `spec/07_participant_streaming/DESIGN.md` section 4.
 - A link is "open" once data channels are open; video may arrive later or
   never (e.g., presenter paused). Failure to negotiate video does not close
   the data link.

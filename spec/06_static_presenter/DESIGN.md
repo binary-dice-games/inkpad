@@ -5,6 +5,11 @@ Builds on `spec/01_core_features/DESIGN.md` (session, presenter role),
 `spec/03_tab_streaming/DESIGN.md` (video parameters) and
 `spec/04_viewer_site/DESIGN.md` (the viewer app and the Pages site).
 
+> **Superseded in part by `spec/07_participant_streaming/DESIGN.md`:** the start page only
+> starts a session; anybody shares at any time with **Share screen**; Pause, Share again and
+> the board without video are gone; the `video` background is now `screen` and the frame has a
+> fixed 16:9 aspect. The rest (capture, backup, board files, settings) holds.
+
 ## 1. Purpose and scope
 
 The presenter side as a page of the same static site as the viewer
