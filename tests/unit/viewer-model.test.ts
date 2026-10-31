@@ -45,29 +45,37 @@ describe('messages', () => {
 });
 
 describe('placeholder', () => {
-  it('waits for the video until a frame arrives', () => {
-    expect(placeholder(null, false)).toMatch(/Waiting/);
-    expect(placeholder(stage(), false)).toMatch(/Waiting/);
-    expect(placeholder(stage({ video: false }), false)).toBeNull(); // a board has no video to wait for
-    expect(placeholder(stage(), true)).toBeNull();
-    // A canvas with a background instead of the video has nothing to wait for either.
-    expect(placeholder(stage(), false, 1)).toBeNull();
-    expect(placeholder(stage({ state: 'paused' }), true, 1)).toBeNull();
-    expect(placeholder(stage({ backgrounds: ['wall', 'video'] }), false, 1)).toMatch(/Waiting/);
+  const ana = { owner: 'ana-1234', name: 'Ana', w: 640, h: 360 };
+
+  it('waits for the active stream on a screen canvas until a frame arrives', () => {
+    expect(placeholder(stage({ screen: ana }), false)).toMatch(/Waiting for the screen of Ana/);
+    expect(placeholder(stage({ screen: ana }), true)).toBeNull();
+    // Nothing shared: the screen is plain black.
+    expect(placeholder(null, false)).toBeNull();
+    expect(placeholder(stage(), false)).toBeNull();
+    // A canvas with another background has nothing to wait for.
+    expect(placeholder(stage({ screen: ana }), false, 1)).toBeNull();
+    expect(placeholder(stage({ screen: ana, backgrounds: ['wall', 'screen'] }), false, 1)).toMatch(
+      /Waiting/,
+    );
   });
 
-  it('says when the presenter paused or ended, whatever the video shows', () => {
-    expect(placeholder(stage({ state: 'paused' }), true)).toMatch(/paused/);
+  it('shows the owner their own stream at once', () => {
+    expect(placeholder(stage({ screen: ana }), false, 0, 'ana-1234')).toBeNull();
+    expect(placeholder(stage({ screen: ana }), false, 0, 'bob-1234')).toMatch(/Waiting/);
+  });
+
+  it('says when the presenter ended, whatever the screen shows', () => {
     expect(placeholder(stage({ state: 'ended' }), true)).toMatch(/ended/);
   });
 });
 
 describe('boardAspect', () => {
-  it('prefers the video, then the stage, then the default', () => {
-    expect(boardAspect({ width: 1000, height: 500 }, stage({ aspect: 1 }))).toBe(2);
-    expect(boardAspect({ width: 0, height: 0 }, stage({ aspect: 1.5 }))).toBe(1.5);
-    expect(boardAspect({ width: 0, height: 0 }, null)).toBe(DEFAULT_ASPECT);
-    expect(boardAspect({ width: 0, height: 0 }, stage({ aspect: 0 }))).toBe(DEFAULT_ASPECT);
+  it("is the stage's fixed frame, else 16:9", () => {
+    expect(boardAspect(stage({ aspect: 1.5 }))).toBe(1.5);
+    expect(boardAspect(null)).toBe(DEFAULT_ASPECT);
+    expect(boardAspect(stage({ aspect: 0 }))).toBe(DEFAULT_ASPECT);
+    expect(DEFAULT_ASPECT).toBe(16 / 9);
   });
 });
 

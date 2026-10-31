@@ -46,9 +46,9 @@ describe('the Pages site', () => {
   afterAll(() => server?.close());
 
   it('has the viewer at the root and under its protocol major, and keeps older majors', () => {
-    expect(protocolMajor()).toBe(1);
+    expect(protocolMajor()).toBe(2);
     const index = readFileSync(join(out, 'index.html'), 'utf8');
-    expect(readFileSync(join(out, 'v1', 'index.html'), 'utf8')).toBe(index);
+    expect(readFileSync(join(out, 'v2', 'index.html'), 'utf8')).toBe(index);
     expect(readFileSync(join(out, 'v0', 'index.html'), 'utf8')).toBe('old viewer');
     expect(readFileSync(join(out, '.nojekyll'), 'utf8')).toBe('');
   });
@@ -87,7 +87,7 @@ describe('the Pages site', () => {
       readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
     );
     expect(index).toContain(`Version ${version}`);
-    expect(index).toContain('protocol inksplat/1.');
+    expect(index).toContain('protocol inksplat/2.');
     expect(index).not.toMatch(/\{\{\w[\w-]*\}\}/);
     expect(index).toContain('<a class="button primary" href="present.html">Start presenting</a>');
   });

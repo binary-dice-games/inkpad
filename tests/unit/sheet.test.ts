@@ -42,39 +42,44 @@ describe('the sheet of a canvas without video', () => {
     expect(BACKGROUND_STYLES.cork.border).toContain('solid');
   });
 
-  it('shows the video on the canvases that show it (canvas 1 unless chosen otherwise)', () => {
+  it('shows the screen on the canvases that show it (canvas 1 unless chosen otherwise)', () => {
     const p = parts();
     showSheet(p, stage(), 2);
     expect(p.video.hidden).toBe(false);
     expect(p.page.hidden).toBe(true);
     showSheet(p, null, 2);
     expect(p.page.hidden).toBe(true);
-    // Canvas 2 shows the whiteboard by default, over the video's own aspect.
+    // Canvas 2 shows the whiteboard by default.
     showSheet(p, stage(), 2, 1);
     expect(p.video.hidden).toBe(true);
     expect(p.page.hidden).toBe(false);
     expect(p.page.style.border).toContain('rgb(185, 190, 198)');
-    showSheet(p, stage({ backgrounds: ['cork', 'video'] }), 2, 1);
+    showSheet(p, stage({ backgrounds: ['cork', 'screen'] }), 2, 1);
     expect(p.video.hidden).toBe(false);
     expect(p.page.hidden).toBe(true);
-    showSheet(p, stage({ backgrounds: ['cork', 'video'] }), 2, 0);
+    showSheet(p, stage({ backgrounds: ['cork', 'screen'] }), 2, 0);
     expect(p.page.style.border).toContain('rgb(139, 94, 52)');
   });
 
-  it('shows a letterboxed sheet with the background instead of the video', () => {
+  it('lays the screen over the letterboxed frame, on black', () => {
     const p = parts();
-    showSheet(p, stage({ video: false, backgrounds: ['blackboard'] }), 2);
+    showSheet(p, stage(), 2);
+    expect(p.video.style.width).toBe('800px');
+    expect(p.video.style.height).toBe('400px');
+    expect(p.video.style.top).toBe('200px');
+    expect(p.video.style.background).toContain('rgb(0, 0, 0)');
+  });
+
+  it('shows a letterboxed sheet with the background instead of the screen', () => {
+    const p = parts();
+    showSheet(p, stage({ backgrounds: ['blackboard'] }), 2);
     expect(p.video.hidden).toBe(true);
     expect(p.page.hidden).toBe(false);
     expect(p.page.style.width).toBe('800px');
     expect(p.page.style.height).toBe('400px');
     expect(p.page.style.top).toBe('200px');
     expect(p.page.style.border).toContain('solid');
-
-    // No background said: the default, a whiteboard in its frame.
-    showSheet(p, stage({ video: false }), 2);
-    expect(p.page.style.border).toContain('rgb(185, 190, 198)');
-    showSheet(p, stage({ video: false, backgrounds: ['wall', 'wall', 'cork'] }), 2, 2);
+    showSheet(p, stage({ backgrounds: ['wall', 'wall', 'cork'] }), 2, 2);
     expect(p.page.style.border).toContain('rgb(139, 94, 52)');
   });
 });

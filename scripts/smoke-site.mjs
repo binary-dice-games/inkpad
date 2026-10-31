@@ -8,6 +8,7 @@
 // is wrong. The check is meant to run right after a deploy.
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { protocolMajor } from './build-site.mjs';
 
 /**
  * @param {string} base the site's address, ending with `/`
@@ -16,6 +17,7 @@ import { resolve } from 'node:path';
  */
 export async function smokeSite(base, get = (url) => fetch(url, { redirect: 'manual' })) {
   const problems = [];
+  const major = `v${protocolMajor()}/`;
   const check = async (path, { status = 200, contains, label = path } = {}) => {
     let res;
     try {
@@ -39,13 +41,16 @@ export async function smokeSite(base, get = (url) => fetch(url, { redirect: 'man
   };
   await check('', { contains: ['<title>inksplat</title>', 'viewer.js'], label: 'viewer page' });
   await check('viewer.js', { contains: 'inksplat/', label: 'viewer script' });
-  await check('v1/', { contains: 'viewer.js', label: 'versioned viewer /v1/' });
+  await check(major, { contains: 'viewer.js', label: `versioned viewer /${major}` });
   await check('present.html', {
-    contains: ['present.js', 'Start sharing'],
+    contains: ['present.js', 'Start session'],
     label: 'presenter page',
   });
   await check('present.js', { contains: 'inksplat/', label: 'presenter script' });
-  await check('v1/present.html', { contains: 'present.js', label: 'versioned presenter /v1/' });
+  await check(`${major}present.html`, {
+    contains: 'present.js',
+    label: `versioned presenter /${major}`,
+  });
   await check('privacy.html', { contains: 'privacy policy', label: 'privacy policy' });
   await check('no-such-page-for-smoke-test', {
     status: 404,

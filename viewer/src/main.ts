@@ -1,8 +1,10 @@
 // MIT License © 2026 Binary Dice Games
 /**
  * @file The viewer app: joins a session from an invite link, shows the
- * presenter's video with the shared whiteboard over it, and lets the person
- * draw. Served from GitHub Pages next to the presenter page.
+ * screen the presenter picked with the shared whiteboard over it, and lets the
+ * person draw and share a screen of their own
+ * (spec/07_participant_streaming). Served from GitHub Pages next to the
+ * presenter page.
  */
 import { createSession, SessionError } from '@inksplat/collab-session';
 import type { Session } from '@inksplat/collab-session';
@@ -19,6 +21,7 @@ import {
   DEFAULT_ICE_SERVERS,
   DEFAULT_TRACKERS,
   PROTOCOL,
+  SCREEN_CHANNEL,
   STAGE_CHANNEL,
   cleanStage,
   parseInvite,
@@ -28,6 +31,9 @@ import { setToolbarFolded } from './fold';
 import { filePreview } from './previews';
 import { showSheet } from './sheet';
 import { wireSave } from './save';
+import { ownerStatus, playIn, statusText, wireShareButton } from './share-button';
+import type { ShareButton } from './share-button';
+import type { DisplayCapture } from './display-capture';
 import {
   boardAspect,
   endMessage,
@@ -70,6 +76,9 @@ let board: Whiteboard | null = null;
 let adapter: FrameAdapter | null = null;
 let stage: Stage | null = null;
 let hasVideo = false;
+/** The host's video (the active stream of somebody else). */
+let downlink: MediaStream | null = null;
+let share: ShareButton | null = null;
 /** The whiteboard toolbar is folded away (remembered). */
 let folded = store('inksplat.toolsFolded') === '1';
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -99,22 +108,35 @@ function canvas(): number {
   return board?.currentPage() ?? 0;
 }
 
-/** Shows the video or, on a canvas with another background, the sheet with that background. */
+/** Shows the screen or, on a canvas with another background, the sheet with that background. */
 function layoutSheet(): void {
-  const v = video();
   showSheet(
-    { video: v, page: $('page'), box: $('stage') },
+    { video: video(), page: $('page'), box: $('stage') },
     stage,
-    boardAspect({ width: v.videoWidth, height: v.videoHeight }, stage),
+    boardAspect(stage),
     canvas(),
   );
 }
 
+/** The active stream: one's own capture when it is one's own (no round trip), else the host's video. */
+function showScreen(): void {
+  const me = session?.me.id;
+  const own = share?.capture()?.stream ?? null;
+  const owner = stage?.screen?.owner;
+  playIn(video(), !owner ? null : owner === me ? own : downlink);
+}
+
 function refreshStage(): void {
+  showScreen();
   hasVideo = video().videoWidth > 0;
   layoutSheet();
   adapter?.update();
-  $('notice').textContent = placeholder(stage, hasVideo, canvas()) ?? '';
+  const me = session?.me.id ?? null;
+  $('notice').textContent = placeholder(stage, hasVideo, canvas(), me ?? undefined) ?? '';
+  $('shareStatus').textContent = statusText(
+    ownerStatus(stage, me, share?.capture() != null),
+    false,
+  );
   if (board) {
     const allowed = mayDraw(stage);
     if (board.readOnly === allowed) {
@@ -155,11 +177,7 @@ function enterApp(): void {
   show('app');
   const stageEl = $('stage');
   const v = video();
-  adapter = frameAdapter(
-    stageEl,
-    () => boardAspect({ width: v.videoWidth, height: v.videoHeight }, stage),
-    v,
-  );
+  adapter = frameAdapter(stageEl, () => boardAspect(stage), $('zoom'));
   board = createWhiteboard(stageEl, {
     session,
     adapter,
@@ -179,6 +197,7 @@ function enterApp(): void {
 }
 
 function endSession(message: string): void {
+  share?.stop();
   board?.destroy();
   board = null;
   adapter = null;
@@ -236,9 +255,15 @@ async function join(name: string, color: string): Promise<void> {
     }
   });
   s.on('track', (stream) => {
-    const v = video();
-    v.srcObject = stream;
-    v.play().catch(() => {});
+    downlink = stream;
+    refreshStage();
+  });
+  // A new link to the host (a reconnect): offer the running capture again.
+  s.channel(SCREEN_CHANNEL).on('join', (peer) => {
+    const c = share?.capture();
+    if (c && peer.role === 'host') {
+      offer(c);
+    }
   });
   s.on('peers', renderPeople);
   s.channel(STAGE_CHANNEL).on('message', (m, from) => {
@@ -250,6 +275,44 @@ async function join(name: string, color: string): Promise<void> {
       }
       refreshStage();
     }
+  });
+}
+
+/** Tells the host this person captures `c` (the uplink sends only once the host asks). */
+function offer(c: DisplayCapture, size = c.size()): void {
+  const to = hostId();
+  if (session && to) {
+    session
+      .channel(SCREEN_CHANNEL)
+      .send({ cmd: 'offer', surface: c.surface, w: size.width, h: size.height }, { to });
+  }
+}
+
+/** The share button: a capture goes on the uplink, offered to the host. */
+function wireShare(): void {
+  share = wireShareButton({
+    button: $<HTMLButtonElement>('share'),
+    notice: $<HTMLDialogElement>('shareNotice'),
+    toast,
+    onStart: (c) => {
+      session?.setUplink(c.stream);
+      offer(c);
+      refreshStage();
+    },
+    onResize: (width, height) => {
+      const c = share?.capture();
+      if (c) {
+        offer(c, { width, height });
+      }
+    },
+    onStop: () => {
+      session?.setUplink(null);
+      const to = hostId();
+      if (session && to && session.state !== 'ended') {
+        session.channel(SCREEN_CHANNEL).send({ cmd: 'withdraw' }, { to });
+      }
+      refreshStage();
+    },
   });
 }
 
@@ -300,6 +363,9 @@ async function main(): Promise<void> {
   nameInput.value = store('inksplat.name') ?? '';
 
   wireSave({ board: () => board, stage: () => stage, video: () => video(), toast });
+  wireShare();
+  // Leaving tells the presenter at once (their list of streams, the screen), not after a timeout.
+  window.addEventListener('pagehide', () => session?.close());
   $('toolsToggle').setAttribute('aria-pressed', String(!folded));
   $('toolsToggle').addEventListener('click', () => {
     folded = !folded;

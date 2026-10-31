@@ -1,0 +1,137 @@
+<!doctype html>
+<!-- MIT License © 2026 Binary Dice Games -->
+<!-- Spike (spec/07_participant_streaming/PLAN.md step 1), kept as a regression check of the
+     browser: encoded frames received on one peer connection are written into the senders of
+     others (Chrome's createEncodedStreams), with a MediaStreamTrackGenerator as the senders'
+     placeholder track; a source switch waits for a key frame of the new source. -->
+<meta charset="utf-8" />
+<title>inksplat relay spike</title>
+<script type="module">
+  const app = (window.app = { errors: [], views: [] });
+  const sources = {};
+  const outs = [];
+  let active = 'a';
+
+  function canvasTrack(color) {
+    const c = document.createElement('canvas');
+    c.width = 320;
+    c.height = 180;
+    const g = c.getContext('2d');
+    let n = 0;
+    setInterval(() => {
+      g.fillStyle = color;
+      g.fillRect(0, 0, 320, 180);
+      g.fillStyle = '#fff';
+      g.fillRect((n++ * 7) % 300, 80, 20, 20);
+    }, 50);
+    return c.captureStream(20).getVideoTracks()[0];
+  }
+
+  async function link(a, b) {
+    a.onicecandidate = (e) => e.candidate && b.addIceCandidate(e.candidate);
+    b.onicecandidate = (e) => e.candidate && a.addIceCandidate(e.candidate);
+    await a.setLocalDescription();
+    await b.setRemoteDescription(a.localDescription);
+    await b.setLocalDescription();
+    await a.setRemoteDescription(b.localDescription);
+  }
+
+  function vp8(t) {
+    const all = RTCRtpReceiver.getCapabilities('video').codecs;
+    const first = (c) => (c.mimeType === 'video/VP8' ? 0 : 1);
+    t.setCodecPreferences([...all].sort((x, y) => first(x) - first(y)));
+  }
+
+  const flag = { encodedInsertableStreams: true };
+  for (const [id, color] of [
+    ['a', '#e00'],
+    ['b', '#0c0'],
+  ]) {
+    const src = new RTCPeerConnection();
+    const host = new RTCPeerConnection(flag);
+    const t = src.addTransceiver(canvasTrack(color), { direction: 'sendonly' });
+    vp8(t);
+    sources[id] = t.sender;
+    host.ontrack = (e) => {
+      const { readable, writable } = e.receiver.createEncodedStreams();
+      const r = readable.getReader();
+      const w = writable.getWriter();
+      (async () => {
+        for (;;) {
+          const { value, done } = await r.read();
+          if (done) break;
+          if (id === active) {
+            const meta = value.getMetadata();
+            for (const o of outs) {
+              // Each viewer starts on a key frame of the active source, and its RTP timestamps
+              // go on from where the previous source left them (each source has its own base).
+              if (o.waiting && value.type === 'key') {
+                o.waiting = false;
+                o.offset = o.last === undefined ? 0 : o.last + 3000 - meta.rtpTimestamp;
+              }
+              if (!o.waiting) {
+                const ts = (meta.rtpTimestamp + o.offset) >>> 0;
+                o.last = ts;
+                const copy = new RTCEncodedVideoFrame(value, {
+                  metadata: { ...meta, rtpTimestamp: ts },
+                });
+                o.writer.write(copy).catch((e) => app.errors.push(String(e)));
+              }
+            }
+          }
+          await w.write(value);
+        }
+      })();
+    };
+    await link(src, host);
+  }
+
+  const placeholder = new MediaStreamTrackGenerator({ kind: 'video' });
+  for (let i = 0; i < 2; i++) {
+    const host = new RTCPeerConnection(flag);
+    const view = new RTCPeerConnection();
+    const t = host.addTransceiver(placeholder, { direction: 'sendonly' });
+    vp8(t);
+    const { readable, writable } = t.sender.createEncodedStreams();
+    outs.push({ writer: writable.getWriter(), waiting: true });
+    readable.pipeTo(new WritableStream()); // the placeholder never makes frames
+    const video = document.body.appendChild(document.createElement('video'));
+    video.muted = true;
+    video.autoplay = true;
+    view.ontrack = (e) => (video.srcObject = new MediaStream([e.track]));
+    app.views.push(video);
+    await link(host, view);
+  }
+
+  /** Toggling the encoding of a sender off and on makes Chrome send a key frame. */
+  async function keyFrame(sender) {
+    for (const on of [false, true]) {
+      const p = sender.getParameters();
+      p.encodings[0].active = on;
+      await sender.setParameters(p);
+    }
+  }
+
+  /** Switches the forwarded source; asks it for a key frame until every viewer has one. */
+  app.setActive = async (id) => {
+    active = id;
+    for (const o of outs) o.waiting = true;
+    for (let i = 0; i < 20 && outs.some((o) => o.waiting) && active === id; i++) {
+      await keyFrame(sources[id]);
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  };
+  app.color = (i) => {
+    const v = app.views[i];
+    if (!v.videoWidth) return null;
+    const c = document.createElement('canvas');
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
+    const g = c.getContext('2d');
+    g.drawImage(v, 0, 0);
+    const [r, gg] = g.getImageData(5, 5, 1, 1).data;
+    return r > 150 && gg < 100 ? 'red' : gg > 150 && r < 100 ? 'green' : 'other';
+  };
+  app.setActive('a'); // the viewers came after the first key frame
+  app.ready = true;
+</script>

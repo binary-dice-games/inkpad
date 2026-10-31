@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- MIT License © 2026 Binary Dice Games -->
+<!-- A host or a guest with a coloured canvas as its screen: guests offer it on their uplink, the
+     host relays the one it picks (spec/07_participant_streaming). -->
+<meta charset="utf-8" />
+<title>inksplat e2e streams</title>
+<video id="v" muted autoplay playsinline width="320" height="180"></video>
+<video id="up" muted autoplay playsinline width="320" height="180"></video>
+<script type="module">
+  import { createSession } from '/packages/collab-session/collab-session.js';
+
+  const q = new URLSearchParams(location.search);
+  const role = q.get('role');
+  const color = q.get('color');
+  const app = (window.app = { role, errors: [], logs: [], state: null });
+
+  /** A canvas of one colour, with a moving square so frames keep coming. */
+  function screen() {
+    const c = document.createElement('canvas');
+    c.width = 320;
+    c.height = 180;
+    const g = c.getContext('2d');
+    let n = 0;
+    setInterval(() => {
+      g.fillStyle = color;
+      g.fillRect(0, 0, 320, 180);
+      g.fillStyle = '#fff';
+      g.fillRect((n++ * 7) % 300, 150, 20, 20);
+    }, 50);
+    return c.captureStream(15);
+  }
+
+  const session = await createSession({
+    role,
+    token: q.get('token') ?? undefined,
+    peerId: q.get('id') ?? undefined,
+    me: { name: q.get('id') ?? role, color: '#3e63dd' },
+    rendezvous: [
+      {
+        kind: 'torrent',
+        urls: [q.get('tracker')],
+        announceMs: { host: 1000, guest: 1000 },
+        gatherMs: 500,
+      },
+    ],
+    iceServers: [],
+    forwardFrames: q.get('forward') !== '0',
+    videoCodecs: ['video/AV1', 'video/H264', 'video/VP9', 'video/VP8'],
+    log: (...a) => app.logs.push(a.join(' ')),
+  });
+  app.session = session;
+  app.token = session.token;
+  session.on('error', (e) => app.errors.push(e.reason ?? e.message));
+  session.on('state', (s) => (app.state = s.state));
+  session.on('track', (stream) => (document.getElementById('v').srcObject = stream));
+
+  if (role === 'host') {
+    app.stream = screen();
+    session.mediaParams({ fps: 10, maxBitrate: 400000 });
+    session.setMedia(app.stream);
+    /** Shows a guest's uplink here and asks it to send. */
+    app.ask = (id, on) => {
+      session.uplinkParams(id, { active: on, fps: 10, maxBitrate: 400000 });
+      document.getElementById('up').srcObject = on ? session.uplink(id) : null;
+    };
+  } else {
+    app.share = (on) => session.setUplink(on ? screen() : null);
+  }
+
+  /** The colour in the corner of a video: red, green, blue, or another. */
+  app.color = (id = 'v') => {
+    const v = document.getElementById(id);
+    if (!v.videoWidth) return null;
+    const c = document.createElement('canvas');
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
+    const g = c.getContext('2d');
+    g.drawImage(v, 0, 0);
+    const [r, gg, b] = g.getImageData(5, 5, 1, 1).data;
+    const hi = (x) => x > 150;
+    const lo = (x) => x < 100;
+    if (hi(r) && lo(gg) && lo(b)) return 'red';
+    if (lo(r) && hi(gg) && lo(b)) return 'green';
+    if (lo(r) && lo(gg) && hi(b)) return 'blue';
+    return `${r},${gg},${b}`;
+  };
+  app.ready = true;
+</script>

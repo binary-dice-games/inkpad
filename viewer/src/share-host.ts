@@ -1,9 +1,10 @@
 // MIT License © 2026 Binary Dice Games
 /**
  * @file The presenter's side of a share, free of DOM code so it is unit
- * tested: the host session, the lock on viewers' drawing, pause, removal and
- * the `stage` messages. The presenter page mounts its own whiteboard on the
- * host session, so there is no separate console and no presenter key.
+ * tested: the host session, the lock on viewers' drawing, removal, the streams
+ * on offer and the one on the screen (spec/07_participant_streaming), and the
+ * `stage` messages. The presenter page mounts its own whiteboard on the host
+ * session, so there is no separate console and no presenter key.
  */
 import { createSession } from '@inksplat/collab-session';
 import type { Peer, RendezvousSpec, Session } from '@inksplat/collab-session';
@@ -11,18 +12,43 @@ import { drawingGate } from '@inksplat/collab-whiteboard';
 import {
   CANVASES,
   PROTOCOL,
+  SCREEN_CHANNEL,
+  STAGE_ASPECT,
   STAGE_CHANNEL,
+  STAGE_H,
+  STAGE_W,
   cleanCanvasBackground,
+  cleanScreenMessage,
   defaultBackgrounds,
   inviteLink,
   toMediaParams,
 } from '@inksplat/defaults';
-import type { CanvasBackground, Stage } from '@inksplat/defaults';
+import type {
+  CanvasBackground,
+  ScreenMessage,
+  ScreenSurface,
+  Stage,
+  VideoSettings,
+} from '@inksplat/defaults';
+import { fitScale } from './display-capture';
 import type { Settings } from './settings';
+
+/** A stream on offer: a participant's capture (spec/07_participant_streaming section 2). */
+export interface StreamInfo {
+  /** Its owner's peer id (the host's own id for the host's stream). */
+  id: string;
+  name: string;
+  color: string;
+  surface: ScreenSurface;
+  w: number;
+  h: number;
+  /** Whether it is the host's own. */
+  own: boolean;
+}
 
 /** What the presenter page shows about the share. */
 export interface UiState {
-  phase: 'idle' | 'live' | 'paused';
+  phase: 'idle' | 'live';
   /** The link to give viewers, or null while idle. */
   link: string | null;
   viewers: { id: string; name: string; color: string; path: string | null }[];
@@ -30,9 +56,12 @@ export interface UiState {
   locked: boolean;
   /** Whether viewers may draw. */
   drawing: boolean;
-  paused: boolean;
-  /** Whether the session has video (false: only the board). */
-  video: boolean;
+  /** The streams on offer, in the order they came. */
+  streams: StreamInfo[];
+  /** The id of the stream on the screen, or null. */
+  active: string | null;
+  /** The id of the stream the host previews, or null. */
+  preview: string | null;
   /** What each canvas shows behind the board (index 0 is canvas 1). */
   backgrounds: CanvasBackground[];
   /** A problem to show (for example `no-tracker`), or null. */
@@ -45,9 +74,10 @@ export const IDLE_UI: Readonly<UiState> = {
   viewers: [],
   locked: false,
   drawing: true,
-  paused: false,
-  video: true,
-  backgrounds: defaultBackgrounds(true),
+  streams: [],
+  active: null,
+  preview: null,
+  backgrounds: defaultBackgrounds(),
   problem: null,
 };
 
@@ -55,14 +85,16 @@ export const IDLE_UI: Readonly<UiState> = {
 export type Command =
   | { cmd: 'lock'; on: boolean }
   | { cmd: 'drawing'; on: boolean }
-  | { cmd: 'pause'; on: boolean }
+  /** Puts stream `id` on the screen for everybody (ending its preview); null shows nothing. */
+  | { cmd: 'show'; id: string | null }
+  /** Has stream `id` sent to the host only, to look at it first; null ends the preview. */
+  | { cmd: 'preview'; id: string | null }
   | { cmd: 'newLink' }
   | { cmd: 'remove'; id: string }
   | { cmd: 'clear' }
   | { cmd: 'clearDrawings' }
-  /** Sets what canvas `page` (0 for the first) shows: `video` (with video only) or a background. */
-  | { cmd: 'background'; page: number; name: string }
-  | { cmd: 'viewport'; w: number; h: number };
+  /** Sets what canvas `page` (0 for the first) shows: `screen` or a background. */
+  | { cmd: 'background'; page: number; name: string };
 
 export interface ShareHostOptions {
   settings: Settings;
@@ -71,12 +103,9 @@ export interface ShareHostOptions {
   /** Clears the whiteboard for everyone; the owner's whiteboard does it. */
   clearBoard?: () => void;
   clearDrawings?: () => void;
-  /** `false`: a session without video, only the board; default true. */
-  video?: boolean;
+  /** Host: forward guests' encoded frames where the browser can (default true; tests). */
+  forwardFrames?: boolean;
 }
-
-const DEFAULT_ASPECT_W = 1280;
-const DEFAULT_ASPECT_H = 720;
 
 /**
  * One share: created by `ShareHost.start`, ended by `stop`. Listeners of
@@ -88,12 +117,16 @@ export class ShareHost {
   private readonly clearBoard: () => void;
   private readonly clearDrawings: () => void;
   private drawing: boolean;
-  private paused = false;
-  private readonly hasVideo: boolean;
+  private video: VideoSettings;
   private readonly backgrounds: CanvasBackground[];
   private problem: string | null = null;
-  private viewport = { w: DEFAULT_ASPECT_W, h: DEFAULT_ASPECT_H };
-  private source: MediaStream | null = null;
+  /** The streams on offer, by owner id. */
+  private readonly streams = new Map<string, StreamInfo>();
+  private own: MediaStream | null = null;
+  private active: string | null = null;
+  private preview: string | null = null;
+  /** What each guest was last asked to send, so nothing is sent twice. */
+  private readonly asked = new Map<string, string>();
   private readonly listeners = new Set<(ui: UiState) => void>();
   private readonly gate = drawingGate(() => this.drawing);
   private stopped = false;
@@ -104,11 +137,12 @@ export class ShareHost {
     this.clearBoard = options.clearBoard ?? (() => {});
     this.clearDrawings = options.clearDrawings ?? (() => {});
     this.drawing = options.settings.viewersMayDraw;
-    this.hasVideo = options.video !== false;
-    this.backgrounds = defaultBackgrounds(this.hasVideo);
-    session.mediaParams(toMediaParams(options.settings.video));
+    this.video = options.settings.video;
+    this.backgrounds = defaultBackgrounds();
+    session.mediaParams(toMediaParams(this.video));
+    session.setRelay(null);
     session.channel(STAGE_CHANNEL).on('join', (peer) => this.sendStage(peer.id));
-    session.on('peers', () => this.changed());
+    session.on('peers', () => this.peersChanged());
     session.on('state', () => this.changed());
     session.on('status', (e) => {
       if (e.stage === 'expired') {
@@ -142,6 +176,7 @@ export class ShareHost {
         { kind: 'manual' },
       ],
       accept: (channel, message, from) => host?.accept(channel, message, from) ?? false,
+      ...(options.forwardFrames === false ? { forwardFrames: false } : {}),
     });
     host = new ShareHost(session, options);
     return host;
@@ -150,10 +185,108 @@ export class ShareHost {
   /**
    * Which of a guest's messages are delivered or relayed: only the whiteboard
    * channel, and only while viewers may draw (the gate). `stage` and everything
-   * else is the host's alone, so nobody can speak for the presenter.
+   * else is the host's alone, so nobody can speak for the presenter. A `screen`
+   * message is taken here and never relayed: it is between its sender and the host.
    */
   private accept(channel: string, message: unknown, from: string): boolean {
+    if (channel === SCREEN_CHANNEL) {
+      const m = cleanScreenMessage(message);
+      if (m) {
+        this.screenMessage(m, from);
+      }
+      return false;
+    }
     return channel === 'wb' && this.gate(channel, message, from);
+  }
+
+  /** A guest offers its stream or withdraws it. */
+  private screenMessage(m: ScreenMessage, from: string): void {
+    const peer = this.session.peers().find((p) => p.id === from && p.role === 'guest');
+    if (!peer || this.stopped) {
+      return;
+    }
+    if (m.cmd === 'withdraw') {
+      this.dropStream(from);
+    } else {
+      this.streams.set(from, {
+        id: from,
+        name: peer.name,
+        color: peer.color,
+        surface: m.surface,
+        w: m.w,
+        h: m.h,
+        own: false,
+      });
+      this.asked.delete(from); // a new capture (or a new link): tell it again
+    }
+    this.streamsChanged();
+  }
+
+  /** Forgets the stream of `id`; it leaves the screen and the preview. */
+  private dropStream(id: string): void {
+    this.streams.delete(id);
+    this.asked.delete(id);
+    if (this.active === id) {
+      this.active = null;
+    }
+    if (this.preview === id) {
+      this.preview = null;
+    }
+  }
+
+  /** Someone came or went: the streams of those who left go. */
+  private peersChanged(): void {
+    const here = new Set(this.session.peers().map((p) => p.id));
+    let gone = false;
+    for (const id of [...this.streams.keys()]) {
+      if (!here.has(id)) {
+        this.dropStream(id);
+        gone = true;
+      }
+    }
+    for (const id of [...this.asked.keys()]) {
+      if (!here.has(id)) {
+        this.asked.delete(id);
+      }
+    }
+    if (gone) {
+      this.streamsChanged();
+    } else {
+      this.changed();
+    }
+  }
+
+  /** Tells the session and the guests what to send, and everybody what is on the screen. */
+  private streamsChanged(): void {
+    this.applyStreams();
+    this.sendStage();
+    this.changed();
+  }
+
+  private applyStreams(): void {
+    if (this.stopped) {
+      return;
+    }
+    this.session.setRelay(this.active);
+    const params = toMediaParams(this.video);
+    for (const s of this.streams.values()) {
+      if (s.own) {
+        continue;
+      }
+      const active = s.id === this.active || s.id === this.preview;
+      const ask = {
+        active,
+        fps: params.fps,
+        maxBitrate: params.maxBitrate,
+        contentHint: params.contentHint,
+        scale: fitScale(s.w, s.h, this.video.maxWidth, this.video.maxHeight),
+      };
+      const key = JSON.stringify(ask);
+      if (this.asked.get(s.id) !== key) {
+        this.asked.set(s.id, key);
+        this.session.uplinkParams(s.id, ask);
+      }
+    }
   }
 
   /** Runs a command; `from` is the viewer a removal must not hit (none here). */
@@ -166,14 +299,28 @@ export class ShareHost {
         this.drawing = command.on;
         this.sendStage();
         break;
-      case 'pause':
-        this.setPaused(command.on);
-        break;
+      case 'show':
+      case 'preview': {
+        const id = command.id;
+        if (id !== null && !this.streams.has(id)) {
+          throw new Error('unknown stream');
+        }
+        if (command.cmd === 'show') {
+          this.active = id;
+          if (id !== null && this.preview === id) {
+            this.preview = null; // on the screen now: no longer only a preview
+          }
+        } else {
+          this.preview = id;
+        }
+        this.streamsChanged();
+        return;
+      }
       case 'remove':
         this.session.remove(command.id);
         break;
       case 'background': {
-        const name = cleanCanvasBackground(command.name, this.hasVideo);
+        const name = cleanCanvasBackground(command.name);
         if (!name) {
           throw new Error('unknown background');
         }
@@ -196,16 +343,26 @@ export class ShareHost {
 
   /** The stage as viewers see it. */
   stage(): Stage {
-    const { w, h } = this.viewport;
+    const active = this.active ? this.streams.get(this.active) : undefined;
     return {
-      aspect: w / h,
-      w,
-      h,
-      fps: this.settings.video.fps,
-      state: this.stopped ? 'ended' : this.paused ? 'paused' : 'live',
+      aspect: STAGE_ASPECT,
+      w: STAGE_W,
+      h: STAGE_H,
+      fps: this.video.fps,
+      state: this.stopped ? 'ended' : 'live',
       drawing: this.drawing,
-      ...(this.hasVideo ? {} : { video: false as const }),
       backgrounds: [...this.backgrounds],
+      ...(active
+        ? {
+            screen: {
+              owner: active.id,
+              name: active.name,
+              w: Math.max(1, active.w),
+              h: Math.max(1, active.h),
+            },
+          }
+        : {}),
+      ...(this.preview ? { preview: this.preview } : {}),
     };
   }
 
@@ -232,7 +389,7 @@ export class ShareHost {
       return { ...IDLE_UI };
     }
     return {
-      phase: this.paused ? 'paused' : 'live',
+      phase: 'live',
       link: this.link(),
       viewers: this.session
         .peers()
@@ -240,8 +397,9 @@ export class ShareHost {
         .map((p) => ({ id: p.id, name: p.name, color: p.color, path: p.path })),
       locked: this.session.locked,
       drawing: this.drawing,
-      paused: this.paused,
-      video: this.hasVideo,
+      streams: [...this.streams.values()].map((st) => ({ ...st })),
+      active: this.active,
+      preview: this.preview,
       backgrounds: [...this.backgrounds],
       problem: this.problem,
     };
@@ -266,19 +424,53 @@ export class ShareHost {
     this.changed();
   }
 
-  /** The captured screen, sent to viewers while the share is not paused; null sends nothing. */
-  setSource(stream: MediaStream | null): void {
-    this.source = stream;
-    this.applyMedia();
+  /**
+   * The host's own capture (null: it stopped), with what it shows; called again with the same
+   * stream when its size changes. A new one goes on the screen when nothing else is there.
+   */
+  setOwnStream(
+    stream: MediaStream | null,
+    info: { surface: ScreenSurface; w: number; h: number } = { surface: 'unknown', w: 0, h: 0 },
+  ): void {
+    const id = this.session.me.id;
+    const fresh = stream !== null && stream !== this.own;
+    this.own = stream;
+    this.session.setMedia(stream);
+    if (!stream) {
+      this.dropStream(id);
+    } else {
+      const me = this.session.peers().find((p) => p.id === id);
+      this.streams.set(id, {
+        id,
+        name: me?.name ?? this.settings.name,
+        color: me?.color ?? this.settings.color,
+        ...info,
+        own: true,
+      });
+      if (fresh && this.active === null) {
+        this.active = id;
+      }
+    }
+    this.streamsChanged();
   }
 
-  private applyMedia(): void {
-    this.session.setMedia(this.paused ? null : this.source);
+  /**
+   * The video of stream `id` to show on this page: the host's own capture, or what a guest
+   * sends (frames only while it is shown or previewed); null for no such stream.
+   */
+  streamOf(id: string | null): MediaStream | null {
+    const s = id ? this.streams.get(id) : undefined;
+    if (!s) {
+      return null;
+    }
+    return s.own ? this.own : this.session.uplink(s.id);
   }
 
-  private setPaused(on: boolean): void {
-    this.paused = on;
-    this.applyMedia();
+  /** New video limits: the host's own encoders and the guests sending now follow at once. */
+  setVideo(video: VideoSettings): void {
+    this.video = video;
+    this.session.mediaParams(toMediaParams(video));
+    this.applyStreams();
     this.sendStage();
   }
 
@@ -297,22 +489,10 @@ export class ShareHost {
           this.problem = null;
         }
         break;
-      case 'viewport':
-        if (
-          Number.isFinite(command.w) &&
-          Number.isFinite(command.h) &&
-          command.w >= 1 &&
-          command.h >= 1 &&
-          command.w <= 16384 &&
-          command.h <= 16384
-        ) {
-          this.viewport = { w: Math.round(command.w), h: Math.round(command.h) };
-          this.sendStage();
-        }
-        break;
       case 'lock':
       case 'drawing':
-      case 'pause':
+      case 'show':
+      case 'preview':
       case 'remove':
       case 'clear':
       case 'clearDrawings':

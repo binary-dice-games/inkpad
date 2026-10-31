@@ -25,12 +25,10 @@ describe('ShareHost', () => {
   async function start(
     settings: Partial<Settings> = {},
     clearBoard?: () => void,
-    video?: boolean,
   ): Promise<ShareHost> {
     const host = await ShareHost.start({
       settings: { ...DEFAULT_SETTINGS, name: 'Pat', ...settings },
       clearBoard,
-      video,
       rendezvous: [{ kind: 'memory', network }],
     });
     opened.push(host);
@@ -132,48 +130,26 @@ describe('ShareHost', () => {
     await until(() => host.ui().viewers.length === 0, 'viewer removed');
   });
 
-  it('starts a session without video that tells viewers, and lets the presenter pick each canvas background', async () => {
-    const host = await start({}, undefined, false);
-    const fallback = ['whiteboard', 'blackboard', 'wall', 'cork', 'whiteboard'];
-    expect(host.ui()).toMatchObject({ video: false, backgrounds: fallback, phase: 'live' });
+  it('shows the screen on canvas 1 and lets the presenter pick each canvas background', async () => {
+    const host = await start();
     const { stages } = await join(host, 'Ana');
     await until(() => stages.length > 0, 'stage');
-    expect(stages[0]).toMatchObject({ video: false, backgrounds: fallback });
+    expect(stages[0]?.backgrounds).toEqual(['screen', 'whiteboard', 'blackboard', 'wall', 'cork']);
+    expect(stages[0]).toMatchObject({ aspect: 16 / 9, w: 1280, h: 720, state: 'live' });
+    expect(stages[0]).not.toHaveProperty('screen'); // nothing shared yet: black
 
-    await host.command({ cmd: 'background', page: 2, name: 'cork' });
-    await until(() => stages.at(-1)?.backgrounds?.[2] === 'cork', 'background changed');
-    expect(host.ui().backgrounds).toEqual([
-      'whiteboard',
-      'blackboard',
-      'cork',
-      'cork',
-      'whiteboard',
-    ]);
+    await host.command({ cmd: 'background', page: 0, name: 'wall' });
+    await host.command({ cmd: 'background', page: 3, name: 'screen' });
+    await until(() => stages.at(-1)?.backgrounds?.[3] === 'screen', 'backgrounds changed');
+    expect(host.ui().backgrounds).toEqual(['wall', 'whiteboard', 'blackboard', 'screen', 'cork']);
+    await host.command({ cmd: 'background', page: 1, name: 'video' }); // the old name
+    expect(host.ui().backgrounds[1]).toBe('screen');
     await expect(host.command({ cmd: 'background', page: 0, name: 'lava' })).rejects.toThrow(
-      /background/,
-    );
-    // No video to show in a session without it, and no sixth canvas.
-    await expect(host.command({ cmd: 'background', page: 0, name: 'video' })).rejects.toThrow(
       /background/,
     );
     await expect(host.command({ cmd: 'background', page: 5, name: 'wall' })).rejects.toThrow(
       /canvas/,
     );
-    expect(host.ui().backgrounds[0]).toBe('whiteboard');
-  });
-
-  it('shows the video on canvas 1 and the backgrounds on the others when there is video', async () => {
-    const host = await start();
-    const { stages } = await join(host, 'Ana');
-    await until(() => stages.length > 0, 'stage');
-    expect(stages[0]).not.toHaveProperty('video');
-    expect(stages[0]?.backgrounds).toEqual(['video', 'whiteboard', 'blackboard', 'wall', 'cork']);
-    expect(host.ui().video).toBe(true);
-
-    await host.command({ cmd: 'background', page: 0, name: 'wall' });
-    await host.command({ cmd: 'background', page: 3, name: 'video' });
-    await until(() => stages.at(-1)?.backgrounds?.[3] === 'video', 'backgrounds changed');
-    expect(host.ui().backgrounds).toEqual(['wall', 'whiteboard', 'blackboard', 'video', 'cork']);
   });
 
   it('issues a new link without dropping the people already there', async () => {
@@ -185,28 +161,126 @@ describe('ShareHost', () => {
     expect(host.ui().viewers).toHaveLength(1);
   });
 
-  it('follows the captured size: viewport changes update the stage', async () => {
+  /** Records what the host asks of the guests' uplinks and what it relays. */
+  function spy(host: ShareHost) {
+    const asked: [string, boolean][] = [];
+    const relays: (string | null)[] = [];
+    const s = host.session;
+    const uplinkParams = s.uplinkParams.bind(s);
+    const setRelay = s.setRelay.bind(s);
+    s.uplinkParams = (id, p) => {
+      asked.push([id, p.active]);
+      uplinkParams(id, p);
+    };
+    s.setRelay = (id) => {
+      relays.push(id);
+      setRelay(id);
+    };
+    return { asked, relays };
+  }
+
+  const offer = { cmd: 'offer', surface: 'window', w: 640, h: 360 };
+
+  it('lists the streams guests offer, sends nothing up until previewed or shown', async () => {
     const host = await start();
-    const { stages } = await join(host, 'Ana');
-    await until(() => stages.length > 0, 'stage');
-    await host.command({ cmd: 'viewport', w: 700, h: 900 });
-    await until(() => stages.at(-1)?.w === 700, 'new viewport');
-    expect(stages.at(-1)?.aspect).toBeCloseTo(700 / 900);
-    await host.command({ cmd: 'viewport', w: -1, h: 5 });
-    await host.command({ cmd: 'viewport', w: Number.NaN, h: 5 });
-    expect(host.stage()).toMatchObject({ w: 700, h: 900 });
+    const { asked, relays } = spy(host);
+    const a = await join(host, 'Ana');
+    const b = await join(host, 'Ben');
+    const to = a.guest.host()!.id;
+    a.guest.channel('screen').send(offer, { to });
+    await until(() => host.ui().streams.length === 1, 'offer listed');
+    expect(host.ui().streams[0]).toMatchObject({
+      id: a.guest.me.id,
+      name: 'Ana',
+      surface: 'window',
+      w: 640,
+      h: 360,
+      own: false,
+    });
+    expect(host.ui().active).toBeNull(); // a guest's stream never shows by itself
+    expect(asked).toEqual([[a.guest.me.id, false]]);
+
+    await host.command({ cmd: 'preview', id: a.guest.me.id });
+    expect(asked.at(-1)).toEqual([a.guest.me.id, true]);
+    expect(relays.at(-1)).toBeNull(); // only the host sees a preview
+    await until(() => a.stages.at(-1)?.preview === a.guest.me.id, 'owner told of the preview');
+
+    await host.command({ cmd: 'show', id: a.guest.me.id });
+    expect(relays.at(-1)).toBe(a.guest.me.id);
+    expect(host.ui().preview).toBeNull(); // shown: no longer a preview
+    await until(() => b.stages.at(-1)?.screen?.owner === a.guest.me.id, 'on screen');
+    expect(b.stages.at(-1)?.screen).toEqual({ owner: a.guest.me.id, name: 'Ana', w: 640, h: 360 });
+
+    await host.command({ cmd: 'preview', id: null });
+    await host.command({ cmd: 'show', id: null });
+    expect(asked.at(-1)).toEqual([a.guest.me.id, false]);
+    await until(() => b.stages.at(-1)?.screen === undefined, 'black screen');
+    await expect(host.command({ cmd: 'show', id: 'nobody-1' })).rejects.toThrow(/stream/);
   });
 
-  it('pauses and resumes: viewers are told', async () => {
+  it('takes a stream off the screen when its owner withdraws it, leaves or is removed', async () => {
     const host = await start();
-    const { stages } = await join(host, 'Ana');
-    await until(() => stages.length > 0, 'stage');
-    await host.command({ cmd: 'pause', on: true });
-    await until(() => stages.at(-1)?.state === 'paused', 'paused');
-    expect(host.ui()).toMatchObject({ phase: 'paused', paused: true });
-    await host.command({ cmd: 'pause', on: false });
-    await until(() => stages.at(-1)?.state === 'live', 'live again');
-    expect(host.ui().phase).toBe('live');
+    const { relays } = spy(host);
+    const a = await join(host, 'Ana');
+    const b = await join(host, 'Ben');
+    const to = a.guest.host()!.id;
+    a.guest.channel('screen').send(offer, { to });
+    b.guest.channel('screen').send(offer, { to });
+    await until(() => host.ui().streams.length === 2, 'two offers');
+    await host.command({ cmd: 'show', id: a.guest.me.id });
+    a.guest.channel('screen').send({ cmd: 'withdraw' }, { to });
+    await until(() => host.ui().streams.length === 1, 'withdrawn');
+    expect(host.ui().active).toBeNull(); // no fallback to another stream
+    expect(relays.at(-1)).toBeNull();
+
+    await host.command({ cmd: 'show', id: b.guest.me.id });
+    await host.command({ cmd: 'remove', id: b.guest.me.id });
+    await until(() => host.ui().streams.length === 0, 'removed with its owner');
+    expect(host.ui().active).toBeNull();
+  });
+
+  it('never relays screen messages, and ignores malformed ones', async () => {
+    const host = await start();
+    const a = await join(host, 'Ana');
+    const b = await join(host, 'Ben');
+    const seen: unknown[] = [];
+    b.guest.channel('screen').on('message', (m) => seen.push(m));
+    a.guest.channel('screen').send(offer); // to everybody: the host keeps it
+    a.guest.channel('screen').send({ cmd: 'offer', w: 'big' }, { to: a.guest.host()!.id });
+    a.guest.channel('screen').send({ cmd: 'show', id: a.guest.me.id }, { to: a.guest.host()!.id });
+    await until(() => host.ui().streams.length === 1, 'offer listed');
+    await settle(80);
+    expect(seen).toEqual([]);
+    expect(host.ui().active).toBeNull();
+    expect(host.ui().streams).toHaveLength(1);
+  });
+
+  it("puts the host's own new stream on the screen when nothing else is there", async () => {
+    const host = await start();
+    const { relays } = spy(host);
+    const a = await join(host, 'Ana');
+    const fake = { getVideoTracks: () => [] } as unknown as MediaStream;
+    host.setOwnStream(fake, { surface: 'monitor', w: 1920, h: 1080 });
+    const me = host.session.me.id;
+    expect(host.ui()).toMatchObject({ active: me });
+    expect(host.ui().streams[0]).toMatchObject({ id: me, own: true, w: 1920, name: 'Pat' });
+    expect(relays.at(-1)).toBe(me);
+    expect(host.streamOf(me)).toBe(fake);
+    await until(() => a.stages.at(-1)?.screen?.owner === me, 'own stream shown');
+
+    // A guest's stream on the screen stays when the host starts sharing again.
+    a.guest.channel('screen').send(offer, { to: me });
+    await until(() => host.ui().streams.length === 2, 'offer');
+    await host.command({ cmd: 'show', id: a.guest.me.id });
+    host.setOwnStream(null);
+    const again = { getVideoTracks: () => [] } as unknown as MediaStream;
+    host.setOwnStream(again, { surface: 'window', w: 800, h: 600 });
+    expect(host.ui().active).toBe(a.guest.me.id);
+    // The same stream again only updates its size.
+    host.setOwnStream(again, { surface: 'window', w: 900, h: 600 });
+    expect(host.ui().streams.find((s) => s.own)?.w).toBe(900);
+    host.setOwnStream(null);
+    expect(host.ui().streams.map((s) => s.id)).toEqual([a.guest.me.id]);
   });
 
   it('clears the board through the owner', async () => {
@@ -237,8 +311,8 @@ describe('ShareHost', () => {
     host.onChange((ui) => seen.push(ui.viewers.length));
     await join(host, 'Ana');
     await until(() => seen.includes(1), 'one viewer');
-    host.setProblem('capture-ended');
-    expect(host.ui().problem).toBe('capture-ended');
+    host.setProblem('no-tracker');
+    expect(host.ui().problem).toBe('no-tracker');
   });
 
   it('rejects an unknown command', async () => {

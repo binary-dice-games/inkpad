@@ -1,9 +1,9 @@
 // MIT License © 2026 Binary Dice Games
 /**
- * @file The presenter page (spec/06_static_presenter): the person picks a tab,
- * a window or a screen with the browser's picker, and this page becomes host and
- * console at once. The captured surface is sent to viewers; the same video is
- * shown here with the whiteboard over it, mounted on the host session.
+ * @file The presenter page (spec/06_static_presenter, spec/07_participant_streaming): it starts
+ * the session and is host and console at once. Anybody, the presenter too, can share a tab, a
+ * window or a screen at any time; the presenter picks the stream on the screen background from
+ * the streams on offer. The whiteboard is mounted on the host session.
  */
 import { SessionError } from '@inksplat/collab-session';
 import {
@@ -22,15 +22,12 @@ import {
 } from './settings';
 import type { Settings } from './settings';
 import { ShareHost } from './share-host';
-import { UPLINK_WARNING_KBPS, toMediaParams, uplinkKbps } from '@inksplat/defaults';
-import {
-  canCaptureDisplay,
-  fitScale,
-  startDisplayCapture,
-  surfaceWarning,
-} from './display-capture';
-import type { DisplayCapture } from './display-capture';
+import type { StreamInfo, UiState } from './share-host';
+import { UPLINK_WARNING_KBPS, canvasBackground, uplinkKbps } from '@inksplat/defaults';
+import { fitScale, surfaceWarning } from './display-capture';
 import { boardAspect, errorMessage } from './model';
+import { ownerStatus, playIn as play, statusText, wireShareButton } from './share-button';
+import type { ShareButton } from './share-button';
 import { setToolbarFolded } from './fold';
 import { filePreview } from './previews';
 import { qrModules, qrPng, qrSvg } from './qr';
@@ -55,7 +52,7 @@ function show(screen: Screen): void {
 // ── State of the running share ───────────────────────────────────────────────
 
 let host: ShareHost | null = null;
-let capture: DisplayCapture | null = null;
+let share: ShareButton | null = null;
 let board: Whiteboard | null = null;
 let adapter: FrameAdapter | null = null;
 let settings: Settings | null = null;
@@ -63,8 +60,8 @@ let prefs: PresenterPrefs = loadPrefs();
 /** The avatar in the settings dialog, until it is saved. */
 let avatarDraft = '';
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
-/** Set while a picker is open, so a second click does not open another. */
-let picking = false;
+/** The streams on offer at the last render, to say when a new one comes. */
+let offered = new Set<string>();
 /** Where the board's backup is kept (null: this browser has no storage for it). */
 let backupStore: Promise<BackupStore | null> | null = null;
 /** Writes the running session's board to its backup; null before the resume question is answered. */
@@ -78,23 +75,8 @@ function toast(text: string): void {
   toastTimer = setTimeout(() => (el.hidden = true), 4000);
 }
 
-/** Why the picker gave nothing, for a person. */
-function captureProblem(e: unknown): string {
-  if (e instanceof DOMException && e.name === 'NotAllowedError') {
-    return 'Sharing was cancelled or blocked. Press Start sharing and choose what to share.';
-  }
-  return 'This browser could not capture that: ' + (e instanceof Error ? e.message : String(e));
-}
-
 function problemText(problem: string | null): string {
-  switch (problem) {
-    case null:
-      return '';
-    case 'capture-ended':
-      return 'Sharing stopped. Press Share again to choose what to show.';
-    default:
-      return errorMessage(problem);
-  }
+  return problem === null ? '' : errorMessage(problem);
 }
 
 /** The address viewers open: this page's own folder (the site root), not `present.html`. */
@@ -113,32 +95,102 @@ function canvas(): number {
   return board?.currentPage() ?? 0;
 }
 
-/** Shows the video or, on a canvas with another background, the sheet with that background. */
+/** Shows the screen or, on a canvas with another background, the sheet with that background. */
 function layoutSheet(): void {
-  const v = video();
   if (!host) {
     return;
   }
   showSheet(
-    { video: v, page: $('page'), box: $('stage') },
+    { video: video(), page: $('page'), box: $('stage') },
     host.stage(),
-    boardAspect({ width: v.videoWidth, height: v.videoHeight }, host.stage()),
+    boardAspect(host.stage()),
     canvas(),
   );
 }
 
-/** Sends the stage the captured size, and tells the encoder how far to reduce it. */
-function frameChanged(): void {
-  const v = video();
-  layoutSheet();
-  adapter?.update();
-  if (!host || !settings || v.videoWidth === 0) {
-    return;
+/** The host's own encoders reduce its capture to the size limit. */
+function ownScale(width: number, height: number): void {
+  if (host && settings) {
+    host.session.mediaParams({
+      scale: fitScale(width, height, settings.video.maxWidth, settings.video.maxHeight),
+    });
   }
-  void host.command({ cmd: 'viewport', w: v.videoWidth, h: v.videoHeight });
-  host.session.mediaParams({
-    scale: fitScale(v.videoWidth, v.videoHeight, settings.video.maxWidth, settings.video.maxHeight),
-  });
+}
+
+const SURFACES: Record<string, string> = {
+  browser: 'tab',
+  window: 'window',
+  monitor: 'screen',
+  unknown: 'screen',
+};
+
+function button(text: string, label: string, onClick: () => void, pressed?: boolean): HTMLElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = text;
+  b.setAttribute('aria-label', label);
+  if (pressed !== undefined) {
+    b.setAttribute('aria-pressed', String(pressed));
+  }
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+/** The Screen section: a row per stream on offer, and None. */
+function renderStreams(ui: UiState): void {
+  const row = (s: StreamInfo | null): HTMLElement => {
+    const li = document.createElement('li');
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    const name = document.createElement('span');
+    name.className = 'name';
+    const id = s?.id ?? null;
+    if (s) {
+      swatch.style.background = /^#[0-9a-fA-F]{6}$/.test(s.color) ? s.color : '#8b8d98';
+      const size = s.w > 0 ? ` ${s.w}\u00d7${s.h}` : '';
+      name.textContent = `${s.name || 'Viewer'}${s.own ? ' (you)' : ''}: ${SURFACES[s.surface]}${size}`;
+    } else {
+      swatch.style.background = '#000';
+      name.textContent = 'None (black)';
+    }
+    li.classList.toggle('active', ui.active === id);
+    li.append(swatch, name);
+    const who = s ? (s.own ? 'your screen' : `the screen of ${s.name || 'a viewer'}`) : 'nothing';
+    if (s && !s.own) {
+      const on = ui.preview === id;
+      li.append(
+        button(
+          'Preview',
+          `Preview ${who}`,
+          () => void host?.command({ cmd: 'preview', id: on ? null : id }),
+          on,
+        ),
+      );
+    }
+    li.append(
+      button(
+        'Show',
+        `Show ${who} to everybody`,
+        () => void host?.command({ cmd: 'show', id }),
+        ui.active === id,
+      ),
+    );
+    return li;
+  };
+  $('streams').replaceChildren(...ui.streams.map(row), row(null));
+  // A new offer from a guest: say so.
+  for (const s of ui.streams) {
+    if (!s.own && !offered.has(s.id)) {
+      toast(`${s.name || 'A viewer'} offers a screen: Preview or Show it under Screen.`);
+    }
+  }
+  offered = new Set(ui.streams.map((s) => s.id));
+  const pv = $<HTMLVideoElement>('previewVideo');
+  const preview = ui.preview && ui.preview !== ui.active ? host!.streamOf(ui.preview) : null;
+  play(pv, preview);
+  pv.hidden = !preview;
+  $('screenHere').hidden =
+    ui.active === null || canvasBackground(host!.stage(), canvas()) === 'screen';
 }
 
 function render(): void {
@@ -148,18 +200,22 @@ function render(): void {
   const ui = host.ui();
   const n = ui.viewers.length;
   $('people').textContent = `${n} ${n === 1 ? 'viewer' : 'viewers'}`;
-  const warning = capture ? surfaceWarning(capture.surface) : null;
+  const own = share?.capture();
+  const warning = own ? surfaceWarning(own.surface) : null;
   $('warning').textContent = [problemText(ui.problem), warning].filter(Boolean).join(' ');
   $<HTMLInputElement>('link').value = ui.link ?? '';
   $<HTMLInputElement>('drawing').checked = ui.drawing;
   $<HTMLInputElement>('lock').checked = ui.locked;
-  $('pause').textContent = ui.paused ? 'Resume' : 'Pause';
-  $('pause').hidden = !ui.video;
-  $('reshare').hidden = !ui.video;
   $('backgroundLabel').textContent = `Background of canvas ${canvas() + 1}`;
-  $('backgroundVideo').hidden = !ui.video;
-  $<HTMLOptionElement>('backgroundVideo').disabled = !ui.video;
   $<HTMLSelectElement>('background').value = ui.backgrounds[canvas()] ?? 'whiteboard';
+  play(video(), host.streamOf(ui.active));
+  const onScreen = canvasBackground(host.stage(), canvas()) === 'screen';
+  $('notice').textContent = onScreen && ui.active === null ? 'Nothing is being shared' : '';
+  $('shareStatus').textContent = statusText(
+    ownerStatus(host.stage(), host.session.me.id, share?.capture() != null),
+    true,
+  );
+  renderStreams(ui);
   layoutSheet();
   adapter?.update();
   $('viewers').replaceChildren(
@@ -182,56 +238,15 @@ function render(): void {
   );
 }
 
-/** Takes the picked surface as the video: preview, senders, and the end of sharing. */
-function useCapture(next: DisplayCapture): void {
-  capture?.stop();
-  capture = next;
-  const v = video();
-  v.srcObject = next.stream;
-  v.play().catch(() => {});
-  host?.setSource(next.stream);
-  host?.setProblem(null);
-  next.onEnded(() => {
-    if (capture !== next) {
-      return; // replaced by a newer capture
-    }
-    capture = null;
-    host?.setSource(null);
-    void host?.command({ cmd: 'pause', on: true });
-    host?.setProblem('capture-ended');
-  });
-  render();
-}
-
-/** Opens the picker again, keeping the session and the link. */
-async function reshare(): Promise<void> {
-  if (picking) {
-    return;
-  }
-  picking = true;
-  try {
-    useCapture(await startDisplayCapture());
-    await host?.command({ cmd: 'pause', on: false });
-  } catch (e) {
-    toast(captureProblem(e));
-  } finally {
-    picking = false;
-  }
-}
-
 function enterApp(): void {
   if (!host) {
     return;
   }
   show('app');
   const stageEl = $('stage');
-  const v = video();
   const h = host;
-  adapter = frameAdapter(
-    stageEl,
-    () => boardAspect({ width: v.videoWidth, height: v.videoHeight }, h.stage()),
-    v,
-  );
+  offered = new Set();
+  adapter = frameAdapter(stageEl, () => boardAspect(h.stage()), $('zoom'));
   board = createWhiteboard(stageEl, {
     session: h.session,
     adapter,
@@ -258,8 +273,7 @@ function endSession(message: string): void {
   void writer?.flush().then(() => writer.stop());
   host?.stop();
   host = null;
-  capture?.stop();
-  capture = null;
+  share?.stop();
   board?.destroy();
   board = null;
   adapter = null;
@@ -270,31 +284,13 @@ function endSession(message: string): void {
 
 // ── Starting ─────────────────────────────────────────────────────────────────
 
-/**
- * Starts the session. With `withVideo` the browser's picker opens first; without it the session
- * is only the board, with a background and no capture.
- */
-async function startSharing(withVideo = true): Promise<void> {
-  if (picking || host) {
+/** Starts the session: a board, on which anybody can share a screen at any time. */
+async function startSession(): Promise<void> {
+  if (host) {
     return;
   }
   const problem = $('startProblem');
   problem.hidden = true;
-
-  let picked: DisplayCapture | null = null;
-  if (withVideo) {
-    picking = true;
-    try {
-      picked = await startDisplayCapture(prefs.cursor);
-    } catch (e) {
-      problem.textContent = captureProblem(e);
-      problem.hidden = false;
-      return;
-    } finally {
-      picking = false;
-    }
-  }
-
   // `?tr=wss://...` (repeatable) replaces the trackers; the viewer link then carries them.
   const trackers = cleanTrackers(new URLSearchParams(location.search).getAll('tr'));
   settings = cleanSettings({
@@ -307,19 +303,13 @@ async function startSharing(withVideo = true): Promise<void> {
       settings,
       clearBoard: () => board?.clear(),
       clearDrawings: () => board?.clearDrawings(),
-      video: withVideo,
     });
   } catch (e) {
-    picked?.stop();
     problem.textContent = errorMessage(e instanceof SessionError ? e.reason : undefined);
     problem.hidden = false;
     return;
   }
   enterApp();
-  if (picked) {
-    useCapture(picked);
-  }
-  frameChanged();
   void startBackup();
 }
 
@@ -481,8 +471,11 @@ function saveSettings(): void {
   if (host && settings) {
     settings = { ...settings, video: prefs.settings.video, avatar: prefs.settings.avatar };
     board?.setAvatar(prefs.settings.avatar);
-    host.session.mediaParams(toMediaParams(settings.video));
-    frameChanged();
+    host.setVideo(settings.video);
+    const own = share?.capture()?.size();
+    if (own) {
+      ownScale(own.width, own.height);
+    }
     toast('Saved. Video changes apply now; the rest from the next session or share.');
   }
 }
@@ -505,21 +498,40 @@ function setPanelCollapsed(collapsed: boolean): void {
 function main(): void {
   summary();
   for (const event of ['loadedmetadata', 'resize']) {
-    video().addEventListener(event, frameChanged);
+    video().addEventListener(event, () => {
+      layoutSheet();
+      adapter?.update();
+    });
   }
   show('start');
-  if (!canCaptureDisplay()) {
-    $('startProblem').textContent =
-      'This browser cannot share a screen, window or tab. Use Chrome, Edge, Firefox or Safari on a computer.';
-    $('startProblem').hidden = false;
-    $<HTMLButtonElement>('startShare').disabled = true; // a board without video still works
-  }
+  share = wireShareButton({
+    button: $<HTMLButtonElement>('share'),
+    notice: $<HTMLDialogElement>('shareNotice'),
+    cursor: () => prefs.cursor,
+    toast,
+    onStart: (c) => {
+      const { width, height } = c.size();
+      ownScale(width, height);
+      host?.setOwnStream(c.stream, { surface: c.surface, w: width, h: height });
+    },
+    onResize: (width, height) => {
+      const c = share?.capture();
+      if (c) {
+        ownScale(width, height);
+        host?.setOwnStream(c.stream, { surface: c.surface, w: width, h: height });
+      }
+    },
+    onStop: () => host?.setOwnStream(null),
+  });
 
   $('startForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    void startSharing();
+    void startSession();
   });
-  $('startBoard').addEventListener('click', () => void startSharing(false));
+  $('screenHere').addEventListener(
+    'click',
+    () => void host?.command({ cmd: 'background', page: canvas(), name: 'screen' }),
+  );
   $<HTMLSelectElement>('background').addEventListener(
     'change',
     (e) =>
@@ -639,14 +651,6 @@ function main(): void {
     'change',
     (e) => void host?.command({ cmd: 'lock', on: (e.target as HTMLInputElement).checked }),
   );
-  $('pause').addEventListener('click', () => {
-    if (!capture) {
-      void reshare(); // nothing to resume: choose what to share
-    } else if (host) {
-      void host.command({ cmd: 'pause', on: !host.ui().paused });
-    }
-  });
-  $('reshare').addEventListener('click', () => void reshare());
   $('clearDrawings').addEventListener('click', () => {
     if (
       confirm(

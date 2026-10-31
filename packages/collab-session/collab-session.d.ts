@@ -58,6 +58,15 @@ export interface MediaParams {
   codecs?: string[];
 }
 
+/** What the host asks of a guest's uplink. */
+export interface UplinkParams {
+  active: boolean;
+  fps?: number;
+  maxBitrate?: number;
+  scale?: number;
+  contentHint?: 'detail' | 'text' | 'motion' | '';
+}
+
 export type RendezvousSpec =
   | {
       kind: 'torrent';
@@ -78,7 +87,7 @@ export interface SessionOptions {
   /** Required for a guest; a host makes one. */
   token?: string;
   peerId?: string;
-  /** Default `inksplat/1`. */
+  /** Default `inksplat/2`. */
   protocol?: string;
   me?: Partial<Presence>;
   rendezvous?: RendezvousSpec[];
@@ -92,6 +101,12 @@ export interface SessionOptions {
    * the offer; the presenter sends with the first one it supports.
    */
   videoCodecs?: string[];
+  /**
+   * Host: forward the encoded frames of a guest's stream to the viewers where the browser can
+   * (Chrome), instead of decoding and encoding them again; default true. With forwarding every
+   * link uses VP8.
+   */
+  forwardFrames?: boolean;
   /**
    * Receives one line per step of making a connection (arguments as for console.log):
    * trackers, announces, offers, answers, ICE and channel states. No secrets are logged.
@@ -137,6 +152,23 @@ export class Session {
   setMedia(stream: MediaStream | null): void;
   /** Host: sender parameters, applied live. */
   mediaParams(params: MediaParams): void;
+  /**
+   * Host: what every viewer is sent: the uplink of guest `source`, the host's own stream
+   * (`setMedia`) when `source` is the host's own id (the default), or nothing (null). A guest's
+   * own stream is not sent back to it.
+   */
+  setRelay(source: string | null): void;
+  /** Host: the video guest `peerId` sends on its uplink (frames only while asked), or null. */
+  uplink(peerId: string): MediaStream | null;
+  /** Host: whether guest `peerId` sends its uplink, and with which limits. */
+  uplinkParams(peerId: string, params: UplinkParams): void;
+  /**
+   * Guest: the stream offered to the host, sent only while the host asks; null stops it.
+   * @throws {SessionError} on a host
+   */
+  setUplink(stream: MediaStream | null): void;
+  /** How a guest's video reaches the viewers: forwarded frames, or decoded and encoded again. */
+  readonly relayMode: 'forward' | 'reencode';
   close(): void;
   refreshPaths(): Promise<void>;
 }
@@ -162,6 +194,38 @@ export function fromBase64Url(text: string): Uint8Array;
 export class FrameDecoder {
   /** The decoded message, or undefined while chunks are missing. Throws on a bad frame. */
   push(frame: Uint8Array): Promise<unknown>;
+}
+
+/** An encoded frame as the router sees it. */
+export interface RoutedFrame {
+  readonly type: string;
+  getMetadata(): { rtpTimestamp: number };
+}
+
+/**
+ * Routes encoded frames of the active source to every output but the source's own: each output
+ * starts on a key frame and keeps continuous RTP timestamps; key frames are asked of the source
+ * when an output waits, at most once per `retryMs`.
+ */
+export class FrameRouter<F extends RoutedFrame = RoutedFrame> {
+  constructor(options: {
+    requestKeyFrame: (source: string) => void;
+    copy: (frame: F, rtpTimestamp: number) => unknown;
+    retryMs?: number;
+    maxTries?: number;
+    setTimer?: (fn: () => void, ms: number) => unknown;
+    clearTimer?: (timer: unknown) => void;
+  });
+  readonly source: string | null;
+  setSource(source: string | null): void;
+  addOutput(key: unknown, id: string | null, write: (frame: unknown) => void): void;
+  setOutputId(key: unknown, id: string): void;
+  removeOutput(key: unknown): void;
+  waiting(): boolean;
+  input(from: string | null, frame: F): void;
+  own(key: unknown, self: string | null, frame: F): void;
+  keyFrameWanted(): void;
+  stop(): void;
 }
 
 export function memoryLinkPair(): [unknown, unknown];

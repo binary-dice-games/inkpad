@@ -54,8 +54,8 @@ afterAll(async () => {
 const token = 'abcdefghijklmnopqrstuv';
 
 describe('the Pages site in a browser', () => {
-  it('shows the join form at the root and under /v1/', async () => {
-    for (const path of ['/inksplat/', '/inksplat/v1/']) {
+  it('shows the join form at the root and under /v2/', async () => {
+    for (const path of ['/inksplat/', '/inksplat/v2/']) {
       const page = await browser.newPage();
       await page.goto(`${origin}${path}#inksplat=${token}`);
       await expect.poll(() => page.locator('#join').isVisible()).toBe(true);

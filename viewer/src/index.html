@@ -605,6 +605,9 @@
       #quality:empty {
         display: none;
       }
+      #shareStatus:empty {
+        display: none;
+      }
       @media (max-width: 520px) {
         #bar {
           left: 8px;
@@ -703,8 +706,8 @@
         <h2 id="stepsTitle">How it works</h2>
         <ol>
           <li>
-            <strong>Start presenting</strong> and pick what to share in your browser's own picker,
-            or start a board with no video.
+            <strong>Start presenting</strong>: a shared board that anybody in it can put a tab, a
+            window or a screen on, at any time.
           </li>
           <li><strong>Send the link</strong> (or show its QR code) to the people you invite.</li>
           <li>
@@ -772,6 +775,8 @@
       </div>
       <div id="bar">
         <span id="quality" role="status"></span>
+        <span id="shareStatus" role="status"></span>
+        <button id="share" type="button" aria-pressed="false">Share screen</button>
         <button id="people" type="button" aria-expanded="false" aria-controls="peopleList"></button>
         <button id="fullscreen" type="button">Full screen</button>
         <button id="toolsToggle" type="button" aria-pressed="true">Tools</button>
@@ -782,6 +787,19 @@
       <ul id="peopleList" hidden aria-label="People here"></ul>
       <div id="toast" role="status" hidden></div>
     </main>
+    <dialog id="shareNotice" aria-labelledby="shareNoticeTitle">
+      <h2 id="shareNoticeTitle">Share your screen</h2>
+      <p>
+        Everything in what you share can be shown to everyone in this session. You choose a tab, a
+        window or a whole screen in the next step, and your browser always shows when you are
+        sharing.
+      </p>
+      <div class="actions">
+        <span class="spacer"></span>
+        <button value="cancel" type="button">Cancel</button>
+        <button value="continue" class="primary" type="button">Continue</button>
+      </div>
+    </dialog>
     <dialog id="save" aria-labelledby="saveTitle">
       <h2 id="saveTitle">Save the board</h2>
       <div class="saveList">

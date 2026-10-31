@@ -9,6 +9,9 @@ import {
   VIDEO_LIMITS,
   BACKGROUNDS,
   CANVASES,
+  STAGE_ASPECT,
+  cleanCanvasBackground,
+  cleanScreenMessage,
   canvasBackground,
   cleanStage,
   defaultBackgrounds,
@@ -79,44 +82,41 @@ describe('stage message', () => {
     expect(cleanStage({ ...good, evil: 1 })).toEqual(good);
   });
 
-  it('says a session has no video, and keeps only known backgrounds per canvas', () => {
-    expect(
-      cleanStage({ ...good, video: false, backgrounds: ['cork', 'lava', 'video', 'wall'] }),
-    ).toEqual({
+  it('keeps only known backgrounds per canvas, and reads the old video as the screen', () => {
+    expect(cleanStage({ ...good, backgrounds: ['cork', 'lava', 'video', 'wall'] })).toEqual({
       ...good,
-      video: false,
-      // Unknown entries, the video without video and missing canvases take the defaults.
-      backgrounds: ['cork', 'blackboard', 'wall', 'wall', 'whiteboard'],
+      // Unknown entries and missing canvases take the defaults.
+      backgrounds: ['cork', 'whiteboard', 'screen', 'wall', 'cork'],
     });
-    expect(cleanStage({ ...good, video: true })).toEqual(good);
-    expect(cleanStage({ ...good, video: 'no' })).toEqual(good);
+    expect(cleanStage({ ...good, video: false })).toEqual(good); // no longer a field
     expect(cleanStage({ ...good, backgrounds: 'cork' })).toEqual(good);
-    expect(cleanStage({ ...good, backgrounds: ['wall', 'video'] })?.backgrounds).toEqual([
-      'wall',
-      'video',
-      'blackboard',
-      'wall',
-      'cork',
-    ]);
+    expect(cleanCanvasBackground('screen')).toBe('screen');
+    expect(cleanCanvasBackground('video')).toBe('screen');
+    expect(cleanCanvasBackground('lava')).toBeUndefined();
     expect(BACKGROUNDS).toEqual(['whiteboard', 'blackboard', 'wall', 'cork']);
   });
 
-  it('gives canvas 1 the video when there is one, and the backgrounds to the others', () => {
-    expect(defaultBackgrounds(true)).toEqual(['video', 'whiteboard', 'blackboard', 'wall', 'cork']);
-    expect(defaultBackgrounds(false)).toEqual([
-      'whiteboard',
-      'blackboard',
-      'wall',
-      'cork',
-      'whiteboard',
-    ]);
-    expect(defaultBackgrounds(true)).toHaveLength(CANVASES);
+  it('gives canvas 1 the screen and the backgrounds to the others', () => {
+    expect(defaultBackgrounds()).toEqual(['screen', 'whiteboard', 'blackboard', 'wall', 'cork']);
+    expect(defaultBackgrounds()).toHaveLength(CANVASES);
     const stage = cleanStage(good)!;
-    expect(canvasBackground(stage, 0)).toBe('video');
+    expect(canvasBackground(stage, 0)).toBe('screen');
     expect(canvasBackground(stage, 4)).toBe('cork');
-    expect(canvasBackground(null, 0)).toBe('video');
-    expect(canvasBackground({ ...stage, video: false }, 0)).toBe('whiteboard');
+    expect(canvasBackground(null, 0)).toBe('screen');
     expect(canvasBackground({ ...stage, backgrounds: ['wall'] }, 0)).toBe('wall');
+    expect(STAGE_ASPECT).toBe(16 / 9);
+  });
+
+  it('carries the active stream and the preview, cleaned', () => {
+    const screen = { owner: 'ana-1234', name: 'Ana\u0001', w: 640, h: 360 };
+    expect(cleanStage({ ...good, screen, preview: 'bob-1234' })).toEqual({
+      ...good,
+      screen: { owner: 'ana-1234', name: 'Ana', w: 640, h: 360 },
+      preview: 'bob-1234',
+    });
+    expect(cleanStage({ ...good, screen: { ...screen, owner: 'a b' } })).toEqual(good);
+    expect(cleanStage({ ...good, screen: { ...screen, w: -1 } })).toEqual(good);
+    expect(cleanStage({ ...good, preview: 7 })).toEqual(good);
   });
 
   it('cleans the optional title', () => {
@@ -128,8 +128,32 @@ describe('stage message', () => {
     expect(cleanStage(null)).toBeNull();
     expect(cleanStage({ ...good, aspect: 0 })).toBeNull();
     expect(cleanStage({ ...good, state: 'gone' })).toBeNull();
+    expect(cleanStage({ ...good, state: 'paused' })).toBeNull(); // None replaces the pause
     expect(cleanStage({ ...good, drawing: 'yes' })).toBeNull();
     expect(cleanStage({ ...good, w: Number.NaN })).toBeNull();
+  });
+});
+
+describe('screen messages', () => {
+  it('accepts an offer and a withdrawal, and drops unknown fields', () => {
+    expect(cleanScreenMessage({ cmd: 'offer', surface: 'window', w: 640, h: 360, x: 1 })).toEqual({
+      cmd: 'offer',
+      surface: 'window',
+      w: 640,
+      h: 360,
+    });
+    expect(cleanScreenMessage({ cmd: 'offer', surface: 'evil', w: 0, h: 0 })).toMatchObject({
+      surface: 'unknown',
+    });
+    expect(cleanScreenMessage({ cmd: 'withdraw', w: 1 })).toEqual({ cmd: 'withdraw' });
+  });
+
+  it('rejects anything else', () => {
+    expect(cleanScreenMessage(null)).toBeNull();
+    expect(cleanScreenMessage({ cmd: 'show' })).toBeNull();
+    expect(cleanScreenMessage({ cmd: 'offer', w: 1.5, h: 2 })).toBeNull();
+    expect(cleanScreenMessage({ cmd: 'offer', w: 1, h: 99999 })).toBeNull();
+    expect(cleanScreenMessage({ cmd: 'offer' })).toBeNull();
   });
 });
 

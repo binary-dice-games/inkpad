@@ -23,6 +23,29 @@
       #warning:empty {
         display: none;
       }
+      #panel h3 {
+        margin: 12px 0 4px;
+        font-size: 13px;
+      }
+      #streams li.active .name {
+        font-weight: 600;
+      }
+      #streams button[aria-pressed='true'] {
+        background: var(--accent, #3e63dd);
+        color: #fff;
+      }
+      #previewVideo {
+        width: 100%;
+        margin-top: 6px;
+        background: #000;
+        border-radius: 6px;
+      }
+      #shareStatus:empty {
+        display: none;
+      }
+      #notice {
+        color: rgba(255, 255, 255, 0.5);
+      }
       #panel textarea {
         font-size: 11px;
       }
@@ -159,26 +182,22 @@
         <div class="card-brand"><img src="icon.png" alt="" />inksplat</div>
         <h1>Present with inksplat</h1>
         <p>
-          Share a browser tab, a window or a whole screen, even a desktop application. Viewers open
-          a link, watch it live and draw on it with you. Nothing to install.
+          Start a shared board, give people the link, and draw, write and share files together.
+          Nothing to install.
         </p>
         <p class="muted">
-          Or start a shared board with no video, to draw, write and share files together.
-        </p>
-        <p class="muted">
-          Everything in what you choose will be visible to anyone with the link. You choose in the
-          next step, and your browser always shows when you are sharing.
+          In the session you and everyone else can share a browser tab, a window or a whole screen,
+          even a desktop application, at any time. You choose which one everybody sees.
         </p>
         <p id="summary" class="muted"></p>
         <p id="startProblem" class="muted" role="alert" hidden></p>
         <p class="row">
-          <button id="startShare" class="primary" type="submit">Start sharing</button>
-          <button id="startBoard" type="button">Start a board without video</button>
+          <button id="startSession" class="primary" type="submit">Start session</button>
           <button id="openSettings" type="button">Settings…</button>
         </p>
         <p class="muted">
           You draw on a copy of what you share, in this window, so keep this window next to it:
-          anything drawn on the shared screen itself would not reach viewers.
+          anything drawn on the shared screen itself would not reach the others.
         </p>
       </form>
     </main>
@@ -195,12 +214,14 @@
     <main id="app" hidden>
       <div id="stage">
         <div id="zoom">
-          <video id="video" muted autoplay playsinline aria-label="What you are sharing"></video>
+          <video id="video" muted autoplay playsinline aria-label="The shared screen"></video>
           <div id="page" hidden></div>
         </div>
         <div id="notice" role="status"></div>
       </div>
       <div id="bar">
+        <span id="shareStatus" role="status"></span>
+        <button id="share" type="button" aria-pressed="false">Share screen</button>
         <button id="people" type="button" aria-controls="panel"></button>
         <button id="fullscreen" type="button">Full screen</button>
         <button id="toolsToggle" type="button" aria-pressed="true">Tools</button>
@@ -219,10 +240,14 @@
           <button id="showQr" type="button">QR code</button>
         </div>
         <ul id="viewers" aria-label="Viewers"></ul>
+        <h3>Screen</h3>
+        <ul id="streams" aria-label="Streams on offer"></ul>
+        <video id="previewVideo" muted autoplay playsinline hidden aria-label="Preview"></video>
+        <p><button id="screenHere" type="button" hidden>Show the screen on this canvas</button></p>
         <div id="backgroundRow" class="row">
           <label id="backgroundLabel" for="background">Background of canvas 1</label>
           <select id="background">
-            <option id="backgroundVideo" value="video">Video</option>
+            <option value="screen">Screen</option>
             <option value="whiteboard">Whiteboard</option>
             <option value="blackboard">Blackboard</option>
             <option value="wall">Wall</option>
@@ -232,8 +257,6 @@
         <label><input id="drawing" type="checkbox" /> Viewers can draw</label>
         <label><input id="lock" type="checkbox" /> Lock: no new viewers</label>
         <div class="row">
-          <button id="pause" type="button">Pause</button>
-          <button id="reshare" type="button">Share again</button>
           <button id="clearDrawings" type="button">Clear drawings</button>
           <button id="clear" type="button">Clear all</button>
           <button id="saveBoard" type="button">Save…</button>
@@ -255,6 +278,19 @@
       </aside>
       <div id="toast" role="status" hidden></div>
     </main>
+    <dialog id="shareNotice" aria-labelledby="shareNoticeTitle">
+      <h2 id="shareNoticeTitle">Share your screen</h2>
+      <p>
+        Everything in what you share can be shown to everyone in this session. You choose a tab, a
+        window or a whole screen in the next step, and your browser always shows when you are
+        sharing.
+      </p>
+      <div class="actions">
+        <span class="spacer"></span>
+        <button value="cancel" type="button">Cancel</button>
+        <button value="continue" class="primary" type="button">Continue</button>
+      </div>
+    </dialog>
     <dialog id="save" aria-labelledby="saveTitle">
       <h2 id="saveTitle">Save the board</h2>
       <div class="saveList">
@@ -355,7 +391,7 @@
               <option value="motion">Only while it moves</option>
               <option value="never">Hidden</option>
             </select>
-            <p class="hint">Applies the next time you choose what to share (Share again).</p>
+            <p class="hint">Applies the next time you share a screen.</p>
           </div>
           <label class="check">
             <input id="viewersMayDraw" type="checkbox" /> Viewers may draw when a session starts

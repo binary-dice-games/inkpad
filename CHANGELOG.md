@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Anybody in a session can share a tab, window or screen at any time with **Share screen** (and stop with **Stop sharing**), not only the presenter; a notice explains it before the first share. The presenter's **Screen** list shows the streams on offer, with **Preview** (only the presenter sees it) and **Show** (everybody sees it), and **None**; one stream is on the screen at a time, and its owner is told whether it is offered, previewed or on screen.
+- A **screen** background for any canvas: the stream on the screen, or black when there is none.
+
 - A sticky note can be dragged out to the size wanted with the note tool (a click still puts one of the usual size).
 
 - A thread let go over a note, picture, link or sticker (not on a pin) puts a pin there and is tied to it.
@@ -69,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The presenter's start page only starts a session (**Start session**); streams start and stop inside it. Canvas 1 shows the screen by default, black until something is shown. The board keeps a 16:9 frame and every stream fits inside it. A viewer's stream reaches the others through the presenter, who forwards it as it arrives in Chrome. Viewers of an older version cannot join (protocol `inksplat/2`).
 - Board files (**Save... > Board file**) are now zips (`.inksplat.zip`) that any zip tool opens: `manifest.json`, `settings.json`, one `canvas-N.json` per canvas, and the pictures (`images/`) and documents (`files/`) on the board as they are, instead of base64 in one JSON file. The presenter's backup in the browser is the same zip.
 - The bar over a selected element is hidden while the element is dragged (or a thread pulled from it), so it does not cover where it is put down.
 - New sticky notes and pins are about half their former size, and the small, medium and large text sizes of notes and the text tool are about three quarters of what they were.
@@ -105,6 +109,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Pause**/**Resume**, **Share again** and **Start a board without video** (use **None**, **Share screen** and **Start session**). The **Video** background is now **Screen** (board files that name it open with it).
 - The old `.inksplat.json` board files (and browser backups in that format) can no longer be opened.
 - The right button no longer removes the element under the pointer; select it and press Delete or Backspace instead.
 - The C++ library and executable; the project is now TypeScript.
