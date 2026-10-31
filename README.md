@@ -38,7 +38,7 @@ are pinned as previews (the first page of a PDF, the text of an Office file) tha
 a copy out of (Shift+drag it out; a plain drag moves it); **QR code** in the controls shows the link for a camera; a session can also run without video
 (**Start a board without video**), its canvases on whiteboard, blackboard, wall or cork backgrounds.
 **Save...** and **Open...** (viewer bar, presenter controls) save the board as a PNG picture, an SVG drawing, or a board
-file (`.inksplat.json`: items plus the files pinned on them) that **Open...** adds to a new session to carry on;
+file (`.inksplat.zip`: one JSON file per canvas, the settings, and the pictures and files on the board as they are, so any zip tool shows what is in it) that **Open...** adds to a new session to carry on;
 everything opened becomes the opener's own, so it can be moved and changed there.
 The presenter page asks before closing or reloading (that ends the session) and keeps a backup of the board in the
 browser, written a second after every change; the next session offers to **Resume** it or **Start new**.

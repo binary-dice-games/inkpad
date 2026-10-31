@@ -14,6 +14,7 @@ inksplat_add_test(whiteboard_pin_shapes tests/unit/whiteboard-pin-shapes.test.ts
 inksplat_add_test(sheet tests/unit/sheet.test.ts)
 inksplat_add_test(save tests/unit/save.test.ts)
 inksplat_add_test(backup tests/unit/backup.test.ts)
+inksplat_add_test(board_archive tests/unit/board-archive.test.ts)
 inksplat_add_test(qr tests/unit/qr.test.ts)
 inksplat_add_test(previews tests/unit/previews.test.ts)
 inksplat_add_test(defaults tests/unit/defaults.test.ts)

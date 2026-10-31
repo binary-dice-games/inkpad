@@ -1,37 +1,38 @@
 // MIT License © 2026 Binary Dice Games
 /**
  * @file The presenter's backup of the board (spec/06_static_presenter/DESIGN.md, Backup): a board
- * file kept in the browser's own storage for this site, written a moment after every change, so
- * a closed tab, a crash or a reload does not lose the work. The next session offers to resume it.
+ * file (the zip of `board-archive.ts`) kept in the browser's own storage for this site, written a
+ * moment after every change, so a closed tab, a crash or a reload does not lose the work. The next
+ * session offers to resume it.
  *
  * The file goes in the origin private file system (OPFS) where the browser can write files
  * there, else in IndexedDB; with neither there is no backup.
  */
+import { readArchiveManifest } from './board-archive';
 
-/** Where a backup is kept: one text file. */
+/** Where a backup is kept: one file. */
 export interface BackupStore {
-  /** The backup's text, or null when there is none. */
-  read(): Promise<string | null>;
+  /** The backup, or null when there is none. */
+  read(): Promise<Blob | null>;
   /** Replaces the backup. */
-  write(text: string): Promise<void>;
+  write(file: Blob): Promise<void>;
   /** Deletes the backup (nothing happens when there is none). */
   remove(): Promise<void>;
 }
 
 /** The name of the backup file. */
-export const BACKUP_NAME = 'board-backup.inksplat.json';
-
+export const BACKUP_NAME = 'board-backup.inksplat.zip';
 /** A store in memory (for tests, and a page whose browser has no storage). */
-export function memoryStore(initial: string | null = null): BackupStore {
-  let text = initial;
+export function memoryStore(initial: Blob | null = null): BackupStore {
+  let file = initial;
   return {
-    read: () => Promise.resolve(text),
+    read: () => Promise.resolve(file),
     write: (next) => {
-      text = next;
+      file = next;
       return Promise.resolve();
     },
     remove: () => {
-      text = null;
+      file = null;
       return Promise.resolve();
     },
   };
@@ -46,7 +47,7 @@ async function opfsStore(): Promise<BackupStore | null> {
   return {
     read: async () => {
       try {
-        return await (await (await dir.getFileHandle(BACKUP_NAME)).getFile()).text();
+        return await (await dir.getFileHandle(BACKUP_NAME)).getFile();
       } catch (e) {
         if (e instanceof DOMException && e.name === 'NotFoundError') {
           return null;
@@ -54,9 +55,9 @@ async function opfsStore(): Promise<BackupStore | null> {
         throw e;
       }
     },
-    write: async (text) => {
+    write: async (file) => {
       const out = await (await dir.getFileHandle(BACKUP_NAME, { create: true })).createWritable();
-      await out.write(text);
+      await out.write(file);
       await out.close();
     },
     remove: async () => {
@@ -96,10 +97,10 @@ function indexedDbStore(): BackupStore | null {
   };
   return {
     read: async () => {
-      const text = await run<unknown>('readonly', (s) => s.get(BACKUP_NAME));
-      return typeof text === 'string' ? text : null;
+      const file = await run<unknown>('readonly', (s) => s.get(BACKUP_NAME));
+      return file instanceof Blob ? file : null;
     },
-    write: (text) => run('readwrite', (s) => s.put(text, BACKUP_NAME)),
+    write: (file) => run('readwrite', (s) => s.put(file, BACKUP_NAME)),
     remove: () => run('readwrite', (s) => s.delete(BACKUP_NAME)),
   };
 }
@@ -127,34 +128,24 @@ export interface BackupInfo {
   saved: Date | null;
   /** How many items it holds (at least one). */
   items: number;
-  /** The board file, as text, to open or download. */
-  text: string;
+  /** The board zip, to open or download. */
+  file: Blob;
 }
 
-/** What a backup holds, or null when `text` is not a board file or the board was empty. */
-export function backupInfo(text: string | null): BackupInfo | null {
-  if (!text) {
+/** What a backup holds, or null when `file` is not a board zip or the board was empty. */
+export async function backupInfo(file: Blob | null): Promise<BackupInfo | null> {
+  if (!file) {
     return null;
   }
-  let data: unknown;
-  try {
-    data = JSON.parse(text);
-  } catch {
+  const manifest = await readArchiveManifest(new Uint8Array(await file.arrayBuffer()));
+  if (!manifest || typeof manifest.items !== 'number' || manifest.items < 1) {
     return null;
   }
-  const board = data as { format?: unknown; items?: unknown; saved?: unknown };
-  if (
-    board?.format !== 'inksplat-board' ||
-    !Array.isArray(board.items) ||
-    board.items.length === 0
-  ) {
-    return null;
-  }
-  const saved = typeof board.saved === 'string' ? new Date(board.saved) : null;
+  const saved = typeof manifest.saved === 'string' ? new Date(manifest.saved) : null;
   return {
     saved: saved && !Number.isNaN(saved.getTime()) ? saved : null,
-    items: board.items.length,
-    text,
+    items: manifest.items,
+    file,
   };
 }
 
@@ -162,8 +153,8 @@ export function backupInfo(text: string | null): BackupInfo | null {
 export interface BackupWriterOptions {
   /** Where the backup goes. */
   store: BackupStore;
-  /** The board file to keep (an object with `items`), or null to keep nothing. */
-  make: () => Promise<{ items: unknown[] } | null>;
+  /** The board file to keep and how many items it holds (none, or null: keep nothing). */
+  make: () => Promise<{ blob: Blob; items: number } | null>;
   /** How long after a change the backup is written; changes in between go in the same write. */
   delayMs?: number;
   /** Called when a write fails (once per failure). */
@@ -224,8 +215,8 @@ export class BackupWriter {
     this.running = (async () => {
       try {
         const board = await this.options.make();
-        if (board && board.items.length > 0) {
-          await this.options.store.write(JSON.stringify(board));
+        if (board && board.items > 0) {
+          await this.options.store.write(board.blob);
         } else {
           await this.options.store.remove();
         }

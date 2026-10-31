@@ -102,13 +102,14 @@ window, reloading or navigating away). **End session** asks too.
 ### Backup of the board
 
 So that a closed tab, a crash or a reload does not lose the work, the presenter page keeps the
-board in a backup file (`viewer/src/backup.ts`): the same board file as **Save... > Board file**
-(`boardFile` in `viewer/src/save.ts`: items, pinned files, backgrounds), written about a second
+board in a backup file (`viewer/src/backup.ts`): the same board zip as **Save... > Board file**
+(`boardArchive` in `viewer/src/save.ts`, see Board files below), written about a second
 after every change of the board or the stage (`BackupWriter`: at most one write at a time,
 changes in between go in the next), and flushed when the page is hidden or closed. It lives in
 the browser's storage for the site, not in Downloads: a file in the origin private file system
-(`board-backup.inksplat.json`), or an IndexedDB record where the browser cannot write OPFS files;
-with neither there is no backup. An empty board removes the backup. **End session** keeps it.
+(`board-backup.inksplat.zip`), or an IndexedDB record (a Blob) where the browser cannot write
+OPFS files; with neither there is no backup. An empty board removes the backup. **End session**
+keeps it.
 
 When a session starts and a backup holds items, a dialog asks: **Resume** adds it to the new
 board (as **Open...** does, `openBoardFile`: everything becomes the presenter's), **Start new**
@@ -117,6 +118,30 @@ first. Escape does not close it. Writing starts only once it is answered, so the
 not overwritten before. There is one backup per browser profile and site: two presenter tabs at
 once overwrite each other's (the last change wins). Viewers keep no backup: the board lives on
 the presenter's side, and a viewer that leaves loses nothing.
+
+### Board files
+
+**Save... > Board file** writes a zip, `inksplat-board-<date>.inksplat.zip`
+(`viewer/src/board-archive.ts`, written and read by `viewer/src/zip.ts` without a library), so
+anyone can look into it with any zip tool and the pictures and documents on the board are kept
+as they are:
+
+| Part | Contents |
+|---|---|
+| `manifest.json` | `format: "inksplat-board-zip"`, `version` (1), `saved`, the canvas files with their item counts, and the number of items, images and files |
+| `settings.json` | the page's settings for the board: `backgrounds`, one per canvas (the `meta` of the whiteboard's board file) |
+| `canvas-1.json` ... `canvas-5.json` | `{canvas, items}`: the whiteboard items of each canvas, without their `page` (the file says it) |
+| `images/<item id>.png\|jpg\|webp` | the picture of each image item (a photo, the preview of a document); its `data` in the canvas file is this path |
+| `files/<name>` | the document pinned on an image, under its own name (`name (2).pdf` when two share one); its `file.path` says where |
+
+JSON parts are deflated (CompressionStream; stored where the browser cannot), pictures and
+documents stored as they are. The whiteboard's `saveBoard` gives the documents as bytes and its
+`loadBoard` takes them so; `readBoardArchive` turns the zip back into the whiteboard's board file (pictures as data
+URLs again). A zip edited by hand opens with whatever it still holds: a missing or oversized
+picture or document drops only that part, and the whiteboard checks every item as before. A
+newer `version` is refused with a message; all the parts together may unfold to 64 MB at most.
+This is the only board file format: the single JSON files of earlier versions (`.inksplat.json`)
+are not read.
 
 `present.html?tr=wss://...` (repeatable) replaces the public trackers, and the viewer
 link then carries them (the same `tr` rule as `spec/01_core_features/DESIGN.md`).
@@ -152,8 +177,7 @@ backgrounds in order (without video, the four in order from canvas 1, starting a
 and lays it out again when the person changes canvas; the sheet has the frame's aspect, so the
 drawings keep their place whichever background a canvas shows. The video is sent whatever
 canvas people are on. Board files keep `backgrounds` in their `meta`; opening one sets them
-(the `video` only where the session has video; older files with a single `background` set every
-canvas of a board without video).
+(the `video` only where the session has video).
 
 ### Link lifetime
 

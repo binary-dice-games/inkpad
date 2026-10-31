@@ -1,17 +1,15 @@
 // MIT License © 2026 Binary Dice Games
 /**
  * @file Saving the board from the viewer and the presenter page: a picture (PNG), a drawing (SVG), or
- * a board file that a later session opens to carry on (the items and the files pinned on them).
- * Both pages share it; each gives the board, the stage and a way to tell the person what happened.
+ * a board file that a later session opens to carry on (a zip of the items, one JSON file per canvas,
+ * and the pictures and files on them: see `board-archive.ts`). Both pages share it; each gives the
+ * board, the stage and a way to tell the person what happened.
  */
 import type { Whiteboard } from '@inksplat/collab-whiteboard';
-import {
-  CANVASES,
-  canvasBackground,
-  cleanBackground,
-  cleanCanvasBackground,
-} from '@inksplat/defaults';
+import { CANVASES, canvasBackground, cleanCanvasBackground } from '@inksplat/defaults';
 import type { CanvasBackground, Stage } from '@inksplat/defaults';
+import { readBoardArchive, writeBoardArchive } from './board-archive';
+import type { BoardArchive } from './board-archive';
 import { BACKGROUND_STYLES } from './sheet';
 
 /** What a page gives the save dialog. */
@@ -28,7 +26,7 @@ export interface SaveHost {
   backgrounds?(names: (CanvasBackground | undefined)[]): void;
 }
 
-/** The largest board file that is read (the files in it are at most 25 MB, as base64). */
+/** The largest board file that is read (the files in it are at most 25 MB). */
 export const MAX_BOARD_FILE = 48 * 1024 * 1024;
 
 /**
@@ -86,13 +84,10 @@ export function download(blob: Blob, name: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
-/** The board file of `board`: its items and files, with the background of every canvas. */
-export function boardFile(
-  board: Whiteboard,
-  stage: Stage | null,
-): ReturnType<Whiteboard['saveBoard']> {
+/** The board file (a zip) of `board`: its items and files, with the background of every canvas. */
+export async function boardArchive(board: Whiteboard, stage: Stage | null): Promise<BoardArchive> {
   const backgrounds = Array.from({ length: CANVASES }, (_, i) => canvasBackground(stage, i));
-  return board.saveBoard({ backgrounds });
+  return writeBoardArchive(await board.saveBoard({ backgrounds }));
 }
 
 /** Saves the board as `kind`; tells the person when it cannot. */
@@ -119,11 +114,7 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
         `${name}.svg`,
       );
     } else {
-      const saved = await boardFile(board, stage);
-      download(
-        new Blob([JSON.stringify(saved)], { type: 'application/json' }),
-        `${name}.inksplat.json`,
-      );
+      download((await boardArchive(board, stage)).blob, `${name}.inksplat.zip`);
     }
   } catch (e) {
     host.toast(e instanceof Error ? e.message : 'The board could not be saved.');
@@ -132,26 +123,24 @@ export async function saveAs(kind: 'png' | 'svg' | 'board', host: SaveHost): Pro
 
 /**
  * The canvas backgrounds a board file names, for the session in `stage`: its `backgrounds` (the
- * video only where this session has video), or the single `background` of older files (every
- * canvas, in a session without video). Undefined when it names none.
+ * video only where this session has video). Undefined when it names none.
  */
 export function fileBackgrounds(
   meta: Record<string, unknown>,
   stage: Stage | null,
 ): (CanvasBackground | undefined)[] | undefined {
-  const video = stage?.video !== false;
-  if (Array.isArray(meta.backgrounds)) {
-    const list = Array.from({ length: CANVASES }, (_, i) =>
-      cleanCanvasBackground((meta.backgrounds as unknown[])[i], video),
-    );
-    return list.some((b) => b !== undefined) ? list : undefined;
+  if (!Array.isArray(meta.backgrounds)) {
+    return undefined;
   }
-  const single = cleanBackground(meta.background);
-  return single && !video ? Array.from({ length: CANVASES }, () => single) : undefined;
+  const video = stage?.video !== false;
+  const list = Array.from({ length: CANVASES }, (_, i) =>
+    cleanCanvasBackground((meta.backgrounds as unknown[])[i], video),
+  );
+  return list.some((b) => b !== undefined) ? list : undefined;
 }
 
-/** Adds the board in `file` to the current one, and says what came of it. */
-export async function openBoardFile(file: File, host: SaveHost): Promise<void> {
+/** Adds the board in `file` (a board zip) to the current one, and says what came of it. */
+export async function openBoardFile(file: Blob, host: SaveHost): Promise<void> {
   const board = host.board();
   if (!board) {
     host.toast('Join a session first.');
@@ -162,13 +151,9 @@ export async function openBoardFile(file: File, host: SaveHost): Promise<void> {
     return;
   }
   try {
-    let data: unknown;
-    try {
-      data = JSON.parse(await file.text());
-    } catch {
-      throw new Error('That is not an inksplat board file.');
-    }
-    const r = await board.loadBoard(data);
+    const r = await board.loadBoard(
+      await readBoardArchive(new Uint8Array(await file.arrayBuffer())),
+    );
     const backgrounds = fileBackgrounds(r.meta, host.stage());
     if (backgrounds) {
       host.backgrounds?.(backgrounds);

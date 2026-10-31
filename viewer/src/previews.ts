@@ -5,14 +5,12 @@
  * of XML, read here without a library). The board shows them on the card of the file.
  */
 import type { FilePreview } from '@inksplat/collab-whiteboard';
+import { zipParts } from './zip';
 
 type Content = NonNullable<Awaited<ReturnType<FilePreview>>>;
 
 /** The most a preview may take: a document that needs longer is shown as a plain card. */
 const PREVIEW_MS = 10_000;
-/** The most one part of a zip may unfold to (a zip bomb stops here). */
-const PART_LIMIT = 16 * 1024 * 1024;
-
 function withTimeout<T>(work: Promise<T>): Promise<T | null> {
   return Promise.race([
     work,
@@ -90,85 +88,7 @@ async function pdfContent(file: File): Promise<Content | null> {
 
 // ── Zip (Office and OpenDocument files) ──────────────────────────────────────
 
-/**
- * The parts of a zip: name to a function that unpacks it. Handles stored and deflated parts; a
- * part over {@link PART_LIMIT} unpacked, or in a zip64 archive, is left out.
- *
- * @throws {Error} when `bytes` is not a zip
- */
-export function zipParts(bytes: Uint8Array): Map<string, () => Promise<Uint8Array>> {
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let end = -1;
-  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 65535); --i) {
-    if (view.getUint32(i, true) === 0x06054b50) {
-      end = i;
-      break;
-    }
-  }
-  if (end < 0) {
-    throw new Error('not a zip');
-  }
-  const count = view.getUint16(end + 10, true);
-  let at = view.getUint32(end + 16, true);
-  const text = new TextDecoder();
-  const parts = new Map<string, () => Promise<Uint8Array>>();
-  for (let n = 0; n < count && at + 46 <= bytes.length; ++n) {
-    if (view.getUint32(at, true) !== 0x02014b50) {
-      break;
-    }
-    const method = view.getUint16(at + 10, true);
-    const packed = view.getUint32(at + 20, true);
-    const size = view.getUint32(at + 24, true);
-    const nameLength = view.getUint16(at + 28, true);
-    const extraLength = view.getUint16(at + 30, true);
-    const commentLength = view.getUint16(at + 32, true);
-    const local = view.getUint32(at + 42, true);
-    const name = text.decode(bytes.subarray(at + 46, at + 46 + nameLength));
-    at += 46 + nameLength + extraLength + commentLength;
-    if (packed === 0xffffffff || size === 0xffffffff || local + 30 > bytes.length) {
-      continue; // zip64
-    }
-    const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
-    const data = bytes.subarray(start, start + packed);
-    if (method === 0 && size <= PART_LIMIT) {
-      parts.set(name, () => Promise.resolve(data));
-    } else if (method === 8 && size <= PART_LIMIT) {
-      parts.set(name, () => inflate(data));
-    }
-  }
-  return parts;
-}
-
-async function inflate(data: Uint8Array): Promise<Uint8Array> {
-  const stream = new ReadableStream<BufferSource>({
-    start(controller) {
-      controller.enqueue(data as BufferSource);
-      controller.close();
-    },
-  }).pipeThrough(new DecompressionStream('deflate-raw'));
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    total += value.length;
-    if (total > PART_LIMIT) {
-      await reader.cancel();
-      throw new Error('too large');
-    }
-    chunks.push(value);
-  }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return out;
-}
+export { zipParts };
 
 const THUMBNAILS: [string, string][] = [
   ['docProps/thumbnail.jpeg', 'image/jpeg'],

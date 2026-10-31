@@ -69,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Board files (**Save... > Board file**) are now zips (`.inksplat.zip`) that any zip tool opens: `manifest.json`, `settings.json`, one `canvas-N.json` per canvas, and the pictures (`images/`) and documents (`files/`) on the board as they are, instead of base64 in one JSON file. The presenter's backup in the browser is the same zip.
 - The bar over a selected element is hidden while the element is dragged (or a thread pulled from it), so it does not cover where it is put down.
 - New sticky notes and pins are about half their former size, and the small, medium and large text sizes of notes and the text tool are about three quarters of what they were.
 - The project is now called inksplat, with a new logo: page titles, invite links (`#inksplat=`), saved files (`.inksplat.json`), npm packages (`@inksplat/...`), CMake names (`INKSPLAT_...`, `inksplat_add_test`) and the site address (`/inksplat/`).
@@ -104,5 +105,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The old `.inksplat.json` board files (and browser backups in that format) can no longer be opened.
 - The right button no longer removes the element under the pointer; select it and press Delete or Backspace instead.
 - The C++ library and executable; the project is now TypeScript.
