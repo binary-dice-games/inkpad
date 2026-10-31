@@ -17,7 +17,7 @@
  * quarters, and the bar over a selected element is kept inside the board (and hidden while the
  * element is dragged or a thread pulled). A note can be dragged
  * out to its size with the note tool, and a thread pressed on or let go over an element gets a new
- * pin there.
+ * pin there. A sticker catches the pointer over its whole square (WebKit missed its <use>).
  *
  *   import { createWhiteboard } from './collab-whiteboard.js';
  *   const wb = createWhiteboard(container, { session, adapter });
@@ -1163,6 +1163,7 @@ svg.board { position: absolute; inset: 0; width: 100%; height: 100%; overflow: v
 svg.board.active { pointer-events: auto; touch-action: none; }
 svg.board .item { pointer-events: visiblePainted; touch-action: none; }
 svg.board .item .hit { pointer-events: stroke; }
+svg.board .item .hit.box { pointer-events: fill; }
 svg.board .link-item { cursor: pointer; }
 svg.board.pen { cursor: crosshair; } svg.board.text { cursor: text; } svg.board.sticker { cursor: copy; }
 svg.board.eraser { cursor: cell; }
@@ -2848,7 +2849,10 @@ export class Whiteboard {
       if (!known && !this.defs.querySelector(`#sticker-${item.name}`)) {
         this.defs.append(this.symbol(item.name, PLACEHOLDER));
       }
-      g.append(svgEl('use', { href: `#sticker-${item.name}`, x: item.x - item.size / 2, y: item.y - item.size / 2, width: item.size, height: item.size, ...turn }));
+      // The whole square catches the pointer, not just the drawn strokes: WebKit (iPad) does not
+      // reliably hit-test the inside of a <use>, so the eraser, selection and dragging missed it.
+      const box = { x: item.x - item.size / 2, y: item.y - item.size / 2, width: item.size, height: item.size, ...turn };
+      g.append(svgEl('rect', { class: 'hit box', ...box, fill: 'transparent' }), svgEl('use', { href: `#sticker-${item.name}`, ...box, 'pointer-events': 'none' }));
     }
     return g;
   }

@@ -82,6 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Stickers can be selected, moved and erased by touching anywhere on them, not only their lines (they were often missed, notably on iPad).
+
 - The bar over a selected element shows again when the same element is selected a second time after letting it go.
 - The bar over a selected element stays inside the board near its edges (it goes under the element when there is no room over it), so all its buttons can be reached.
 - The grip that resizes a note or picture is drawn inside its shape (it was at the corner of the box, outside ovals, diamonds and hexagons, so clicking it deselected the note) and is easier to hit.
