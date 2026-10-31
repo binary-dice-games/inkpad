@@ -195,7 +195,7 @@ describe('files pinned on the board', () => {
       const item = p.benBoard.element.shadowRoot!.querySelector('.item.image-item')!;
       expect(item.querySelector('g[filter="url(#wb-shadow)"]')).not.toBeNull();
       expect(item.querySelector('rect')?.getAttribute('fill')).toBe('#ffffff');
-      expect(item.querySelectorAll('.pin circle')).toHaveLength(2); // the pin and its highlight
+      expect(item.querySelectorAll('.pin circle')).toHaveLength(3); // what catches the pointer, the pin, its highlight
       expect(item.querySelector('ellipse')).not.toBeNull(); // the shadow of the pin
       expect(p.benBoard.element.shadowRoot!.querySelector('filter#wb-shadow')).not.toBeNull();
       expect(p.benBoard.toSvg()).toContain('wb-shadow');

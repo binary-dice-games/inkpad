@@ -205,7 +205,7 @@ describe('static presenter page', () => {
       .locator('collab-whiteboard .item.image-item image')
       .evaluateAll((nodes) => nodes.map((n) => n.getAttribute('href')?.slice(0, 22)));
     expect(hrefs.every((h) => h?.startsWith('data:image/'))).toBe(true);
-    expect(await viewer.locator('collab-whiteboard .item.image-item .pin circle').count()).toBe(6);
+    expect(await viewer.locator('collab-whiteboard .item.image-item .pin circle').count()).toBe(9); // each: what catches the pointer, the pin, its highlight
     expect(await viewer.locator('collab-whiteboard .item.image-item g[filter]').count()).toBe(3);
 
     // The viewer drags a copy of the text file out: once it has arrived, the drag carries it.
@@ -672,7 +672,7 @@ describe('static presenter page', () => {
     await viewer.mouse.move(moved.x + 80, moved.y + 60, { steps: 5 });
     await viewer.mouse.up();
     expect(Math.abs((await noteAt(viewer)).x - moved.x)).toBeLessThan(3);
-    // The presenter, its owner, still can.
+    // The presenter, its owner, still can (1 only confirms the pointer the note put in hand).
     await presenter.keyboard.press('1');
     const p = await noteAt(presenter);
     await presenter.mouse.move(p.x, p.y + 20);

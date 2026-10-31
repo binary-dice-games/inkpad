@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The pointer tool (1) has modes, in its panel or by pressing 1 again: **cursor**, **laser** (a trail that fades), **emotes** (picked from a wheel; they float up and fade, and a click on one makes it bigger for everybody) and **magnifier** (a lens beside the pointer that enlarges the screen and the drawings under it; the wheel sets how much). When the pointer comes back by itself (after a note is put down, or Esc), the first press of 1 keeps its mode.
+
 - Anybody in a session can share a tab, window or screen at any time with **Share screen** (and stop with **Stop sharing**), not only the presenter; a notice explains it before the first share. The presenter's **Screen** list shows the streams on offer, with **Preview** (only the presenter sees it) and **Show** (everybody sees it), and **None**; one stream is on the screen at a time, and its owner is told whether it is offered, previewed or on screen.
 - A **screen** background for any canvas: the stream on the screen, or black when there is none.
 
@@ -72,6 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Pins are drawn at half their size; the area that catches the pointer over them is as large as before.
 - The presenter's start page only starts a session (**Start session**); streams start and stop inside it. Canvas 1 shows the screen by default, black until something is shown. The board keeps a 16:9 frame and every stream fits inside it. A viewer's stream reaches the others through the presenter, who forwards it as it arrives in Chrome. Viewers of an older version cannot join (protocol `inksplat/2`).
 - Board files (**Save... > Board file**) are now zips (`.inksplat.zip`) that any zip tool opens: `manifest.json`, `settings.json`, one `canvas-N.json` per canvas, and the pictures (`images/`) and documents (`files/`) on the board as they are, instead of base64 in one JSON file. The presenter's backup in the browser is the same zip.
 - The bar over a selected element is hidden while the element is dragged (or a thread pulled from it), so it does not cover where it is put down.

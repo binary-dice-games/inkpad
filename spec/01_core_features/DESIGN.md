@@ -279,6 +279,20 @@ Same tools, data model, merge rules and limits as nymph. Changes:
   with its hot spot on the point. Avatars (`avatar` messages, a small data URL, at most
   16 000 characters) replace the name; the host re-sends known avatars to late joiners
   (`of` = owner, accepted only from the host).
+- **Pointer modes.** The pointer tool has four modes (`style.pointerMode`: `cursor`, `laser`,
+  `emote`, `magnify`); in `laser` and `emote` the board takes the input and nothing on it is selected or moved,
+  and `cur` carries the mode (other than `cursor`) as the tool. The laser sends its points as
+  `{t:'laser', id, seq, pts, pg}` (fast, lossy, like live ink); every peer draws a trail whose
+  points fade after 1.2 s. Emotes are `{t:'emote', id, name, x, y, level, pg}`: `name` is one of
+  `EMOTES` (built-in face stickers, so they look the same everywhere), shown where the wheel
+  opened, floating up and fading over 2 s. A click on a live emote (anybody's) sends the same id
+  with `level + 1` (up to 5): the larger level wins, so the emote grows for everyone and lives
+  again. Neither is stored, and both pass the drawing gate like cursors. The `magnify` mode
+  takes input like `cursor` and is local: a lens beside the pointer holds a copy of the
+  adapter's `content()` (computed styles copied, since the lens is in the shadow root; videos
+  play the same `srcObject`, so the lens shows the stream at its own resolution), remade only when
+  that content's attributes change, and an SVG `<use>` of the drawing layer (`#wb-layer`), so the
+  drawings in it are always current. The wheel sets its power (1.5 to 8) instead of zooming.
 - **Turn queue.** The host keeps the queue (`queue` message with peer ids, accepted only
   from the host and refused by the gate when a guest sends it); guests send `turn`
   (`join`/`leave`) to the host. The host drops people who leave and can remove anyone. The
@@ -290,7 +304,7 @@ Same tools, data model, merge rules and limits as nymph. Changes:
 | Channel | Transport | Direction | Purpose |
 |---|---|---|---|
 | `$` | reliable | both | nymph control (hello, welcome, roster, refuse, locked, end, removed) |
-| `wb` | reliable + fast | both | whiteboard ops, snapshots, cursors, live ink (nymph protocol); plus `avatar`, `turn` (guest to host) and `queue` (host to all), and the tool in `cur` |
+| `wb` | reliable + fast | both | whiteboard ops, snapshots, cursors, live ink (nymph protocol); plus `avatar`, `turn` (guest to host) and `queue` (host to all), the tool in `cur`, and `laser` and `emote` (never stored) |
 | `ctl` | reliable | guest ↔ host only | presenter auth and commands (4.5); never relayed |
 | `stage` | reliable | host → guests | `{aspect, w, h, fps, state: live\|paused\|ended, drawing:boolean, title?}`; resent on join and on every change |
 
