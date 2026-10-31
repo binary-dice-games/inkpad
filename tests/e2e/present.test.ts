@@ -804,6 +804,46 @@ describe('static presenter page', () => {
       .toBeCloseTo(70, -1);
   });
 
+  it('selects, moves and erases a sticker from anywhere in its square, not only its strokes', async () => {
+    const presenter = await presenterPage();
+    await site.startBoard(presenter);
+    const box = (await presenter.locator('#stage').boundingBox())!;
+    const sticker = () =>
+      presenter.evaluate(() => {
+        const node = document
+          .querySelector('collab-whiteboard')!
+          .shadowRoot!.querySelector('.sticker-item use');
+        const r = node?.getBoundingClientRect();
+        return r ? { x: r.x, y: r.y, w: r.width, h: r.height } : null;
+      });
+    // A blank spot inside the square: the corner of the check mark, where nothing is drawn.
+    const blank = async () => {
+      const r = (await sticker())!;
+      return { x: r.x + r.w * 0.12, y: r.y + r.h * 0.12 };
+    };
+
+    await presenter.keyboard.press('4');
+    await presenter.mouse.click(box.x + box.width * 0.4, box.y + box.height * 0.5);
+    await expect.poll(sticker).not.toBeNull();
+
+    // The pointer tool selects it and drags it from the blank spot.
+    await presenter.keyboard.press('1');
+    const from = await blank();
+    const before = (await sticker())!;
+    await presenter.mouse.move(from.x, from.y);
+    await presenter.mouse.down();
+    await presenter.mouse.move(from.x + 60, from.y + 30, { steps: 5 });
+    await presenter.mouse.up();
+    await expect.poll(async () => (await sticker())!.x - before.x).toBeCloseTo(60, -1);
+    expect(await presenter.locator('collab-whiteboard .selbar').isVisible()).toBe(true);
+
+    // The eraser takes it from the blank spot too.
+    await presenter.keyboard.press('5');
+    const at = await blank();
+    await presenter.mouse.click(at.x, at.y);
+    await expect.poll(sticker).toBeNull();
+  });
+
   it('hides the pointer when asked, and remembers the settings', async () => {
     const presenter = await presenterPage();
     await configure(presenter, 'never');
