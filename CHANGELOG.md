@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The pointer tool (1) has modes, in its panel or by pressing 1 again: **cursor**, **laser** (a trail that fades) and **emotes** (picked from a wheel; they float up and fade, and a click on one makes it bigger for everybody).
+- The pointer tool (1) has modes, in its panel or by pressing 1 again: **cursor**, **laser** (a trail that fades) and **emotes** (picked from a wheel; they float up and fade, and a click on one makes it bigger for everybody). When the pointer comes back by itself (after a note is put down, or Esc), the first press of 1 keeps its mode.
 
 - Anybody in a session can share a tab, window or screen at any time with **Share screen** (and stop with **Stop sharing**), not only the presenter; a notice explains it before the first share. The presenter's **Screen** list shows the streams on offer, with **Preview** (only the presenter sees it) and **Show** (everybody sees it), and **None**; one stream is on the screen at a time, and its owner is told whether it is offered, previewed or on screen.
 - A **screen** background for any canvas: the stream on the screen, or black when there is none.

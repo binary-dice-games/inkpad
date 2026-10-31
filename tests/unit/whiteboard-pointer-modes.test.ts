@@ -121,6 +121,42 @@ describe('the modes of the pointer tool', () => {
     }
   });
 
+  it('are not changed by the first press of 1 when the pointer came back by itself', async () => {
+    const room = new TestRoom();
+    const host = await room.start();
+    const wb = createWhiteboard(box(800, 450), { session: host, adapter: identity });
+    const board = wb.element.shadowRoot!.querySelector('svg')!;
+    try {
+      // At the start the pointer is in hand: 1 confirms it, 1 again goes to the laser.
+      keydown('1');
+      expect(board.classList.contains('active')).toBe(false);
+      keydown('1');
+      expect(board.classList.contains('laser')).toBe(true);
+
+      // A note put down gives the pointer back (in its laser mode): 1 keeps it so.
+      // jsdom has no hit testing: nothing is under the pointer.
+      Object.defineProperty(wb.element.shadowRoot!, 'elementsFromPoint', { value: () => [] });
+      keydown('6');
+      pointer(board, 'pointerdown', 100, 100);
+      pointer(board, 'pointerup', 100, 100);
+      wb.element.shadowRoot!.querySelector('textarea')?.dispatchEvent(new Event('blur'));
+      expect(board.classList.contains('laser')).toBe(true);
+      keydown('1');
+      expect(board.classList.contains('laser')).toBe(true);
+      keydown('1');
+      expect(board.classList.contains('emote')).toBe(true);
+
+      // Chosen with its key, the next press goes to the next mode at once.
+      keydown('2');
+      keydown('1');
+      keydown('1');
+      expect(board.classList.contains('active')).toBe(false); // back to the cursor
+    } finally {
+      wb.destroy();
+      room.close();
+    }
+  });
+
   it('lets the laser and emotes through the drawing lock, like cursors', () => {
     const gate = drawingGate(() => false);
     expect(gate('wb', { t: 'laser', id: 'l1', seq: 0, pts: [1, 2] }, 'ana')).toBe(true);

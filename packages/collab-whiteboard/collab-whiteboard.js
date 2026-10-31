@@ -1396,6 +1396,9 @@ export class Whiteboard {
     this.fxSeq = 0;
     this.lasing = null; // the laser trail being drawn here
     this.emoteWheel = null; // the emote wheel while it is open
+    // The pointer is in hand without its key or button (at the start, after a note was put down,
+    // Esc...): the next press of its key only confirms it instead of going to the next mode.
+    this.pointerUnchosen = true;
     // The numbered tools (1 is the first); the colour comes last and is not a tool.
     this.slots = [...this.tools, 'color'];
     this.avatar = cleanImageData(options.avatar, LIMITS.avatarChars) ?? '';
@@ -1436,6 +1439,7 @@ export class Whiteboard {
     this.syncBoardClass();
     this.popover.hidden = true;
     this.renderToolbar();
+    this.pointerUnchosen = name === 'pointer';
     this.emit('tool', name);
     this.sendCursorAgain();
   }
@@ -1443,7 +1447,8 @@ export class Whiteboard {
   /**
    * The shortcut of the `n`th tool (1 is the first): selects it, and pressing the tool in use
    * again goes through its options (line: thin, normal, thick; text: small, medium, large;
-   * sticker: each sticker). The colour is last: it only changes the colour.
+   * sticker: each sticker). The colour is last: it only changes the colour. When the pointer was put
+   * in hand by something else (the start, a note put down, Esc), its key first only confirms it.
    */
   chooseSlot(n) {
     const name = this.slots[n - 1];
@@ -1451,6 +1456,10 @@ export class Whiteboard {
       this.cycle('color');
     } else if (name && this.tool !== name) {
       this.setTool(name);
+      this.pointerUnchosen = false;
+    } else if (name === 'pointer' && this.pointerUnchosen) {
+      this.pointerUnchosen = false;
+      this.flash(this.strings.pointerModeNames[this.style.pointerMode]);
     } else if (name) {
       this.cycle(name);
     }
@@ -1721,6 +1730,7 @@ export class Whiteboard {
     }
     if (POINTER_MODES.includes(style.pointerMode) && style.pointerMode !== this.style.pointerMode) {
       this.style.pointerMode = style.pointerMode;
+      this.pointerUnchosen = false;
       this.closeWheel(false);
       this.syncBoardClass();
       this.sendCursorAgain();
@@ -2406,6 +2416,7 @@ export class Whiteboard {
             if (this.tool !== t) {
               this.setTool(t);
             }
+            this.pointerUnchosen = false;
             if (this.optionsOf(t).length > 0) {
               this.togglePopover(t);
             }

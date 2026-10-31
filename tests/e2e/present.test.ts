@@ -672,7 +672,8 @@ describe('static presenter page', () => {
     await viewer.mouse.move(moved.x + 80, moved.y + 60, { steps: 5 });
     await viewer.mouse.up();
     expect(Math.abs((await noteAt(viewer)).x - moved.x)).toBeLessThan(3);
-    // The presenter, its owner, still can (the pointer is in hand since the note was put down).
+    // The presenter, its owner, still can (1 only confirms the pointer the note put in hand).
+    await presenter.keyboard.press('1');
     const p = await noteAt(presenter);
     await presenter.mouse.move(p.x, p.y + 20);
     await presenter.mouse.down();
@@ -791,7 +792,8 @@ describe('static presenter page', () => {
     await presenter.keyboard.press('6');
     const second = at(0.6, 0.2);
     await presenter.mouse.click(second.x, second.y);
-    await presenter.keyboard.press('Control+Enter'); // the pointer is in hand again
+    await presenter.keyboard.press('Control+Enter');
+    await presenter.keyboard.press('1');
     const notes = presenter.locator('collab-whiteboard .note-item');
     expect(await notes.count()).toBe(2);
     const pinOf = (index: number) =>
