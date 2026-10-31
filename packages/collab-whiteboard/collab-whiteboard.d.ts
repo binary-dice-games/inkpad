@@ -123,6 +123,13 @@ export interface PinItem extends ItemBase {
 /** Which ends of a thread have a head: none, `start` (its source), `end` (its destination) or both. */
 export type ArrowHeads = 'none' | 'start' | 'end' | 'both';
 export const ARROW_HEADS: readonly ArrowHeads[];
+/** The modes of the pointer tool: the plain cursor, a laser that leaves a short trail, emotes. */
+export type PointerMode = 'cursor' | 'laser' | 'emote';
+export const POINTER_MODES: readonly PointerMode[];
+/** The stickers of the emote wheel, clockwise from the top. */
+export const EMOTES: readonly string[];
+/** How many times a live emote can grow (each click on it makes it bigger). */
+export const EMOTE_LEVELS: number;
 
 /** A thread hung from the pin of the item `from` to that of `to`. */
 export interface ArrowItem extends ItemBase {
@@ -389,6 +396,8 @@ export class Whiteboard {
     sticker?: string;
     shape?: NoteShape;
     pinShape?: PinShape;
+    /** The mode of the pointer tool (key 1 again goes through them). */
+    pointerMode?: PointerMode;
     heads?: ArrowHeads;
   }): void;
   setAdapter(adapter: Adapter): void;
@@ -416,6 +425,12 @@ export class Whiteboard {
   ): string | null;
   /** Pins a bare pin in the current colour; null when read only. */
   addPin(at?: { x: number; y: number }): string | null;
+  /**
+   * Shows an emote (one of {@link EMOTES}) at `at` (board units) to everyone on this canvas; it
+   * floats up and fades in about two seconds, and a click on it makes it bigger. Nothing is stored.
+   * Returns its id, or null for an unknown name.
+   */
+  addEmote(name: string, at: { x: number; y: number }): string | null;
   /** Ties a thread between the pins of two items; null when read only or an item has no pin. */
   addArrow(from: string, to: string): string | null;
   /**

@@ -13,7 +13,10 @@
  * that show the tool and the avatar, a queue for the turn to speak, and files pinned on the
  * board (a preview on the board, the file itself sent to everyone to drag out as a copy).
  * Elements are removed by selecting them and pressing Delete or Backspace (the right button does
- * nothing to them). New notes and pins are half the size nymph makes them, text sizes three
+ * nothing to them). The pointer tool has modes: the cursor, a laser that leaves a short trail and
+ * emotes picked from a wheel that float away (`laser` and `emote` messages, never stored). Bare pins
+ * and the pins of notes and pictures are drawn at half their size and catch the pointer as before.
+ * New notes and pins are half the size nymph makes them, text sizes three
  * quarters, and the bar over a selected element is kept inside the board (and hidden while the
  * element is dragged or a thread pulled). A note can be dragged
  * out to its size with the note tool, and a thread pressed on or let go over an element gets a new
@@ -59,6 +62,12 @@ export const NOTE_SHAPES = Object.freeze(['square', 'rounded', 'oval', 'diamond'
 /** The shapes of a pin's head (`round` is the usual one and is not stored). */
 export const PIN_SHAPES = Object.freeze(['round', 'square', 'diamond', 'triangle', 'star']);
 export const ARROW_HEADS = Object.freeze(['none', 'start', 'end', 'both']);
+/** The modes of the pointer tool: the plain cursor, a laser that leaves a short trail, and emotes that float away. */
+export const POINTER_MODES = Object.freeze(['cursor', 'laser', 'emote']);
+/** The stickers of the emote wheel, clockwise from the top. */
+export const EMOTES = Object.freeze(['thumbs-up', 'heart', 'laugh', 'smile', 'surprised', 'thinking', 'sad', 'angry']);
+/** How many times an emote can grow (a click on a live one makes it bigger). */
+export const EMOTE_LEVELS = 5;
 /** How an element is locked: absent (anybody may change it), `owner` (only its author), `all` (nobody, but its author may unlock it). */
 export const LOCKS = Object.freeze(['owner', 'all']);
 /** How many canvases a board has; an item belongs to one (`page`, 0 to 4, absent for the first). */
@@ -792,7 +801,19 @@ const WIDTH_NAMES = ['thin', 'normal', 'thick'];
 const SIZES = [14, 21, 33];
 const SIZE_NAMES = ['small', 'medium', 'large'];
 /** Where each tool's cursor points, in its 24-unit icon. */
-const HOTSPOT = { pointer: [5, 3], pen: [4, 20], text: [12, 12], sticker: [12, 12], eraser: [5, 19], note: [12, 12], pin: [12, 12], arrow: [12, 12] };
+const HOTSPOT = { pointer: [5, 3], pen: [4, 20], text: [12, 12], sticker: [12, 12], eraser: [5, 19], note: [12, 12], pin: [12, 12], arrow: [12, 12], laser: [12, 12], emote: [12, 12] };
+/** The icons of the pointer's laser and emote modes (on the toolbar and on remote cursors). */
+const MODE_ICONS = {
+  laser: '<circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.5 2.5M16.5 16.5L19 19M19 5l-2.5 2.5M7.5 16.5L5 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+  emote: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10" r="1.3" fill="currentColor"/><circle cx="15" cy="10" r="1.3" fill="currentColor"/><path d="M8 14.5q4 4 8 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+};
+const LASER_MS = 1200; // how long each point of a laser trail lasts
+const EMOTE_MS = 2000; // the life of an emote; a click on it starts it again
+const EMOTE_PX = 40; // the size of an emote on screen, before it grows
+const EMOTE_GROW = 1.3; // how much bigger each click makes it
+const EMOTE_RISE = 90; // how far (screen pixels) it floats up in its life
+const WHEEL_RADIUS = 64; // from the centre of the emote wheel to its emotes
+
 const MAX_QUEUE = 50;
 const pinColor = (id) => PALETTE[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % 6];
 
@@ -825,10 +846,12 @@ function shapeElement(shape, x, y, w, h, attrs) {
 function pinMetrics(item, h) {
   const pad = Math.min(8, Math.max(3, item.size * 0.03));
   const r = Math.min(8, Math.max(4, item.size * 0.035));
-  return { pad, r, x: item.x, y: item.y - h / 2 - pad + r * 1.15 };
+  return { pad, r, x: item.x, y: item.y - h / 2 - pad + r * 1.15, head: r / 2 };
 }
 
-const PIN_RADIUS = 5;
+/** The drawn radius of a bare pin, and the radius of the invisible circle that catches the pointer over it (twice as large as the pin was). */
+const PIN_RADIUS = 2.5;
+const PIN_HIT = 9;
 
 /** How far below its centre the pin of a note, picture or link is (before it is turned); 0 for what has no pin. */
 function pinOffset(item) {
@@ -1104,6 +1127,11 @@ const STRINGS = {
   canvases: 'Canvases',
   peopleHere: 'here',
   pointer: 'Pointer: use the page below (Esc)',
+  pointerModeNames: {
+    cursor: 'Cursor',
+    laser: 'Laser pointer: drag to leave a trail',
+    emote: 'Emotes: press, pick one and let go (click one to make it bigger)',
+  },
   pen: 'Pen',
   text: 'Text note',
   sticker: 'Sticker (Shift+drag scales, Ctrl+drag turns)',
@@ -1169,7 +1197,17 @@ svg.board .item .hit.box { pointer-events: fill; }
 svg.board .link-item { cursor: pointer; }
 svg.board.pen { cursor: crosshair; } svg.board.text { cursor: text; } svg.board.sticker { cursor: copy; }
 svg.board.eraser { cursor: cell; }
-svg.board:not(.pen):not(.eraser) .item.own { cursor: move; }
+svg.board:not(.pen):not(.eraser):not(.laser):not(.emote) .item.own { cursor: move; }
+svg.board.laser, svg.board.laser .item { cursor: crosshair; } svg.board.emote, svg.board.emote .item { cursor: default; }
+.fx { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.fx .emote { position: absolute; left: 0; top: 0; will-change: transform, opacity; filter: drop-shadow(0 2px 3px rgba(0,0,0,.3)); }
+.fx .emote svg { display: block; width: 100%; height: 100%; }
+.wheel { position: absolute; width: 0; height: 0; pointer-events: none; }
+.wheel .ring { position: absolute; left: -92px; top: -92px; width: 184px; height: 184px; border-radius: 50%; background: var(--wb-bg); opacity: .88; box-shadow: 0 2px 14px rgba(0,0,0,.3); }
+.wheel .hub { position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--wb-border); }
+.wheel .slot { position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; display: grid; place-items: center; transition: transform 80ms; }
+.wheel .slot.on { transform: scale(1.4); background: var(--wb-hover); }
+.wheel .slot svg { width: 32px; height: 32px; }
 .capture { fill: transparent; }
 .item text { white-space: pre; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; paint-order: stroke; stroke: #ffffff; stroke-width: 0.25em; stroke-linejoin: round; }
 .item.erasing { opacity: 0.3; }
@@ -1341,7 +1379,7 @@ export class Whiteboard {
     this.listeners = new Map();
     this.tool = 'pointer';
     const own = this.session.me.color;
-    this.style = { color: COLOR.test(own ?? '') ? own : PALETTE[0], width: WIDTHS[1], size: SIZES[1], sticker: 'check', shape: 'square', pinShape: 'round', heads: 'end' };
+    this.style = { color: COLOR.test(own ?? '') ? own : PALETTE[0], width: WIDTHS[1], size: SIZES[1], sticker: 'check', shape: 'square', pinShape: 'round', heads: 'end', pointerMode: 'cursor' };
     this.readOnlyFlag = !!options.readOnly;
     this.nodes = new Map(); // item id -> SVG node
     this.liveInk = new Map(); // `${peer}:${id}` -> {node, points, seq}
@@ -1353,6 +1391,11 @@ export class Whiteboard {
     this.lastCursorSent = 0;
     this.lastPoint = null;
     this.inkSeq = 0;
+    this.trails = new Map(); // `${peer}:${id}` -> laser trail {node, pts: [{x, y, t}], seq, color}
+    this.emotes = new Map(); // emote id -> {name, x, y, level, born, rise, node}
+    this.fxSeq = 0;
+    this.lasing = null; // the laser trail being drawn here
+    this.emoteWheel = null; // the emote wheel while it is open
     // The numbered tools (1 is the first); the colour comes last and is not a tool.
     this.slots = [...this.tools, 'color'];
     this.avatar = cleanImageData(options.avatar, LIMITS.avatarChars) ?? '';
@@ -1389,8 +1432,8 @@ export class Whiteboard {
     }
     this.finishText();
     this.tool = name;
-    this.board.setAttribute('class', `board ${name}${name === 'pointer' ? '' : ' active'}`);
-    this.dragLayer.classList.toggle('off', name !== 'pointer');
+    this.closeWheel(false);
+    this.syncBoardClass();
     this.popover.hidden = true;
     this.renderToolbar();
     this.emit('tool', name);
@@ -1420,6 +1463,10 @@ export class Whiteboard {
       const i = (PALETTE.indexOf(this.style.color) + 1) % PALETTE.length;
       this.setStyle({ color: PALETTE[i] });
       this.flash(`${s.color}: ${COLOR_NAMES[i]}`);
+    } else if (what === 'pointer') {
+      const mode = POINTER_MODES[(POINTER_MODES.indexOf(this.style.pointerMode) + 1) % POINTER_MODES.length];
+      this.setStyle({ pointerMode: mode });
+      this.flash(s.pointerModeNames[mode]);
     } else if (what === 'pen') {
       const i = (nearest(WIDTHS, this.style.width) + 1) % WIDTHS.length;
       this.setStyle({ width: WIDTHS[i] });
@@ -1672,7 +1719,29 @@ export class Whiteboard {
     if (ARROW_HEADS.includes(style.heads)) {
       this.style.heads = style.heads;
     }
+    if (POINTER_MODES.includes(style.pointerMode) && style.pointerMode !== this.style.pointerMode) {
+      this.style.pointerMode = style.pointerMode;
+      this.closeWheel(false);
+      this.syncBoardClass();
+      this.sendCursorAgain();
+    }
     this.renderToolbar();
+  }
+
+  /**
+   * @private The classes of the board: the tool, the pointer's mode, and `active` when the board
+   * takes the input (every tool but the plain cursor, which lets it through to the page).
+   */
+  syncBoardClass() {
+    const mode = this.pointerMode();
+    const active = this.tool !== 'pointer' || mode !== 'cursor';
+    this.board.setAttribute('class', `board ${this.tool}${mode === 'cursor' ? '' : ` ${mode}`}${active ? ' active' : ''}`);
+    this.dragLayer.classList.toggle('off', active);
+  }
+
+  /** @private The mode of the pointer tool while it is in use, else `cursor`. */
+  pointerMode() {
+    return this.tool === 'pointer' ? this.style.pointerMode : 'cursor';
   }
 
   /** The overlay element (a host that replaces the container's children puts it back). */
@@ -1789,6 +1858,7 @@ export class Whiteboard {
       const [author, id] = key.split(/:(.+)/);
       this.dropLive(author, id);
     }
+    this.clearFx();
     this.syncCursors();
     this.send({ t: 'pg', n });
     this.render();
@@ -2087,6 +2157,7 @@ export class Whiteboard {
       clearTimeout(c.timer);
     }
     clearTimeout(this.hintTimer);
+    this.clearFx();
     this.host.remove();
     this.destroyed = true;
   }
@@ -2162,6 +2233,10 @@ export class Whiteboard {
       this.remoteCursor(from, m);
     } else if (m.t === 'ink') {
       this.remoteInk(from, m);
+    } else if (m.t === 'laser') {
+      this.remoteLaser(from, m);
+    } else if (m.t === 'emote') {
+      this.remoteEmote(m);
     } else if (m.t === 'file') {
       this.remoteFile(from, m);
     } else if (m.t === 'avatar') {
@@ -2247,6 +2322,7 @@ export class Whiteboard {
     this.layer.append(this.itemsGroup, this.liveGroup);
     this.board.append(this.defs, this.capture, this.layer);
     this.cursorLayer = htmlEl('div', { class: 'cursors' });
+    this.fxLayer = htmlEl('div', { class: 'fx' });
     this.dragLayer = htmlEl('div', { class: 'drag' });
     this.toolbarBox = htmlEl('div', { class: 'toolbar', role: 'toolbar', 'aria-label': 'Whiteboard', hidden: !withToolbar });
     this.popover = htmlEl('div', { class: 'pop', hidden: true });
@@ -2254,7 +2330,7 @@ export class Whiteboard {
     this.selbar = htmlEl('div', { class: 'selbar', role: 'toolbar', 'aria-label': 'Selected item', hidden: true });
     this.queueBox = htmlEl('div', { class: 'queue', role: 'group', 'aria-label': this.strings.queue, hidden: !this.turns });
     this.pagesBox = htmlEl('div', { class: 'pages', role: 'group', 'aria-label': this.strings.canvases, hidden: !this.showPages });
-    this.root.append(this.board, this.dragLayer, this.cursorLayer, this.toolbarBox, this.popover, this.selbar, this.hintBox, this.queueBox, this.pagesBox);
+    this.root.append(this.board, this.dragLayer, this.fxLayer, this.cursorLayer, this.toolbarBox, this.popover, this.selbar, this.hintBox, this.queueBox, this.pagesBox);
     this.container.append(this.host);
     this.defs.append(this.shadowFilter());
     for (const [name, svg] of this.stickers) {
@@ -2352,6 +2428,9 @@ export class Whiteboard {
 
   /** @private A tool's icon; the pen, the text and the sticker show the option in use. */
   toolIcon(t) {
+    if (t === 'pointer') {
+      return MODE_ICONS[this.style.pointerMode] ?? ICONS.pointer;
+    }
     if (t === 'pen') {
       const w = [1, 2.5, 4][nearest(WIDTHS, this.style.width)];
       return `${ICONS.pen}<path d="M5 22h14" stroke="currentColor" stroke-width="${w}" stroke-linecap="round"/>`;
@@ -2393,13 +2472,17 @@ export class Whiteboard {
 
   /**
    * @private The options of a tool, for its panel: {label, icon (SVG inner), pressed, run}. Only
-   * tools that have some are listed (the pen, text, stickers, notes and threads) and the colour.
+   * tools that have some are listed (the pointer's modes, the pen, text, stickers, notes, pins and
+   * threads) and the colour.
    */
   optionsOf(kind) {
     const s = this.strings;
     const style = this.style;
     if (kind === 'color') {
       return PALETTE.map((c, i) => ({ label: `${s.color}: ${COLOR_NAMES[i]}`, swatch: c, pressed: c === style.color, run: () => this.setStyle({ color: c }) }));
+    }
+    if (kind === 'pointer') {
+      return POINTER_MODES.map((mode) => ({ label: s.pointerModeNames[mode], icon: MODE_ICONS[mode] ?? ICONS.pointer, pressed: style.pointerMode === mode, run: () => this.setStyle({ pointerMode: mode }) }));
     }
     if (kind === 'pen') {
       return WIDTHS.map((w, i) => ({ label: `${s.pen}: ${WIDTH_NAMES[i]}`, icon: `<path d="M4 12h16" stroke="currentColor" stroke-width="${[1.5, 3, 5.5][i]}" stroke-linecap="round"/>`, pressed: nearest(WIDTHS, style.width) === i, run: () => this.setStyle({ width: w }) }));
@@ -2721,7 +2804,7 @@ export class Whiteboard {
 
   /** @private A print pinned on the board around `content`: border, pin, and a shadow that stays put when turned. */
   printNode(item, h, turn, content, paper = '#ffffff', shape = 'square') {
-    const { pad, r, y: py } = pinMetrics(item, h);
+    const { pad, r, y: py, head } = pinMetrics(item, h);
     const left = item.x - item.size / 2;
     const top = item.y - h / 2;
     const print = svgEl('g', { ...turn });
@@ -2734,9 +2817,10 @@ export class Whiteboard {
       ...content,
     );
     pin.append(
-      svgEl('ellipse', { cx: item.x + r * 0.45, cy: py + r * 0.7, rx: r * 0.95, ry: r * 0.6, fill: 'rgba(0,0,0,0.3)' }),
-      svgEl('circle', { cx: item.x, cy: py, r, fill: pinColor(item.id), stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8 }),
-      svgEl('circle', { cx: item.x - r * 0.3, cy: py - r * 0.32, r: r * 0.3, fill: 'rgba(255,255,255,0.6)' }),
+      svgEl('circle', { class: 'hit box', cx: item.x, cy: py, r, fill: 'transparent' }),
+      svgEl('ellipse', { cx: item.x + head * 0.9, cy: py + head * 1.4, rx: head * 0.95, ry: head * 0.6, fill: 'rgba(0,0,0,0.3)' }),
+      svgEl('circle', { cx: item.x, cy: py, r: head, fill: pinColor(item.id), stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.6 }),
+      svgEl('circle', { cx: item.x - head * 0.3, cy: py - head * 0.32, r: head * 0.3, fill: 'rgba(255,255,255,0.6)' }),
     );
     print.append(pin);
     const shadow = svgEl('g', { filter: 'url(#wb-shadow)' });
@@ -2779,13 +2863,13 @@ export class Whiteboard {
       const at = pinPoint(item, resolve);
       const shadow = svgEl('g', { filter: 'url(#wb-shadow)' });
       shadow.append(
-        svgEl('ellipse', { cx: at.x + 4, cy: at.y + 6, rx: PIN_RADIUS * 0.95, ry: PIN_RADIUS * 0.6, fill: 'rgba(0,0,0,0.3)' }),
-        pinHead(item.shape ?? 'round', at.x, at.y, PIN_RADIUS, { class: 'paper', fill: item.color, stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.8 }),
+        svgEl('ellipse', { cx: at.x + 2, cy: at.y + 3, rx: PIN_RADIUS * 0.95, ry: PIN_RADIUS * 0.6, fill: 'rgba(0,0,0,0.3)' }),
+        pinHead(item.shape ?? 'round', at.x, at.y, PIN_RADIUS, { class: 'paper', fill: item.color, stroke: 'rgba(0,0,0,0.4)', 'stroke-width': 0.6 }),
         svgEl('circle', { cx: at.x - PIN_RADIUS * 0.3, cy: at.y - PIN_RADIUS * 0.32, r: PIN_RADIUS * 0.3, fill: 'rgba(255,255,255,0.6)' }),
       );
-      g.append(svgEl('circle', { class: 'hit', cx: at.x, cy: at.y, r: PIN_RADIUS + 4, fill: 'transparent' }), shadow);
+      g.append(svgEl('circle', { class: 'hit box', cx: at.x, cy: at.y, r: PIN_HIT, fill: 'transparent' }), shadow);
       if (item.lock) {
-        g.append(lockBadge(at.x + 12, at.y - 14, item.lock));
+        g.append(lockBadge(at.x + 8, at.y - 10, item.lock));
       }
     } else if (item.kind === 'arrow') {
       this.threadNode(item, g, resolve);
@@ -2936,7 +3020,7 @@ export class Whiteboard {
       this.cursors.set(from, c);
       this.styleCursor(c, peer ?? { id: from, name: '', color: '#8b8d98' });
     }
-    this.setCursorTool(c, TOOL_NAMES.has(m.tool) ? m.tool : 'pointer');
+    this.setCursorTool(c, TOOL_NAMES.has(m.tool) || Object.hasOwn(MODE_ICONS, m.tool ?? '') ? m.tool : 'pointer');
     c.node.classList.toggle('active', from === this.queue[0]);
     c.x = m.x;
     c.y = m.y;
@@ -2984,7 +3068,7 @@ export class Whiteboard {
     }
     c.tool = tool;
     const [hx, hy] = HOTSPOT[tool];
-    c.shape.innerHTML = `<svg class="${tool}" viewBox="0 0 24 24" width="24" height="24">${ICONS[tool]}</svg>`;
+    c.shape.innerHTML = `<svg class="${tool}" viewBox="0 0 24 24" width="24" height="24">${MODE_ICONS[tool] ?? ICONS[tool]}</svg>`;
     c.shape.style.left = `${-hx}px`;
     c.shape.style.top = `${-hy}px`;
     c.shape.style.setProperty('--hx', `${hx}px`);
@@ -3290,6 +3374,299 @@ export class Whiteboard {
     }
   }
 
+  // ── Laser and emotes ────────────────────────────────────────────────────
+
+  /** @private A press with the laser (a new trail) or with emotes (a click on one makes it bigger, else the wheel). */
+  modeDown(ev) {
+    ev.preventDefault();
+    this.popover.hidden = true;
+    const p = this.eventPoint(ev);
+    if (this.pointerMode() === 'laser') {
+      this.board.setPointerCapture?.(ev.pointerId);
+      this.fxSeq += 1;
+      this.lasing = { key: `${this.session.me.id}:l${this.fxSeq}`, id: `l${this.fxSeq}`, seq: 0, pending: [], sentAt: 0 };
+      this.laserTo(p);
+      return;
+    }
+    if (this.emoteWheel?.sticky) {
+      // The wheel was left open by a click: a click on an emote puts it, anywhere else closes it.
+      this.aimWheel(ev);
+      this.closeWheel(true);
+      return;
+    }
+    const live = this.emoteAt(ev);
+    if (live) {
+      this.bumpEmote(live);
+      return;
+    }
+    this.board.setPointerCapture?.(ev.pointerId);
+    this.openWheel(ev, p);
+  }
+
+  /** @private The laser here moved to `p`: drawn now, and sent to the others at most 30 times a second. */
+  laserTo(p) {
+    const l = this.lasing;
+    const x = round1(p.x);
+    const y = round1(p.y);
+    this.trailPoints(l.key, [x, y], this.session.me.color);
+    l.pending.push(x, y);
+    if (performance.now() - l.sentAt >= 33) {
+      this.sendLaser();
+    }
+  }
+
+  /** @private The points of the laser not yet sent. */
+  sendLaser() {
+    const l = this.lasing;
+    if (!l?.pending.length) {
+      return;
+    }
+    this.send({ t: 'laser', id: l.id, seq: l.seq++, pts: l.pending.splice(0, 400), pg: this.page }, { fast: true });
+    l.sentAt = performance.now();
+  }
+
+  /** @private A peer's laser (lossy: nothing is kept but the fading trail). */
+  remoteLaser(from, m) {
+    if (!ID.test(m.id ?? '') || !Number.isInteger(m.seq) || !Array.isArray(m.pts) || m.pts.length > 400 || m.pts.length % 2 || !m.pts.every((n) => finite(n))) {
+      return;
+    }
+    if ((m.pg ?? 0) !== this.page) {
+      return;
+    }
+    const key = `${from}:${m.id}`;
+    const trail = this.trails.get(key);
+    if (trail ? m.seq <= trail.seq : this.trails.size >= 40) {
+      return; // late, or too many at once
+    }
+    const peer = this.session.peers().find((q) => q.id === from);
+    const made = this.trailPoints(key, m.pts, peer?.color);
+    made.seq = m.seq;
+  }
+
+  /** @private Adds points (x, y, x, y...) to a laser trail, made in `color` if new; the trail, or null if refused. */
+  trailPoints(key, pts, color) {
+    let trail = this.trails.get(key);
+    if (!trail) {
+      const c = COLOR.test(color ?? '') ? color : '#e5484d';
+      trail = { node: svgEl('g', { class: 'laser-trail', fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'pointer-events': 'none' }), pts: [], seq: -1, color: c };
+      this.liveGroup.append(trail.node);
+      this.trails.set(key, trail);
+    }
+    const t = performance.now();
+    for (let i = 0; i + 1 < pts.length && trail.pts.length < 2000; i += 2) {
+      trail.pts.push({ x: pts[i], y: pts[i + 1], t });
+    }
+    this.animate();
+    return trail;
+  }
+
+  /** @private The emote under the pointer (the newest on top), or null. */
+  emoteAt(ev) {
+    const r = this.host.getBoundingClientRect();
+    const x = ev.clientX - r.left;
+    const y = ev.clientY - r.top;
+    const now = performance.now();
+    let hit = null;
+    for (const e of this.emotes.values()) {
+      const at = this.emoteFrame(e, now);
+      if (Math.hypot(at.x - x, at.y - y) <= at.size / 2) {
+        hit = e;
+      }
+    }
+    return hit;
+  }
+
+  /** @private Opens the wheel of emotes around the press. */
+  openWheel(ev, p) {
+    const r = this.host.getBoundingClientRect();
+    const box = { x: ev.clientX - r.left, y: ev.clientY - r.top };
+    const node = htmlEl('div', { class: 'wheel', role: 'menu', 'aria-label': this.strings.pointerModeNames.emote });
+    node.style.left = `${box.x}px`;
+    node.style.top = `${box.y}px`;
+    node.append(htmlEl('div', { class: 'ring' }), htmlEl('div', { class: 'hub' }));
+    EMOTES.forEach((name, i) => {
+      const a = (i * 2 * Math.PI) / EMOTES.length;
+      const slot = htmlEl('div', { class: 'slot', role: 'menuitem', 'aria-label': name, 'data-name': name }, `<svg viewBox="0 0 24 24"><use href="#sticker-${name}"/></svg>`);
+      slot.style.left = `${round1(Math.sin(a) * WHEEL_RADIUS)}px`;
+      slot.style.top = `${round1(-Math.cos(a) * WHEEL_RADIUS)}px`;
+      node.append(slot);
+    });
+    this.root.append(node);
+    this.emoteWheel = { node, at: { x: round1(p.x), y: round1(p.y) }, box, choice: -1, moved: false, sticky: false };
+  }
+
+  /** @private The emote the pointer points at: the one in its direction, once it is away from the middle. */
+  aimWheel(ev) {
+    const w = this.emoteWheel;
+    const r = this.host.getBoundingClientRect();
+    const dx = ev.clientX - r.left - w.box.x;
+    const dy = ev.clientY - r.top - w.box.y;
+    const d = Math.hypot(dx, dy);
+    w.moved ||= d > 8;
+    // Far outside the wheel is no choice once it was opened by a click.
+    const choice = d < 22 || (w.sticky && d > WHEEL_RADIUS + 40) ? -1 : (Math.round(Math.atan2(dx, -dy) / ((2 * Math.PI) / EMOTES.length)) + EMOTES.length) % EMOTES.length;
+    if (choice !== w.choice) {
+      w.choice = choice;
+      w.node.querySelectorAll('.slot').forEach((s, i) => s.classList.toggle('on', i === choice));
+    }
+  }
+
+  /** @private Closes the wheel; with `put`, the emote chosen (if any) goes on the board. */
+  closeWheel(put) {
+    const w = this.emoteWheel;
+    if (!w) {
+      return;
+    }
+    this.emoteWheel = null;
+    w.node.remove();
+    if (put && w.choice >= 0) {
+      this.addEmote(EMOTES[w.choice], w.at);
+    }
+  }
+
+  /**
+   * Shows an emote at `at` (board units) to everyone on this canvas: it floats up and fades in about
+   * two seconds. A click on a live emote (anybody's) makes it bigger and starts its life again.
+   * @param {string} name one of {@link EMOTES}
+   * @returns {string | null} its id, null for an unknown name
+   */
+  addEmote(name, at) {
+    if (!EMOTES.includes(name) || !finite(at?.x) || !finite(at?.y)) {
+      return null;
+    }
+    this.fxSeq += 1;
+    const id = `${this.session.me.id}.e${this.fxSeq}`.slice(-64);
+    const m = { t: 'emote', id, name, x: round1(at.x), y: round1(at.y), level: 1, pg: this.page };
+    this.remoteEmote(m);
+    this.send(m, { fast: true });
+    return id;
+  }
+
+  /** @private A click on a live emote: one size bigger (up to the largest), for everyone. */
+  bumpEmote(e) {
+    const m = { t: 'emote', id: e.id, name: e.name, x: e.x, y: e.y, level: Math.min(EMOTE_LEVELS, e.level + 1), pg: this.page };
+    e.level = m.level - 1; // so that it grows here as it does for the others
+    this.remoteEmote(m);
+    this.send(m, { fast: true });
+  }
+
+  /** @private An emote, new or grown (the larger size wins); validated, since peers send it. */
+  remoteEmote(m) {
+    if (!ID.test(m.id ?? '') || !EMOTES.includes(m.name) || !finite(m.x) || !finite(m.y) || !Number.isInteger(m.level) || m.level < 1 || m.level > EMOTE_LEVELS) {
+      return;
+    }
+    if ((m.pg ?? 0) !== this.page) {
+      return;
+    }
+    const now = performance.now();
+    let e = this.emotes.get(m.id);
+    if (e) {
+      if (m.level <= e.level) {
+        return;
+      }
+      // It grows where it is now, and lives again from there.
+      e.rise = this.emoteFrame(e, now).rise;
+      e.level = m.level;
+      e.born = now;
+    } else {
+      if (this.emotes.size >= 60) {
+        return;
+      }
+      const node = htmlEl('div', { class: 'emote', 'data-name': m.name }, `<svg viewBox="0 0 24 24"><use href="#sticker-${m.name}"/></svg>`);
+      this.fxLayer.append(node);
+      e = { id: m.id, name: m.name, x: m.x, y: m.y, level: m.level, born: now, rise: 0, node };
+      this.emotes.set(m.id, e);
+    }
+    this.animate();
+  }
+
+  /** @private Where an emote is drawn at `now`: its centre in box pixels, size, scale, opacity and how far it rose. */
+  emoteFrame(e, now) {
+    const age = Math.max(0, now - e.born);
+    const k = Math.min(1, age / EMOTE_MS);
+    const rise = e.rise + EMOTE_RISE * k * (e.rise > 0 ? 0.5 : 1);
+    const at = this.toBox(e.x, e.y);
+    const size = EMOTE_PX * EMOTE_GROW ** (e.level - 1);
+    const pop = age < 200 ? 1 + 0.3 * Math.sin((Math.PI * age) / 200) : 1;
+    return { x: at.x, y: at.y - rise, size, pop, rise, opacity: k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45, done: age >= EMOTE_MS };
+  }
+
+  /** @private Draws the laser trails and emotes on the next frame, while there are any. */
+  animate() {
+    if (this.fxFrame || this.destroyed) {
+      return;
+    }
+    const raf = globalThis.requestAnimationFrame ?? ((cb) => setTimeout(() => cb(performance.now()), 16));
+    this.fxFrame = raf(() => {
+      this.fxFrame = 0;
+      this.drawFx(performance.now());
+    });
+  }
+
+  /** @private One frame of the laser trails and emotes; what has faded goes. */
+  drawFx(now) {
+    if (this.destroyed) {
+      return;
+    }
+    const scale = Math.hypot(this.matrix?.a ?? 1, this.matrix?.b ?? 0) || 1;
+    for (const [key, trail] of this.trails) {
+      while (trail.pts.length && now - trail.pts[0].t > LASER_MS) {
+        trail.pts.shift();
+      }
+      if (!trail.pts.length && key !== this.lasing?.key) {
+        trail.node.remove();
+        this.trails.delete(key);
+        continue;
+      }
+      // Four pieces, thinner and paler towards the tail; a glow under a bright core.
+      const pieces = [];
+      const n = trail.pts.length;
+      for (let q = 0; q < 4; q++) {
+        const part = trail.pts.slice(Math.floor((q * n) / 4), Math.ceil(((q + 1) * n) / 4) + 1);
+        if (part.length < 2 && n > 1) {
+          continue;
+        }
+        const d = part.length === 1 ? `M${part[0].x} ${part[0].y}h0.01` : `M${part.map((p) => `${round1(p.x)} ${round1(p.y)}`).join('L')}`;
+        const w = (0.4 + 0.2 * q) / scale;
+        pieces.push(
+          svgEl('path', { d, stroke: trail.color, 'stroke-width': round1(10 * w * 100) / 100, opacity: 0.3 }),
+          svgEl('path', { d, stroke: trail.color, 'stroke-width': round1(4 * w * 100) / 100 }),
+          svgEl('path', { d, stroke: '#ffffff', 'stroke-width': round1(1.5 * w * 100) / 100, opacity: 0.85 }),
+        );
+      }
+      trail.node.replaceChildren(...pieces);
+    }
+    for (const [id, e] of this.emotes) {
+      const f = this.emoteFrame(e, now);
+      if (f.done) {
+        e.node.remove();
+        this.emotes.delete(id);
+        continue;
+      }
+      e.node.style.width = `${f.size}px`;
+      e.node.style.height = `${f.size}px`;
+      e.node.style.opacity = String(round1(f.opacity * 100) / 100);
+      e.node.style.transform = `translate(${round1(f.x - f.size / 2)}px, ${round1(f.y - f.size / 2)}px) scale(${round1(f.pop * 100) / 100})`;
+    }
+    if (this.trails.size || this.emotes.size) {
+      this.animate();
+    }
+  }
+
+  /** @private Drops every laser trail and emote (another canvas, or the end). */
+  clearFx() {
+    for (const t of this.trails.values()) {
+      t.node.remove();
+    }
+    for (const e of this.emotes.values()) {
+      e.node.remove();
+    }
+    this.trails.clear();
+    this.emotes.clear();
+    this.lasing = null;
+    this.closeWheel(false);
+  }
+
   // ── Input ────────────────────────────────────────────────────────────────
 
   /** @private */
@@ -3355,7 +3732,8 @@ export class Whiteboard {
   /** @private The cursor with the tool in use (again when the tool changes). */
   sendCursorAgain() {
     if (this.lastPoint) {
-      this.send({ t: 'cur', ...this.lastPoint, tool: this.tool, pg: this.page }, { fast: true });
+      const mode = this.pointerMode();
+      this.send({ t: 'cur', ...this.lastPoint, tool: mode === 'cursor' ? this.tool : mode, pg: this.page }, { fast: true });
     }
   }
 
@@ -3448,7 +3826,7 @@ export class Whiteboard {
 
   /** @private A click on a link card (with the pointer tool, and not at the end of a drag) opens the page in a new tab. */
   openLink(ev) {
-    if (this.noClick || this.tool !== 'pointer') {
+    if (this.noClick || this.tool !== 'pointer' || this.style.pointerMode !== 'cursor') {
       return;
     }
     const hit = this.itemAt(ev);
@@ -3498,7 +3876,14 @@ export class Whiteboard {
 
   /** @private */
   down(ev) {
-    if (this.readOnlyFlag || ev.button > 0 || this.threading) {
+    if (ev.button > 0 || this.threading) {
+      return;
+    }
+    if (this.pointerMode() !== 'cursor') {
+      this.modeDown(ev); // the laser and emotes change nothing on the board: they work read only too
+      return;
+    }
+    if (this.readOnlyFlag) {
       return;
     }
     const hit = this.pinAt(this.eventPoint(ev)) ?? this.itemAt(ev); // a pin wins over what lies on it
@@ -3528,7 +3913,7 @@ export class Whiteboard {
       if (byPin) {
         // The pin is what is being dragged: it gets the outline, not the element.
         this.nodes.get(mine.id)?.node.classList.add('by-pin');
-        this.dragging.ring = svgEl('circle', { class: 'pin-ring', r: PIN_RADIUS + 5, fill: 'none', 'pointer-events': 'none' });
+        this.dragging.ring = svgEl('circle', { class: 'pin-ring', r: PIN_RADIUS + 4, fill: 'none', 'pointer-events': 'none' });
         this.liveGroup.append(this.dragging.ring);
         this.showPinDrag(this.dragging, 0, 0, p);
       }
@@ -3564,7 +3949,11 @@ export class Whiteboard {
 
   /** @private */
   move(ev) {
-    if (this.drawing) {
+    if (this.lasing) {
+      this.laserTo(this.eventPoint(ev));
+    } else if (this.emoteWheel) {
+      this.aimWheel(ev);
+    } else if (this.drawing) {
       const p = this.eventPoint(ev);
       const pts = this.drawing.points;
       const lx = pts[pts.length - 2];
@@ -4043,7 +4432,18 @@ export class Whiteboard {
 
   /** @private */
   up(ev, cancelled = false) {
-    if (this.drawing) {
+    if (this.lasing) {
+      this.sendLaser();
+      this.lasing = null;
+    } else if (this.emoteWheel && !this.emoteWheel.sticky) {
+      // Let go on an emote: it is put where the wheel opened. Let go in the middle, after a click:
+      // the wheel stays open for a click on one (and closes on a click anywhere else).
+      if (!cancelled && this.emoteWheel.choice < 0 && !this.emoteWheel.moved) {
+        this.emoteWheel.sticky = true;
+      } else {
+        this.closeWheel(!cancelled);
+      }
+    } else if (this.drawing) {
       const d = this.drawing;
       this.drawing = null;
       d.node.remove();
@@ -4164,7 +4564,7 @@ export class Whiteboard {
     this.popover.hidden = true;
     this.board.setPointerCapture?.(ev.pointerId);
     const node = svgEl('path', { fill: 'none', stroke: this.style.color, 'stroke-width': 2.6, 'stroke-linecap': 'round', opacity: 0.8 });
-    const ring = svgEl('circle', { r: PIN_RADIUS + 5, fill: 'none', stroke: 'var(--wb-accent, #3e63dd)', 'stroke-width': 2, 'pointer-events': 'none' });
+    const ring = svgEl('circle', { r: PIN_RADIUS + 4, fill: 'none', stroke: 'var(--wb-accent, #3e63dd)', 'stroke-width': 2, 'pointer-events': 'none' });
     this.threading = { from: source, origin, node, ring, restore, x0: ev.clientX, y0: ev.clientY };
     this.selbar.classList.add('moving');
     if (origin) {
@@ -4426,6 +4826,10 @@ export class Whiteboard {
       this.removeSelected();
     } else if (ev.key === 'Escape' && this.selected) {
       this.deselect();
+    } else if (ev.key === 'Escape' && this.emoteWheel) {
+      this.closeWheel(false);
+    } else if (ev.key === 'Escape' && this.pointerMode() !== 'cursor') {
+      this.setStyle({ pointerMode: 'cursor' });
     } else if (this.tool === 'pointer') {
       handled = false;
     } else if (ev.key === 'Escape') {
@@ -4590,7 +4994,8 @@ export function drawingGate(drawing, { channel = 'wb', opsPerSecond = 50, now = 
       return true;
     }
     const t = message?.t;
-    if (t === 'cur') {
+    // Cursors, the laser and emotes change nothing on the board: they go through even when drawing is locked.
+    if (t === 'cur' || t === 'laser' || t === 'emote') {
       return true;
     }
     // Nothing relays a file longer than the board takes.
