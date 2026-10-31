@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWhiteboard, frameAdapter } from '@inksplat/collab-whiteboard';
 import type { ArrowItem, PreparedFile, Whiteboard } from '@inksplat/collab-whiteboard';
+import { readBoardArchive, writeBoardArchive } from '../../viewer/src/board-archive';
 import { TestRoom } from '../support/rooms';
 import { until } from '../support/wait';
 
@@ -233,6 +234,35 @@ describe('saving a board', () => {
       await expect(second.loadBoard(null)).rejects.toThrow(/not an inksplat board/);
       second.readOnly = true;
       await expect(second.loadBoard(saved)).rejects.toThrow(/locked/);
+    } finally {
+      p.done();
+    }
+  });
+
+  it('saves the files as bytes for a zip, and loads them back from bytes', async () => {
+    const p = await party();
+    try {
+      const wb = p.hostBoard;
+      await wb.addFile(new File(['zip me'], 'z.txt', { type: 'text/plain' }));
+      wb.setPage(2);
+      wb.addNote({ x: 10, y: 10 }, 'on canvas 3');
+      const saved = await wb.saveBoard({}, { binary: true });
+      expect(saved.files).toHaveLength(1);
+      expect(saved.files[0]!.data).toBeInstanceOf(Uint8Array);
+      const zip = (await writeBoardArchive(saved)).blob;
+      const board = await readBoardArchive(
+        await new Promise<Uint8Array>((resolve) => {
+          const reader = new FileReader(); // jsdom's Blob has no arrayBuffer()
+          reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+          reader.readAsArrayBuffer(zip);
+        }),
+      );
+      const second = p.make(await p.room.join('Zed'));
+      expect(await second.loadBoard(board)).toMatchObject({ added: 2, files: 1 });
+      const image = second.items().find((i) => i.kind === 'image')!;
+      expect(await bytesOf(second.fileOf(image.id)!.blob)).toBe('zip me');
+      const note = second.items().find((i) => i.kind === 'note')!;
+      expect((note as { page?: number }).page).toBe(2);
     } finally {
       p.done();
     }

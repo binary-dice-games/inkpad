@@ -35,9 +35,9 @@ import { setToolbarFolded } from './fold';
 import { filePreview } from './previews';
 import { qrModules, qrPng, qrSvg } from './qr';
 import { showSheet } from './sheet';
-import { boardFile, download, fileStamp, openBoardFile, wireSave } from './save';
+import { boardArchive, download, fileStamp, openBoardFile, wireSave } from './save';
 import type { SaveHost } from './save';
-import { BACKUP_NAME, BackupWriter, backupInfo, openBackupStore } from './backup';
+import { BackupWriter, backupInfo, openBackupStore } from './backup';
 import type { BackupInfo, BackupStore } from './backup';
 import { cleanPrefs, loadPrefs, savePrefs } from './present-settings';
 import type { PresenterPrefs } from './present-settings';
@@ -335,8 +335,8 @@ function askResume(info: BackupInfo): Promise<'resume' | 'new'> {
     'board? Starting new replaces the backup.';
   $('resumeDownload').onclick = () =>
     download(
-      new Blob([info.text], { type: 'application/json' }),
-      `inksplat-backup-${fileStamp(info.saved ?? new Date())}.inksplat.json`,
+      info.file,
+      `inksplat-backup-${fileStamp(info.saved ?? new Date())}.inksplat.${info.zip ? 'zip' : 'json'}`,
     );
   return new Promise((resolve) => {
     $('resumeYes').onclick = () => dialog.close('resume');
@@ -364,12 +364,12 @@ async function startBackup(): Promise<void> {
   }
   let info: BackupInfo | null = null;
   try {
-    info = backupInfo(await store.read());
+    info = await backupInfo(await store.read());
   } catch {
     info = null; // unreadable: treated as none, and replaced
   }
   if (info && (await askResume(info)) === 'resume' && board === b) {
-    await openBoardFile(new File([info.text], BACKUP_NAME, { type: 'application/json' }), saveHost);
+    await openBoardFile(info.file, saveHost);
   }
   if (board !== b) {
     return; // the session ended meanwhile
@@ -377,7 +377,7 @@ async function startBackup(): Promise<void> {
   let warned = false;
   const writer = new BackupWriter({
     store,
-    make: () => boardFile(b, h.stage()),
+    make: () => boardArchive(b, h.stage()),
     onError: () => {
       if (!warned) {
         warned = true;

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Board files (**Save... > Board file**) are now zips (`.inksplat.zip`) that any zip tool opens: `manifest.json`, `settings.json`, one `canvas-N.json` per canvas, and the pictures (`images/`) and documents (`files/`) on the board as they are, instead of base64 in one JSON file. The presenter's backup in the browser is the same zip. Older `.inksplat.json` files and backups still open.
+
 ### Added
 
 - A sticky note can be dragged out to the size wanted with the note tool (a click still puts one of the usual size).

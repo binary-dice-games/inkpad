@@ -1,37 +1,45 @@
 // MIT License © 2026 Binary Dice Games
 /**
  * @file The presenter's backup of the board (spec/06_static_presenter/DESIGN.md, Backup): a board
- * file kept in the browser's own storage for this site, written a moment after every change, so
- * a closed tab, a crash or a reload does not lose the work. The next session offers to resume it.
+ * file (the zip of `board-archive.ts`) kept in the browser's own storage for this site, written a
+ * moment after every change, so a closed tab, a crash or a reload does not lose the work. The next
+ * session offers to resume it. Backups written before boards were zips (JSON) still resume.
  *
  * The file goes in the origin private file system (OPFS) where the browser can write files
  * there, else in IndexedDB; with neither there is no backup.
  */
+import { readArchiveManifest } from './board-archive';
+import { looksLikeZip } from './zip';
 
-/** Where a backup is kept: one text file. */
+/** Where a backup is kept: one file. */
 export interface BackupStore {
-  /** The backup's text, or null when there is none. */
-  read(): Promise<string | null>;
+  /** The backup, or null when there is none. */
+  read(): Promise<Blob | null>;
   /** Replaces the backup. */
-  write(text: string): Promise<void>;
+  write(file: Blob): Promise<void>;
   /** Deletes the backup (nothing happens when there is none). */
   remove(): Promise<void>;
 }
 
 /** The name of the backup file. */
-export const BACKUP_NAME = 'board-backup.inksplat.json';
+export const BACKUP_NAME = 'board-backup.inksplat.zip';
+/** The name of the backup before boards were zips: read when there is no other, removed on write. */
+export const LEGACY_BACKUP_NAME = 'board-backup.inksplat.json';
+
+const asBlob = (value: unknown): Blob | null =>
+  value instanceof Blob ? value : typeof value === 'string' ? new Blob([value]) : null;
 
 /** A store in memory (for tests, and a page whose browser has no storage). */
-export function memoryStore(initial: string | null = null): BackupStore {
-  let text = initial;
+export function memoryStore(initial: Blob | string | null = null): BackupStore {
+  let file = asBlob(initial);
   return {
-    read: () => Promise.resolve(text),
+    read: () => Promise.resolve(file),
     write: (next) => {
-      text = next;
+      file = next;
       return Promise.resolve();
     },
     remove: () => {
-      text = null;
+      file = null;
       return Promise.resolve();
     },
   };
@@ -43,30 +51,37 @@ async function opfsStore(): Promise<BackupStore | null> {
   if (!dir || !('createWritable' in FileSystemFileHandle.prototype)) {
     return null;
   }
-  return {
-    read: async () => {
-      try {
-        return await (await (await dir.getFileHandle(BACKUP_NAME)).getFile()).text();
-      } catch (e) {
-        if (e instanceof DOMException && e.name === 'NotFoundError') {
-          return null;
-        }
+  const missing = (e: unknown) => e instanceof DOMException && e.name === 'NotFoundError';
+  const readFile = async (name: string): Promise<Blob | null> => {
+    try {
+      return await (await dir.getFileHandle(name)).getFile();
+    } catch (e) {
+      if (missing(e)) {
+        return null;
+      }
+      throw e;
+    }
+  };
+  const removeFile = async (name: string): Promise<void> => {
+    try {
+      await dir.removeEntry(name);
+    } catch (e) {
+      if (!missing(e)) {
         throw e;
       }
-    },
-    write: async (text) => {
+    }
+  };
+  return {
+    read: async () => (await readFile(BACKUP_NAME)) ?? (await readFile(LEGACY_BACKUP_NAME)),
+    write: async (file) => {
       const out = await (await dir.getFileHandle(BACKUP_NAME, { create: true })).createWritable();
-      await out.write(text);
+      await out.write(file);
       await out.close();
+      await removeFile(LEGACY_BACKUP_NAME);
     },
     remove: async () => {
-      try {
-        await dir.removeEntry(BACKUP_NAME);
-      } catch (e) {
-        if (!(e instanceof DOMException && e.name === 'NotFoundError')) {
-          throw e;
-        }
-      }
+      await removeFile(BACKUP_NAME);
+      await removeFile(LEGACY_BACKUP_NAME);
     },
   };
 }
@@ -95,12 +110,17 @@ function indexedDbStore(): BackupStore | null {
     });
   };
   return {
-    read: async () => {
-      const text = await run<unknown>('readonly', (s) => s.get(BACKUP_NAME));
-      return typeof text === 'string' ? text : null;
+    read: async () =>
+      asBlob(await run<unknown>('readonly', (s) => s.get(BACKUP_NAME))) ??
+      asBlob(await run<unknown>('readonly', (s) => s.get(LEGACY_BACKUP_NAME))),
+    write: async (file) => {
+      await run('readwrite', (s) => s.put(file, BACKUP_NAME));
+      await run('readwrite', (s) => s.delete(LEGACY_BACKUP_NAME));
     },
-    write: (text) => run('readwrite', (s) => s.put(text, BACKUP_NAME)),
-    remove: () => run('readwrite', (s) => s.delete(BACKUP_NAME)),
+    remove: async () => {
+      await run('readwrite', (s) => s.delete(BACKUP_NAME));
+      await run('readwrite', (s) => s.delete(LEGACY_BACKUP_NAME));
+    },
   };
 }
 
@@ -127,18 +147,34 @@ export interface BackupInfo {
   saved: Date | null;
   /** How many items it holds (at least one). */
   items: number;
-  /** The board file, as text, to open or download. */
-  text: string;
+  /** The board file, to open or download. */
+  file: Blob;
+  /** Whether it is a zip (else an older JSON board file): `.inksplat.zip` or `.inksplat.json`. */
+  zip: boolean;
 }
 
-/** What a backup holds, or null when `text` is not a board file or the board was empty. */
-export function backupInfo(text: string | null): BackupInfo | null {
-  if (!text) {
+/** What a backup holds, or null when `file` is not a board file or the board was empty. */
+export async function backupInfo(file: Blob | null): Promise<BackupInfo | null> {
+  if (!file) {
     return null;
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (looksLikeZip(bytes)) {
+    const manifest = await readArchiveManifest(bytes);
+    if (!manifest || typeof manifest.items !== 'number' || manifest.items < 1) {
+      return null;
+    }
+    const saved = typeof manifest.saved === 'string' ? new Date(manifest.saved) : null;
+    return {
+      saved: saved && !Number.isNaN(saved.getTime()) ? saved : null,
+      items: manifest.items,
+      file,
+      zip: true,
+    };
   }
   let data: unknown;
   try {
-    data = JSON.parse(text);
+    data = JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     return null;
   }
@@ -154,7 +190,8 @@ export function backupInfo(text: string | null): BackupInfo | null {
   return {
     saved: saved && !Number.isNaN(saved.getTime()) ? saved : null,
     items: board.items.length,
-    text,
+    file,
+    zip: false,
   };
 }
 
@@ -162,8 +199,8 @@ export function backupInfo(text: string | null): BackupInfo | null {
 export interface BackupWriterOptions {
   /** Where the backup goes. */
   store: BackupStore;
-  /** The board file to keep (an object with `items`), or null to keep nothing. */
-  make: () => Promise<{ items: unknown[] } | null>;
+  /** The board file to keep and how many items it holds (none, or null: keep nothing). */
+  make: () => Promise<{ blob: Blob; items: number } | null>;
   /** How long after a change the backup is written; changes in between go in the same write. */
   delayMs?: number;
   /** Called when a write fails (once per failure). */
@@ -224,8 +261,8 @@ export class BackupWriter {
     this.running = (async () => {
       try {
         const board = await this.options.make();
-        if (board && board.items.length > 0) {
-          await this.options.store.write(JSON.stringify(board));
+        if (board && board.items > 0) {
+          await this.options.store.write(board.blob);
         } else {
           await this.options.store.remove();
         }

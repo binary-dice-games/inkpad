@@ -1,5 +1,7 @@
 // MIT License © 2026 Binary Dice Games
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readArchiveManifest } from '../../viewer/src/board-archive';
+import { zipParts } from '../../viewer/src/zip';
 import { PresenterSite, configure, draw, items } from '../support/presenter-site';
 import { makePdf } from '../support/pdf';
 import { makeZip } from '../support/zip';
@@ -487,13 +489,19 @@ describe('static presenter page', () => {
 
     // The board file: another session opens it and carries on, with the file and the cork.
     const file = await saved('#saveFile');
-    expect(file.name).toMatch(/\.inksplat\.json$/);
+    expect(file.name).toMatch(/\.inksplat\.zip$/);
+    // A zip anyone can look into: the note in the JSON of canvas 1, the file as it was dropped.
+    const parts = zipParts(new Uint8Array(file.bytes));
+    const part = async (name: string) => new TextDecoder().decode(await parts.get(name)!());
+    expect(await part('canvas-1.json')).toContain('Keep me');
+    expect(await part('files/later.txt')).toBe('file for later');
+    expect(await part('settings.json')).toContain('cork');
     const again = await presenterPage();
     await site.startBoard(again);
     await again.locator('#openBoard').click({ trial: true }); // there, without a dialog to find it in
     await again.locator('#openFile').setInputFiles({
       name: file.name,
-      mimeType: 'application/json',
+      mimeType: 'application/zip',
       buffer: file.bytes,
     });
     await expect
@@ -867,15 +875,17 @@ describe('static presenter page', () => {
     await draw(presenter, [200, 320]);
     expect(await items(presenter)).toBe(2);
     const backedUp = () =>
-      presenter.evaluate(async () => {
-        try {
-          const dir = await navigator.storage.getDirectory();
-          const file = await (await dir.getFileHandle('board-backup.inksplat.json')).getFile();
-          return (JSON.parse(await file.text()) as { items: unknown[] }).items.length;
-        } catch {
-          return 0;
-        }
-      });
+      presenter
+        .evaluate(async () => {
+          try {
+            const dir = await navigator.storage.getDirectory();
+            const file = await (await dir.getFileHandle('board-backup.inksplat.zip')).getFile();
+            return [...new Uint8Array(await file.arrayBuffer())];
+          } catch {
+            return [];
+          }
+        })
+        .then(async (bytes) => (await readArchiveManifest(new Uint8Array(bytes)))?.items ?? 0);
     await expect.poll(backedUp, { timeout: 10000 }).toBe(2);
 
     // Leaving the page ends the session: the browser asks first, and staying keeps it.

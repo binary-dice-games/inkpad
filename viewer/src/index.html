@@ -777,7 +777,12 @@
         <button id="toolsToggle" type="button" aria-pressed="true">Tools</button>
         <button id="saveBoard" type="button">Save…</button>
         <button id="openBoard" type="button">Open…</button>
-        <input id="openFile" type="file" accept=".json,application/json" hidden />
+        <input
+          id="openFile"
+          type="file"
+          accept=".zip,application/zip,.json,application/json"
+          hidden
+        />
       </div>
       <ul id="peopleList" hidden aria-label="People here"></ul>
       <div id="toast" role="status" hidden></div>

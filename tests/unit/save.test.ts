@@ -12,6 +12,15 @@ import {
   videoFrame,
 } from '../../viewer/src/save';
 import type { SaveHost } from '../../viewer/src/save';
+import { makeZip, zipParts } from '../../viewer/src/zip';
+
+/** The bytes of a Blob (jsdom's Blob has no arrayBuffer()). */
+const bytesOf = (blob: Blob) =>
+  new Promise<Uint8Array>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.readAsArrayBuffer(blob);
+  });
 
 const stage = (extra: Partial<Stage> = {}): Stage => ({ ...extra }) as Stage;
 
@@ -82,7 +91,10 @@ describe('saving', () => {
         calls.push(o);
         return '<svg/>';
       },
-      saveBoard: async (meta: unknown) => ({ format: 'inksplat-board', meta }),
+      saveBoard: async (meta: unknown, options: unknown) => {
+        calls.push(options);
+        return { format: 'inksplat-board', version: 1, saved: '', meta, items: [], files: [] };
+      },
     };
     const p = setup({ video: false, backgrounds: ['wall'] }, board);
     await saveAs('png', p.host);
@@ -91,22 +103,18 @@ describe('saving', () => {
     expect(downloads.map((d) => d.name.replace(/\d{4}-\d\d-\d\d-\d{4}/, 'DATE'))).toEqual([
       'inksplat-board-DATE.png',
       'inksplat-board-DATE.svg',
-      'inksplat-board-DATE.inksplat.json',
+      'inksplat-board-DATE.inksplat.zip',
     ]);
     expect(downloads[1]!.blob.type).toBe('image/svg+xml');
-    expect(calls).toHaveLength(2);
+    expect(downloads[2]!.blob.type).toBe('application/zip');
+    expect(calls).toHaveLength(3);
     expect((calls[0] as { background: object }).background).toBeDefined();
+    expect(calls[2]).toEqual({ binary: true }); // the files go in the zip as they are
     // The board file remembers the backgrounds of all canvases, for the session that opens it.
-    const saved = JSON.parse(
-      await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.readAsText(downloads[2]!.blob);
-      }),
-    );
-    expect(saved).toEqual({
-      format: 'inksplat-board',
-      meta: { backgrounds: ['wall', 'blackboard', 'wall', 'cork', 'whiteboard'] },
+    const parts = zipParts(await bytesOf(downloads[2]!.blob));
+    expect(parts.has('manifest.json')).toBe(true);
+    expect(JSON.parse(new TextDecoder().decode(await parts.get('settings.json')!()))).toEqual({
+      backgrounds: ['wall', 'blackboard', 'wall', 'cork', 'whiteboard'],
     });
     expect(p.toasts).toEqual([]);
   });
@@ -130,9 +138,11 @@ describe('saving', () => {
 });
 
 describe('opening a board file', () => {
-  const fileOf = (text: string) => {
-    const file = new File([text], 'b.json');
-    return Object.assign(file, { text: async () => text });
+  const fileOf = (content: string | Uint8Array) => {
+    const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
+    const file = new File([bytes as BlobPart], 'b.json');
+    // jsdom's File has no arrayBuffer().
+    return Object.assign(file, { arrayBuffer: async () => bytes.slice().buffer });
   };
 
   it('adds it, says how much, and gives the presenter its backgrounds', async () => {
@@ -156,6 +166,38 @@ describe('opening a board file', () => {
     expect(p.toasts).toEqual(['Added 3 items, 2 files (1 left out).']);
     // No video in this session: that canvas, like the unknown one, stays as it is.
     expect(p.backgrounds).toEqual([['cork', undefined, undefined, 'wall', 'wall']]);
+  });
+
+  it('opens a board zip', async () => {
+    let loaded: unknown;
+    const p = setup(
+      {},
+      {
+        loadBoard: async (data: unknown) => {
+          loaded = data;
+          return { added: 1, skipped: 0, files: 0, meta: {} };
+        },
+      },
+    );
+    const zip = await makeZip([
+      {
+        name: 'manifest.json',
+        data: new TextEncoder().encode('{"format":"inksplat-board-zip","version":1}'),
+      },
+      {
+        name: 'settings.json',
+        data: new TextEncoder().encode('{"backgrounds":["cork"]}'),
+      },
+    ]);
+    await openBoardFile(fileOf(await bytesOf(zip)), p.host);
+    expect(loaded).toMatchObject({
+      format: 'inksplat-board',
+      version: 1,
+      meta: { backgrounds: ['cork'] },
+      items: [],
+      files: [],
+    });
+    expect(p.toasts).toEqual(['Added 1 item.']);
   });
 
   it('reads the single background of older files, and keeps unknown ones out', () => {
