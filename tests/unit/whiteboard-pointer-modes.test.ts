@@ -85,15 +85,16 @@ describe('the modes of the pointer tool', () => {
     const root = wb.element.shadowRoot!;
     const board = root.querySelector('svg')!;
     try {
-      expect([...POINTER_MODES]).toEqual(['cursor', 'laser', 'emote']);
+      expect([...POINTER_MODES]).toEqual(['cursor', 'laser', 'emote', 'magnify']);
       expect(board.classList.contains('active')).toBe(false);
 
       const tool = root.querySelector<HTMLButtonElement>('.toolbar button[data-key="1"]')!;
       tool.click();
       const options = [...root.querySelectorAll<HTMLButtonElement>('.pop button')];
-      expect(options).toHaveLength(3);
+      expect(options).toHaveLength(4);
       expect(options.map((b) => b.getAttribute('aria-pressed'))).toEqual([
         'true',
+        'false',
         'false',
         'false',
       ]);
@@ -103,8 +104,12 @@ describe('the modes of the pointer tool', () => {
 
       keydown('1');
       expect(board.classList.contains('emote')).toBe(true);
+      // The magnifier lets the input through, like the cursor.
       keydown('1');
+      expect(board.classList.contains('magnify')).toBe(true);
       expect(board.classList.contains('active')).toBe(false);
+      keydown('1');
+      expect(board.classList.contains('magnify')).toBe(false);
 
       // Escape goes back to the cursor; another tool keeps the mode for when the pointer comes back.
       wb.setStyle({ pointerMode: 'laser' });
@@ -150,7 +155,7 @@ describe('the modes of the pointer tool', () => {
       keydown('2');
       keydown('1');
       keydown('1');
-      expect(board.classList.contains('active')).toBe(false); // back to the cursor
+      expect(board.classList.contains('magnify')).toBe(true); // the next mode after emotes
     } finally {
       wb.destroy();
       room.close();
@@ -164,6 +169,77 @@ describe('the modes of the pointer tool', () => {
       true,
     );
     expect(gate('wb', { t: 'ink', id: 'a.1' }, 'ana')).toBe(false);
+  });
+});
+
+describe('the magnifier', () => {
+  it('shows a lens beside the pointer with the content and the drawings enlarged; the wheel sets how much', async () => {
+    const room = new TestRoom();
+    const host = await room.start();
+    const stage = box(800, 450);
+    const content = document.createElement('div');
+    const picture = document.createElement('div');
+    picture.id = 'picture';
+    picture.style.background = 'rgb(1, 2, 3)';
+    content.append(picture);
+    stage.append(content);
+    let zoomed = 0;
+    const adapter = { ...identity, content: () => content, zoomAt: () => (zoomed += 1) };
+    const wb = createWhiteboard(stage, { session: host, adapter });
+    const root = wb.element.shadowRoot!;
+    const lens = root.querySelector<HTMLElement>('.lens')!;
+    const move = (x: number, y: number) =>
+      stage.dispatchEvent(new MouseEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+    try {
+      wb.addPin({ x: 400, y: 300 });
+      move(400, 300);
+      expect(lens.hidden).toBe(true); // only with the magnifier
+
+      wb.setStyle({ pointerMode: 'magnify' });
+      move(400, 300);
+      expect(lens.hidden).toBe(false);
+      // A copy of the content (its ids dropped, its look kept) and the live drawings.
+      const copy = lens.querySelector<HTMLElement>('.view > div > div')!;
+      expect(copy.id).toBe('');
+      expect(copy.style.getPropertyValue('background-color')).toBe('rgb(1, 2, 3)');
+      expect(lens.querySelector('use')?.getAttribute('href')).toBe('#wb-layer');
+      expect(root.querySelector('#wb-layer .pin-item')).not.toBeNull();
+      // Up and to the right of the pointer, enlarged 2.5 times about it.
+      expect(lens.style.transform).toBe('translate(420px, 60px)');
+      const view = lens.querySelector<HTMLElement>('.view')!;
+      expect(view.style.transform).toBe('translate(-893px, -643px) scale(2.5)');
+
+      // Near the top right corner it goes down and to the left.
+      move(750, 20);
+      expect(lens.style.transform).toBe('translate(510px, 40px)');
+
+      // The wheel enlarges more (or less), and does not zoom the board.
+      const wheel = new WheelEvent('wheel', {
+        deltaY: -100,
+        clientX: 400,
+        clientY: 300,
+        cancelable: true,
+      });
+      stage.dispatchEvent(wheel);
+      expect(wheel.defaultPrevented).toBe(true);
+      expect(zoomed).toBe(0);
+      expect(view.style.transform).toContain('scale(3)');
+
+      // It goes when the pointer leaves, and with another mode.
+      stage.dispatchEvent(new MouseEvent('pointerleave'));
+      expect(lens.hidden).toBe(true);
+      move(400, 300);
+      expect(lens.hidden).toBe(false);
+      wb.setStyle({ pointerMode: 'cursor' });
+      expect(lens.hidden).toBe(true);
+      stage.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: -100, clientX: 400, clientY: 300, cancelable: true }),
+      );
+      expect(zoomed).toBe(1);
+    } finally {
+      wb.destroy();
+      room.close();
+    }
   });
 });
 

@@ -123,8 +123,8 @@ export interface PinItem extends ItemBase {
 /** Which ends of a thread have a head: none, `start` (its source), `end` (its destination) or both. */
 export type ArrowHeads = 'none' | 'start' | 'end' | 'both';
 export const ARROW_HEADS: readonly ArrowHeads[];
-/** The modes of the pointer tool: the plain cursor, a laser that leaves a short trail, emotes. */
-export type PointerMode = 'cursor' | 'laser' | 'emote';
+/** The modes of the pointer tool: the plain cursor, a laser that leaves a short trail, emotes, a magnifier. */
+export type PointerMode = 'cursor' | 'laser' | 'emote' | 'magnify';
 export const POINTER_MODES: readonly PointerMode[];
 /** The stickers of the emote wheel, clockwise from the top. */
 export const EMOTES: readonly string[];
@@ -326,6 +326,8 @@ export interface Adapter {
   zoomed?(): boolean;
   /** Width / height of the frame, when the content is a frame (the whole frame is then saved). */
   aspect?(): number;
+  /** The element under the board (the video, the background), copied into the magnifier's lens. */
+  content?(): HTMLElement | null;
 }
 
 export interface FrameAdapter extends Adapter {

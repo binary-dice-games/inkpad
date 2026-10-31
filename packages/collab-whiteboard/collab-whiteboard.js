@@ -14,7 +14,9 @@
  * board (a preview on the board, the file itself sent to everyone to drag out as a copy).
  * Elements are removed by selecting them and pressing Delete or Backspace (the right button does
  * nothing to them). The pointer tool has modes: the cursor, a laser that leaves a short trail and
- * emotes picked from a wheel that float away (`laser` and `emote` messages, never stored). Bare pins
+ * emotes picked from a wheel that float away (`laser` and `emote` messages, never stored), and a
+ * magnifier (a lens beside the pointer with a live copy of the adapter's `content()` and the
+ * drawings, seen only here). Bare pins
  * and the pins of notes and pictures are drawn at half their size and catch the pointer as before.
  * New notes and pins are half the size nymph makes them, text sizes three
  * quarters, and the bar over a selected element is kept inside the board (and hidden while the
@@ -62,8 +64,13 @@ export const NOTE_SHAPES = Object.freeze(['square', 'rounded', 'oval', 'diamond'
 /** The shapes of a pin's head (`round` is the usual one and is not stored). */
 export const PIN_SHAPES = Object.freeze(['round', 'square', 'diamond', 'triangle', 'star']);
 export const ARROW_HEADS = Object.freeze(['none', 'start', 'end', 'both']);
-/** The modes of the pointer tool: the plain cursor, a laser that leaves a short trail, and emotes that float away. */
-export const POINTER_MODES = Object.freeze(['cursor', 'laser', 'emote']);
+/**
+ * The modes of the pointer tool: the plain cursor, a laser that leaves a short trail, emotes that
+ * float away, and a magnifier (the cursor with a lens beside it, seen only here).
+ */
+export const POINTER_MODES = Object.freeze(['cursor', 'laser', 'emote', 'magnify']);
+/** The modes in which the pointer lets the input through to the page, as the plain cursor does. */
+const PASSIVE_MODES = new Set(['cursor', 'magnify']);
 /** The stickers of the emote wheel, clockwise from the top. */
 export const EMOTES = Object.freeze(['thumbs-up', 'heart', 'laugh', 'smile', 'surprised', 'thinking', 'sad', 'angry']);
 /** How many times an emote can grow (a click on a live one makes it bigger). */
@@ -801,10 +808,11 @@ const WIDTH_NAMES = ['thin', 'normal', 'thick'];
 const SIZES = [14, 21, 33];
 const SIZE_NAMES = ['small', 'medium', 'large'];
 /** Where each tool's cursor points, in its 24-unit icon. */
-const HOTSPOT = { pointer: [5, 3], pen: [4, 20], text: [12, 12], sticker: [12, 12], eraser: [5, 19], note: [12, 12], pin: [12, 12], arrow: [12, 12], laser: [12, 12], emote: [12, 12] };
+const HOTSPOT = { pointer: [5, 3], pen: [4, 20], text: [12, 12], sticker: [12, 12], eraser: [5, 19], note: [12, 12], pin: [12, 12], arrow: [12, 12], laser: [12, 12], emote: [12, 12], magnify: [10, 10] };
 /** The icons of the pointer's laser and emote modes (on the toolbar and on remote cursors). */
 const MODE_ICONS = {
   laser: '<circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M5 5l2.5 2.5M16.5 16.5L19 19M19 5l-2.5 2.5M7.5 16.5L5 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+  magnify: '<circle cx="10" cy="10" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15 15l6 6" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>',
   emote: '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10" r="1.3" fill="currentColor"/><circle cx="15" cy="10" r="1.3" fill="currentColor"/><path d="M8 14.5q4 4 8 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
 };
 const LASER_MS = 1200; // how long each point of a laser trail lasts
@@ -813,6 +821,9 @@ const EMOTE_PX = 40; // the size of an emote on screen, before it grows
 const EMOTE_GROW = 1.3; // how much bigger each click makes it
 const EMOTE_RISE = 90; // how far (screen pixels) it floats up in its life
 const WHEEL_RADIUS = 64; // from the centre of the emote wheel to its emotes
+const LENS_RADIUS = 110; // the magnifier's lens, in screen pixels
+const LENS_GAP = 130; // from the pointer to the centre of the lens (up and right, or wherever it fits)
+const LENS_POWERS = [1.5, 2, 2.5, 3, 4, 5, 6, 8]; // what the wheel goes through with the magnifier
 
 const MAX_QUEUE = 50;
 const pinColor = (id) => PALETTE[[...id].reduce((n, c) => n + c.charCodeAt(0), 0) % 6];
@@ -1131,7 +1142,9 @@ const STRINGS = {
     cursor: 'Cursor',
     laser: 'Laser pointer: drag to leave a trail',
     emote: 'Emotes: press, pick one and let go (click one to make it bigger)',
+    magnify: 'Magnifier: the wheel changes how much it enlarges',
   },
+  magnifier: 'Magnifier',
   pen: 'Pen',
   text: 'Text note',
   sticker: 'Sticker (Shift+drag scales, Ctrl+drag turns)',
@@ -1208,6 +1221,12 @@ svg.board.laser, svg.board.laser .item { cursor: crosshair; } svg.board.emote, s
 .wheel .slot { position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; display: grid; place-items: center; transition: transform 80ms; }
 .wheel .slot.on { transform: scale(1.4); background: var(--wb-hover); }
 .wheel .slot svg { width: 32px; height: 32px; }
+.lens { position: absolute; left: 0; top: 0; box-sizing: border-box; overflow: hidden; border-radius: 50%; pointer-events: none; background: #ffffff;
+  border: 3px solid var(--wb-fg); box-shadow: 0 4px 18px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.6); }
+.lens[hidden] { display: none; }
+.lens .view { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.lens .view > svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+.lens .aim { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; }
 .capture { fill: transparent; }
 .item text { white-space: pre; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; paint-order: stroke; stroke: #ffffff; stroke-width: 0.25em; stroke-linejoin: round; }
 .item.erasing { opacity: 0.3; }
@@ -1328,6 +1347,34 @@ function inkPath(p) {
 }
 
 /** The default adapter: the container's box, one unit per CSS pixel at the start. */
+/**
+ * A copy of an element and what is in it that looks the same outside its page's style sheets (its
+ * computed style is copied onto it), with every video playing the same stream; for the magnifier.
+ */
+function copyLive(element) {
+  const copy = element.cloneNode(true);
+  const from = [element, ...element.querySelectorAll('*')];
+  const to = [copy, ...copy.querySelectorAll('*')];
+  from.forEach((el, i) => {
+    const c = to[i];
+    c.removeAttribute('id');
+    const cs = getComputedStyle(el);
+    for (let j = 0; j < cs.length; j++) {
+      c.style.setProperty(cs[j], cs.getPropertyValue(cs[j]));
+    }
+    if (el instanceof HTMLVideoElement && c instanceof HTMLVideoElement) {
+      c.muted = true;
+      c.autoplay = true;
+      c.playsInline = true;
+      if (el.srcObject) {
+        c.srcObject = el.srcObject;
+      }
+      c.play?.()?.catch?.(() => {});
+    }
+  });
+  return copy;
+}
+
 function boxAdapter(element) {
   const r = element.getBoundingClientRect();
   const w0 = r.width || 1;
@@ -1396,6 +1443,8 @@ export class Whiteboard {
     this.fxSeq = 0;
     this.lasing = null; // the laser trail being drawn here
     this.emoteWheel = null; // the emote wheel while it is open
+    this.lensPower = 2.5;
+    this.lensSig = ''; // what the copy of the content in the lens was made from
     // The pointer is in hand without its key or button (at the start, after a note was put down,
     // Esc...): the next press of its key only confirms it instead of going to the next mode.
     this.pointerUnchosen = true;
@@ -1436,6 +1485,7 @@ export class Whiteboard {
     this.finishText();
     this.tool = name;
     this.closeWheel(false);
+    this.showLens(null);
     this.syncBoardClass();
     this.popover.hidden = true;
     this.renderToolbar();
@@ -1734,6 +1784,7 @@ export class Whiteboard {
       this.closeWheel(false);
       this.syncBoardClass();
       this.sendCursorAgain();
+      this.showLens(null);
     }
     this.renderToolbar();
   }
@@ -1744,7 +1795,7 @@ export class Whiteboard {
    */
   syncBoardClass() {
     const mode = this.pointerMode();
-    const active = this.tool !== 'pointer' || mode !== 'cursor';
+    const active = this.tool !== 'pointer' || !PASSIVE_MODES.has(mode);
     this.board.setAttribute('class', `board ${this.tool}${mode === 'cursor' ? '' : ` ${mode}`}${active ? ' active' : ''}`);
     this.dragLayer.classList.toggle('off', active);
   }
@@ -2326,13 +2377,14 @@ export class Whiteboard {
     this.board = svgEl('svg', { class: 'board' });
     this.defs = svgEl('defs');
     this.capture = svgEl('rect', { class: 'capture', x: '-50000', y: '-50000', width: '100000', height: '100000' });
-    this.layer = svgEl('g', { class: 'layer' });
+    this.layer = svgEl('g', { class: 'layer', id: 'wb-layer' });
     this.itemsGroup = svgEl('g', { class: 'items' });
     this.liveGroup = svgEl('g', { class: 'live' });
     this.layer.append(this.itemsGroup, this.liveGroup);
     this.board.append(this.defs, this.capture, this.layer);
     this.cursorLayer = htmlEl('div', { class: 'cursors' });
     this.fxLayer = htmlEl('div', { class: 'fx' });
+    this.lens = htmlEl('div', { class: 'lens', hidden: true, 'aria-hidden': 'true' });
     this.dragLayer = htmlEl('div', { class: 'drag' });
     this.toolbarBox = htmlEl('div', { class: 'toolbar', role: 'toolbar', 'aria-label': 'Whiteboard', hidden: !withToolbar });
     this.popover = htmlEl('div', { class: 'pop', hidden: true });
@@ -2340,7 +2392,7 @@ export class Whiteboard {
     this.selbar = htmlEl('div', { class: 'selbar', role: 'toolbar', 'aria-label': 'Selected item', hidden: true });
     this.queueBox = htmlEl('div', { class: 'queue', role: 'group', 'aria-label': this.strings.queue, hidden: !this.turns });
     this.pagesBox = htmlEl('div', { class: 'pages', role: 'group', 'aria-label': this.strings.canvases, hidden: !this.showPages });
-    this.root.append(this.board, this.dragLayer, this.fxLayer, this.cursorLayer, this.toolbarBox, this.popover, this.selbar, this.hintBox, this.queueBox, this.pagesBox);
+    this.root.append(this.board, this.dragLayer, this.fxLayer, this.cursorLayer, this.lens, this.toolbarBox, this.popover, this.selbar, this.hintBox, this.queueBox, this.pagesBox);
     this.container.append(this.host);
     this.defs.append(this.shadowFilter());
     for (const [name, svg] of this.stickers) {
@@ -2566,6 +2618,9 @@ export class Whiteboard {
     }
     this.board.style.clipPath = path;
     this.cursorLayer.style.clipPath = path;
+    if (this.lensAt) {
+      this.showLens(this.lensAt);
+    }
     this.dragLayer.style.clipPath = path;
     // The toolbar sits at the side of the area the chart is shown in (the
     // window's edge, below an editor's tab bar), never over the chart.
@@ -3385,6 +3440,73 @@ export class Whiteboard {
     }
   }
 
+  // ── Magnifier ─────────────────────────────────────────────────────────────
+
+  /** @private With the magnifier, the lens follows the pointer (and hides over the controls). */
+  moveLens(ev) {
+    if (this.pointerMode() !== 'magnify' || this.onControls(ev)) {
+      this.showLens(null);
+      return;
+    }
+    const r = this.host.getBoundingClientRect();
+    this.showLens({ x: ev.clientX - r.left, y: ev.clientY - r.top });
+  }
+
+  /**
+   * @private Shows the lens for the point `at` (box pixels), or hides it with null. It holds a copy
+   * of the content under the board (the adapter's `content()`: the video plays in it too) and the
+   * drawings (an SVG <use> of the layer, so they are always current), enlarged about that point.
+   */
+  showLens(at) {
+    this.lensAt = at;
+    if (!at) {
+      if (!this.lens.hidden) {
+        this.lens.hidden = true;
+        this.lens.replaceChildren();
+        this.lensSig = '';
+      }
+      return;
+    }
+    const w = this.host.clientWidth || this.container.clientWidth;
+    const h = this.host.clientHeight || this.container.clientHeight;
+    const R = LENS_RADIUS;
+    const k = this.lensPower;
+    this.syncLensContent(w, h);
+    // Beside the pointer, up and to the right, unless that leaves the board.
+    const cx = at.x + LENS_GAP + R > w ? at.x - LENS_GAP : at.x + LENS_GAP;
+    const cy = at.y - LENS_GAP - R < 0 ? at.y + LENS_GAP : at.y - LENS_GAP;
+    this.lens.style.width = `${2 * R}px`;
+    this.lens.style.height = `${2 * R}px`;
+    this.lens.style.transform = `translate(${round1(cx - R)}px, ${round1(cy - R)}px)`;
+    const view = this.lens.querySelector('.view');
+    // The lens's border is 3px: its inside starts there.
+    view.style.transform = `translate(${round1(R - 3 - k * at.x)}px, ${round1(R - 3 - k * at.y)}px) scale(${k})`;
+    view.querySelector('svg').style.clipPath = this.board.style.clipPath;
+    this.lens.hidden = false;
+  }
+
+  /** @private (Re)makes the copy of the content in the lens when the content changed (background, stream, zoom). */
+  syncLensContent(w, h) {
+    const content = this.adapter.content?.() ?? null;
+    const parts = content ? [content, ...content.querySelectorAll('*')] : [];
+    const sig = `${w}x${h}|${parts.map((el) => `${el.hidden}:${el.getAttribute('style') ?? ''}:${el.srcObject?.id ?? el.currentSrc ?? ''}`).join('|')}`;
+    if (sig === this.lensSig) {
+      return;
+    }
+    this.lensSig = sig;
+    const view = htmlEl('div', { class: 'view' });
+    view.style.width = `${w}px`;
+    view.style.height = `${h}px`;
+    if (content) {
+      view.append(copyLive(content));
+    }
+    const svg = svgEl('svg');
+    svg.append(svgEl('use', { href: '#wb-layer' }));
+    const aim = htmlEl('div', { class: 'aim' }, '<svg viewBox="0 0 14 14" width="14" height="14"><path d="M7 0v5M7 9v5M0 7h5M9 7h5" stroke="#1c2024" stroke-width="1.4"/><path d="M7 1v3.5M7 9.5V13M1 7h3.5M9.5 7H13" stroke="#fff" stroke-width="0.6"/></svg>');
+    view.append(svg);
+    this.lens.replaceChildren(view, aim);
+  }
+
   // ── Laser and emotes ────────────────────────────────────────────────────
 
   /** @private A press with the laser (a new trail) or with emotes (a click on one makes it bigger, else the wheel). */
@@ -3688,7 +3810,11 @@ export class Whiteboard {
     };
     // Cursors in every mode: watched on the container, never taken.
     listen(this.container, 'pointermove', (ev) => this.sendCursor(ev), { capture: true, passive: true });
-    listen(this.container, 'pointerleave', () => this.send({ t: 'cur', hide: true }, { fast: true }));
+    listen(this.container, 'pointerleave', () => {
+      this.send({ t: 'cur', hide: true }, { fast: true });
+      this.showLens(null);
+    });
+    listen(this.container, 'pointermove', (ev) => this.moveLens(ev), { capture: true, passive: true });
     listen(this.board, 'pointerdown', (ev) => this.down(ev));
     listen(this.board, 'pointermove', (ev) => this.move(ev));
     listen(this.board, 'pointerup', (ev) => this.up(ev));
@@ -3756,6 +3882,15 @@ export class Whiteboard {
 
   /** @private */
   wheel(ev) {
+    if (this.pointerMode() === 'magnify' && !ev.ctrlKey && !this.onControls(ev)) {
+      // With the magnifier, the wheel changes how much it enlarges, not the zoom of the board.
+      ev.preventDefault();
+      const i = nearest(LENS_POWERS, this.lensPower) + (ev.deltaY < 0 ? 1 : -1);
+      this.lensPower = LENS_POWERS[Math.min(LENS_POWERS.length - 1, Math.max(0, i))];
+      this.flash(`${this.strings.magnifier}: \u00d7${this.lensPower}`);
+      this.moveLens(ev);
+      return;
+    }
     if (!this.adapter.zoomAt || this.onControls(ev)) {
       return;
     }
@@ -3837,7 +3972,7 @@ export class Whiteboard {
 
   /** @private A click on a link card (with the pointer tool, and not at the end of a drag) opens the page in a new tab. */
   openLink(ev) {
-    if (this.noClick || this.tool !== 'pointer' || this.style.pointerMode !== 'cursor') {
+    if (this.noClick || this.tool !== 'pointer' || !PASSIVE_MODES.has(this.style.pointerMode)) {
       return;
     }
     const hit = this.itemAt(ev);
@@ -3890,7 +4025,7 @@ export class Whiteboard {
     if (ev.button > 0 || this.threading) {
       return;
     }
-    if (this.pointerMode() !== 'cursor') {
+    if (!PASSIVE_MODES.has(this.pointerMode())) {
       this.modeDown(ev); // the laser and emotes change nothing on the board: they work read only too
       return;
     }
@@ -4983,6 +5118,7 @@ export function frameAdapter(element, aspect, content) {
     zoomed: () => view.scale > 1.001,
     view: () => ({ ...view }),
     aspect: () => aspect(),
+    content: () => content ?? null,
   };
 }
 

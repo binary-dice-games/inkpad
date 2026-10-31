@@ -1035,7 +1035,7 @@ describe('the options of a tool', () => {
       expect(t.inside.style.color).toBe('#f5a524');
       // The pointer has its modes; the eraser has nothing to choose: it only selects.
       t.tool('1').click();
-      expect(t.panel()).toHaveLength(3);
+      expect(t.panel()).toHaveLength(4);
       t.tool('1').click();
       t.tool('5').click();
       expect(t.panel()).toHaveLength(0);
